@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AttentionGroup as AttentionGroupType, AttentionCompany, AttentionSignal, CompanySearchResult } from "@/lib/types";
+import { sortAttentionCompanies, SortField } from "@/lib/sort-attention";
 
 interface Props {
   group: AttentionGroupType;
@@ -71,11 +72,27 @@ function CompanyRow({ company, signal, onClick }: { company: AttentionCompany; s
   );
 }
 
+type SecondarySortConfig = { field: SortField; label: string } | null;
+
+function getSecondarySortConfig(signal: AttentionSignal): SecondarySortConfig {
+  if (signal === "overdue_invoices" || signal === "overdue_tasks") {
+    return { field: "daysOverdue", label: "Days overdue" };
+  }
+  if (signal === "gone_quiet") {
+    return { field: "daysSilent", label: "Days silent" };
+  }
+  return null;
+}
+
 export function AttentionGroup({ group, onSelectCompany }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const [sortField, setSortField] = useState<SortField>("mrr");
   const isUrgent = URGENT_SIGNALS.includes(group.signal);
   const displayCount = expanded ? group.companies.length : 5;
   const hasMore = group.companies.length > 5;
+  const secondarySort = getSecondarySortConfig(group.signal);
+
+  const sortedCompanies = sortAttentionCompanies(group.companies, sortField);
 
   return (
     <div className="mb-6">
@@ -90,10 +107,35 @@ export function AttentionGroup({ group, onSelectCompany }: Props) {
         >
           {group.companies.length}
         </span>
+        {secondarySort && (
+          <div className="ml-auto flex items-center gap-1.5">
+            <span className="text-xs text-gray-400">Sort:</span>
+            <button
+              onClick={() => setSortField("mrr")}
+              className={`text-xs px-2 py-0.5 rounded-md font-medium transition-colors ${
+                sortField === "mrr"
+                  ? "bg-[var(--moss)] text-white"
+                  : "border border-gray-300 text-gray-500"
+              }`}
+            >
+              MRR
+            </button>
+            <button
+              onClick={() => setSortField(secondarySort.field)}
+              className={`text-xs px-2 py-0.5 rounded-md font-medium transition-colors ${
+                sortField === secondarySort.field
+                  ? "bg-[var(--moss)] text-white"
+                  : "border border-gray-300 text-gray-500"
+              }`}
+            >
+              {secondarySort.label}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
-        {group.companies.slice(0, displayCount).map((company) => (
+        {sortedCompanies.slice(0, displayCount).map((company) => (
           <CompanyRow
             key={company.id}
             company={company}

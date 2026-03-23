@@ -224,6 +224,18 @@ export default function Preview() {
       }
     },
     onNavigate: (direction) => {
+      if (showData) {
+        const tabButtons = document.querySelectorAll<HTMLButtonElement>("[class*='border-b'] > button");
+        if (tabButtons.length === 0) return;
+        const activeIndex = Array.from(tabButtons).findIndex((b) =>
+          b.className.includes("font-semibold")
+        );
+        const nextIndex = direction === "down"
+          ? Math.min(activeIndex + 1, tabButtons.length - 1)
+          : Math.max(activeIndex - 1, 0);
+        tabButtons[nextIndex]?.click();
+        return;
+      }
       const items = document.querySelectorAll("[data-attention-item]");
       const count = items.length;
       if (count === 0) return;

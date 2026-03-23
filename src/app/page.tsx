@@ -99,7 +99,19 @@ export default function Dashboard() {
       }
     },
     onNavigate: (direction) => {
-      if (companyData) return;
+      if (companyData) {
+        // Up/Down switches tabs when viewing a company
+        const tabButtons = document.querySelectorAll<HTMLButtonElement>("[class*='border-b'] > button");
+        if (tabButtons.length === 0) return;
+        const activeIndex = Array.from(tabButtons).findIndex((b) =>
+          b.className.includes("font-semibold")
+        );
+        const nextIndex = direction === "down"
+          ? Math.min(activeIndex + 1, tabButtons.length - 1)
+          : Math.max(activeIndex - 1, 0);
+        tabButtons[nextIndex]?.click();
+        return;
+      }
       const total = document.querySelectorAll("[data-attention-item]").length;
       if (total === 0) return;
       setFocusedAttentionIndex((prev) => {

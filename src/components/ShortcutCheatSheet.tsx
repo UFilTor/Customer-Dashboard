@@ -12,7 +12,7 @@ const modLabel = isMac ? "Cmd" : "Ctrl";
 const shortcuts = [
   { label: "Focus search", keys: `${modLabel} + K` },
   { label: "Go back", keys: "Esc" },
-  { label: "Navigate list", keys: "Arrow Up / Down" },
+  { label: "Navigate list / Switch tab", keys: "Arrow Up / Down" },
   { label: "Open company", keys: "Enter" },
   { label: "Jump to group", keys: "1 - 4" },
   { label: "Switch tab", keys: "Arrow Left / Right" },

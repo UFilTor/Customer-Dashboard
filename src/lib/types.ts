@@ -49,6 +49,7 @@ export interface CompanyDetail {
   deal: Record<string, string> | null;
   engagements: Engagement[];
   tasks: TaskItem[];
+  recap: Recap | null;
 }
 
 export interface Engagement {
@@ -56,6 +57,7 @@ export interface Engagement {
   title: string;
   body: string;
   bodyPreview: string;
+  summary: string;
   timestamp: string;
   direction?: string;
   status?: string;
@@ -78,4 +80,15 @@ export interface OwnerMap {
 
 export interface StageMap {
   [id: string]: string;
+}
+
+export type ActionType = "note" | "task" | "meeting" | "call";
+
+export interface Recap {
+  summary: string | null;
+  suggestedAction: {
+    text: string;
+    type: ActionType;
+  } | null;
+  error?: boolean;
 }

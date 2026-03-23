@@ -35,8 +35,8 @@ Auth: HubSpot OAuth per user -> NextAuth.js session
 
 ## Authentication
 
-- **User login:** HubSpot OAuth via NextAuth.js. Team members authenticate with their HubSpot credentials.
-- **API access:** Single private app bearer token stored as `HUBSPOT_ACCESS_TOKEN` env var. Used server-side for all HubSpot API calls. Shared across all users.
+- **User login:** HubSpot OAuth via NextAuth.js. Team members authenticate with their HubSpot credentials. The OAuth token is used only for identity verification, not for API calls. Required scopes: `oauth` (basic profile).
+- **API access:** Single private app bearer token stored as `HUBSPOT_ACCESS_TOKEN` env var. Used server-side for all HubSpot API calls. Shared across all users. Required scopes: `crm.objects.companies.read`, `crm.objects.deals.read`, `crm.objects.contacts.read`, `sales-email-read`, `crm.objects.owners.read`.
 
 ## UI Layout
 
@@ -45,8 +45,9 @@ Auth: HubSpot OAuth per user -> NextAuth.js session
 - Search bar in the top navigation bar
 - Autocomplete dropdown as the user types (debounced 300ms)
 - Calls HubSpot Search API filtering by company `name`
-- Returns top 5-10 matches
+- Returns top 5 matches
 - Selecting a result loads the company detail view
+- **Empty state:** Before any search, show a centered welcome message ("Search for a company to get started")
 
 ### Company Detail View
 
@@ -62,7 +63,7 @@ Auth: HubSpot OAuth per user -> NextAuth.js session
 | MRR | `confirmed__contract_mrr` | Lifecycle deal |
 | Last 12M Volume | `understory_booking_volume_last_12_months` | Company |
 | Understory Pay | `understory_pay_status__customer` | Lifecycle deal |
-| Invoice | `Tags` (filter for Overdue/Open) | Lifecycle deal |
+| Invoice | `Tags` - show status with color: Overdue (red), Open (orange), Paid (green) | Lifecycle deal |
 
 **Tabs:**
 
@@ -91,7 +92,7 @@ Two-column layout:
 | Understory Pay | `understory_pay_status__customer` | Deal | Text |
 | Invoice status | `Tags` | Deal | Text |
 
-Deal is filtered to pipelines where the name contains "Lifecycle".
+Deal is filtered to pipelines where the name contains "Lifecycle". Each company has exactly one lifecycle deal.
 
 ### Activity Tab
 
@@ -108,7 +109,16 @@ Chronological feed of engagements from the last 90 days. Each entry shows type i
 
 ### Tasks Tab
 
-List of tasks/engagements associated with the company or its deals that have future due dates. Shows task title, due date, owner, and status.
+List of tasks associated with the company or its deals that have future due dates. Fetched via `/crm/v3/objects/tasks` with company association.
+
+**Task properties:**
+
+| Label | Property | Format |
+|-------|----------|--------|
+| Subject | `hs_task_subject` | Text |
+| Status | `hs_task_status` | Badge |
+| Due date | `hs_task_due_date` | Date |
+| Owner | `hubspot_owner_id` | Resolve to name |
 
 ## Field Configuration
 
@@ -122,7 +132,7 @@ export const dashboardConfig = {
     { label: "MRR", property: "confirmed__contract_mrr", source: "deal", format: "currency" },
     { label: "Last 12M Volume", property: "understory_booking_volume_last_12_months", source: "company", format: "currency" },
     { label: "Understory Pay", property: "understory_pay_status__customer", source: "deal", format: "text" },
-    { label: "Invoice", property: "Tags", source: "deal", format: "text" },
+    { label: "Invoice", property: "Tags", source: "deal", format: "invoiceStatus" },
   ],
   tabs: {
     overview: {
@@ -139,7 +149,7 @@ export const dashboardConfig = {
         { label: "MRR", property: "confirmed__contract_mrr", format: "currency" },
         { label: "Booking fee", property: "booking_fee", format: "percentage" },
         { label: "Understory Pay", property: "understory_pay_status__customer", format: "text" },
-        { label: "Invoice status", property: "Tags", format: "text" },
+        { label: "Invoice status", property: "Tags", format: "invoiceStatus" },
       ],
     },
     activity: {
@@ -149,6 +159,12 @@ export const dashboardConfig = {
     },
     tasks: {
       filter: "future_due_dates",
+      fields: [
+        { label: "Subject", property: "hs_task_subject", format: "text" },
+        { label: "Status", property: "hs_task_status", format: "badge" },
+        { label: "Due date", property: "hs_task_due_date", format: "date" },
+        { label: "Owner", property: "hubspot_owner_id", format: "owner" },
+      ],
     },
   },
 }
@@ -160,7 +176,13 @@ export const dashboardConfig = {
 
 1. User types in search bar (debounced 300ms)
 2. API route calls HubSpot Search API (`/crm/v3/objects/companies/search`) filtering by `name`
-3. Returns top 5-10 matches for autocomplete dropdown
+3. Returns top 5 matches for autocomplete dropdown
+
+### Reference Data (fetched once and cached long-term)
+
+- **Owners:** `/crm/v3/owners` to resolve `hubspot_owner_id` to display names
+- **Deal stages:** `/crm/v3/pipelines/deals` to resolve `dealstage` IDs to human-readable labels
+- Cached for 1 hour (these change rarely)
 
 ### Company Detail Load
 
@@ -177,6 +199,12 @@ On company selection, all requests fire in parallel:
 - 5-minute TTL, evicted on next request after expiry
 - Covers company detail requests (not search, which should always be fresh)
 - Upgrade path: swap to Vercel KV if needed, zero API changes
+
+## Loading States
+
+- **Search:** Subtle spinner in the search input while fetching results
+- **Company detail:** Skeleton loaders for each section (metric cards, tab content) that resolve independently as parallel requests complete
+- Each section loads individually so the user sees data as it arrives
 
 ## Error Handling
 

@@ -123,17 +123,21 @@ export function SearchBar({ onSelect, ref }: Props) {
         handleSelect(results[item.index]);
       }
     } else if (e.key === "Escape") {
+      e.stopPropagation();
       setIsOpen(false);
       setShowRecents(false);
-      // Blur the input so global Esc handler can take over next press
       (e.target as HTMLInputElement).blur();
     }
   }
 
   function handleSelect(company: CompanySearchResult) {
-    setQuery(company.name);
+    setQuery("");
     setIsOpen(false);
     setShowRecents(false);
+    // Blur search bar when navigating to a company
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     onSelect(company);
   }
 

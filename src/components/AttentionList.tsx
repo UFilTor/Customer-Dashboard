@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { AttentionGroup as AttentionGroupComponent } from "./AttentionGroup";
 import { AttentionResponse, CompanySearchResult } from "@/lib/types";
+import type { SortField } from "@/lib/sort-attention";
 
 interface Props {
   onSelectCompany: (company: CompanySearchResult) => void;
@@ -14,6 +15,7 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showMine, setShowMine] = useState(true);
+  const [sortField, setSortField] = useState<SortField>("mrr");
 
   async function fetchAttention(refresh = false) {
     setIsLoading(true);
@@ -117,6 +119,29 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
               </button>
             </div>
           )}
+          <div className="flex items-center bg-[var(--light-grey)] rounded-[var(--border-radius)] p-1">
+            <span className="text-xs text-gray-400 px-2">Sort:</span>
+            <button
+              onClick={() => setSortField("mrr")}
+              className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
+                sortField === "mrr"
+                  ? "bg-[var(--moss)] text-white"
+                  : "text-[var(--green-100)] hover:text-[var(--moss)]"
+              }`}
+            >
+              MRR
+            </button>
+            <button
+              onClick={() => setSortField("daysOverdue")}
+              className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
+                sortField !== "mrr"
+                  ? "bg-[var(--moss)] text-white"
+                  : "text-[var(--green-100)] hover:text-[var(--moss)]"
+              }`}
+            >
+              Urgency
+            </button>
+          </div>
           <button
             onClick={() => fetchAttention(true)}
             className="text-sm text-[var(--moss)] hover:text-[var(--green-100)] transition-all duration-200"
@@ -159,6 +184,7 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
             key={group.signal}
             group={group}
             onSelectCompany={onSelectCompany}
+            sortField={sortField}
           />
         ))
       )}

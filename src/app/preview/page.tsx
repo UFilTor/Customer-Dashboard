@@ -188,6 +188,7 @@ export default function Preview() {
   const [showHelp, setShowHelp] = useState(false);
   const [focusedAttentionIndex, setFocusedAttentionIndex] = useState(-1);
   const [focusedTabItemIndex, setFocusedTabItemIndex] = useState(-1);
+  const [sortField, setSortField] = useState<"mrr" | "daysOverdue">("mrr");
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   function handleLoadMock(company?: CompanySearchResult) {
@@ -334,12 +335,29 @@ export default function Preview() {
                 <h2 className="text-xl font-bold text-[var(--moss)]">Needs Attention</h2>
                 <p className="text-xs text-[var(--green-100)] mt-1">Preview with mock data</p>
               </div>
-              <button
-                onClick={() => handleLoadMock()}
-                className="bg-[var(--citrus)] text-[var(--moss)] px-4 py-2 rounded-[8px] text-sm font-semibold hover:bg-[var(--lichen)] transition-all duration-200"
-              >
-                Load company detail
-              </button>
+              <div className="flex items-center bg-[var(--light-grey)] rounded-[var(--border-radius)] p-1">
+                <span className="text-xs text-gray-400 px-2">Sort:</span>
+                <button
+                  onClick={() => setSortField("mrr")}
+                  className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
+                    sortField === "mrr"
+                      ? "bg-[var(--moss)] text-white"
+                      : "text-[var(--green-100)] hover:text-[var(--moss)]"
+                  }`}
+                >
+                  MRR
+                </button>
+                <button
+                  onClick={() => setSortField("daysOverdue")}
+                  className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
+                    sortField !== "mrr"
+                      ? "bg-[var(--moss)] text-white"
+                      : "text-[var(--green-100)] hover:text-[var(--moss)]"
+                  }`}
+                >
+                  Urgency
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-5 gap-3 mb-6">
@@ -362,6 +380,7 @@ export default function Preview() {
                 key={group.signal}
                 group={group}
                 onSelectCompany={(c: CompanySearchResult) => { handleLoadMock(c); }}
+                sortField={sortField}
               />
             ))}
           </div>

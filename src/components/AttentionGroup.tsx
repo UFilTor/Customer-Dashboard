@@ -7,6 +7,7 @@ import { sortAttentionCompanies, SortField } from "@/lib/sort-attention";
 interface Props {
   group: AttentionGroupType;
   onSelectCompany: (company: CompanySearchResult) => void;
+  sortField?: SortField;
 }
 
 const URGENT_SIGNALS: AttentionSignal[] = ["overdue_invoices", "overdue_tasks"];
@@ -72,27 +73,25 @@ function CompanyRow({ company, signal, onClick }: { company: AttentionCompany; s
   );
 }
 
-type SecondarySortConfig = { field: SortField; label: string } | null;
-
-function getSecondarySortConfig(signal: AttentionSignal): SecondarySortConfig {
-  if (signal === "overdue_invoices" || signal === "overdue_tasks") {
-    return { field: "daysOverdue", label: "Days overdue" };
-  }
-  if (signal === "gone_quiet") {
-    return { field: "daysSilent", label: "Days silent" };
-  }
-  return null;
+// Maps a global sort choice to the appropriate field for each group type
+function getEffectiveSortField(signal: AttentionSignal, globalSort: SortField): SortField {
+  if (globalSort === "mrr") return "mrr";
+  // "urgency" sort maps to the relevant time-based field per group
+  if (signal === "overdue_invoices" || signal === "overdue_tasks") return "daysOverdue";
+  if (signal === "gone_quiet") return "daysSilent";
+  // health_score has no time field, always sort by MRR
+  return "mrr";
 }
 
-export function AttentionGroup({ group, onSelectCompany }: Props) {
+export function AttentionGroup({ group, onSelectCompany, sortField = "mrr" }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const [sortField, setSortField] = useState<SortField>("mrr");
   const isUrgent = URGENT_SIGNALS.includes(group.signal);
   const displayCount = expanded ? group.companies.length : 5;
   const hasMore = group.companies.length > 5;
-  const secondarySort = getSecondarySortConfig(group.signal);
 
-  const sortedCompanies = sortAttentionCompanies(group.companies, sortField);
+  // Determine effective sort field for this group type
+  const effectiveSort = getEffectiveSortField(group.signal, sortField);
+  const sortedCompanies = sortAttentionCompanies(group.companies, effectiveSort);
 
   return (
     <div className="mb-6" data-attention-group={group.signal}>
@@ -107,31 +106,6 @@ export function AttentionGroup({ group, onSelectCompany }: Props) {
         >
           {group.companies.length}
         </span>
-        {secondarySort && (
-          <div className="ml-auto flex items-center gap-1.5">
-            <span className="text-xs text-gray-400">Sort:</span>
-            <button
-              onClick={() => setSortField("mrr")}
-              className={`text-xs px-2 py-0.5 rounded-md font-medium transition-colors ${
-                sortField === "mrr"
-                  ? "bg-[var(--moss)] text-white"
-                  : "border border-gray-300 text-gray-500"
-              }`}
-            >
-              MRR
-            </button>
-            <button
-              onClick={() => setSortField(secondarySort.field)}
-              className={`text-xs px-2 py-0.5 rounded-md font-medium transition-colors ${
-                sortField === secondarySort.field
-                  ? "bg-[var(--moss)] text-white"
-                  : "border border-gray-300 text-gray-500"
-              }`}
-            >
-              {secondarySort.label}
-            </button>
-          </div>
-        )}
       </div>
 
       <div className="space-y-2">

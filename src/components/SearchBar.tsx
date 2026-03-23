@@ -76,9 +76,9 @@ export function SearchBar({ onSelect, ref }: Props) {
 
   function handleFocus() {
     setIsFocused(true);
-    if (query === "") {
-      setShowRecents(true);
-    } else if (results.length > 0) {
+    setRecents(getRecentCompanies());
+    setShowRecents(true);
+    if (query.length >= 2 && results.length > 0) {
       setIsOpen(true);
     }
   }
@@ -95,7 +95,7 @@ export function SearchBar({ onSelect, ref }: Props) {
 
   // Total items in the current visible list for keyboard navigation
   const visibleItems: Array<{ type: "recent" | "result"; index: number }> = [];
-  if (showRecents && query === "") {
+  if (showRecents && query.length < 2) {
     recents.slice(0, 5).forEach((_, i) => visibleItems.push({ type: "recent", index: i }));
   } else if (query.length >= 2) {
     matchingRecents.forEach((_, i) => visibleItems.push({ type: "recent", index: i }));
@@ -170,8 +170,8 @@ export function SearchBar({ onSelect, ref }: Props) {
       {showDropdown && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-[var(--light-grey)] rounded-[var(--border-radius)] shadow-[0_10px_64px_rgba(102,84,78,0.15)] overflow-hidden z-50">
 
-          {/* Recent companies when query is empty */}
-          {showRecents && query === "" && recents.length > 0 && (
+          {/* Recent companies when query is short (not yet searching API) */}
+          {showRecents && query.length < 2 && recents.length > 0 && (
             <>
               <div className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--green-100)]/60">
                 Recent
@@ -195,7 +195,7 @@ export function SearchBar({ onSelect, ref }: Props) {
           )}
 
           {/* Empty recents state */}
-          {showRecents && query === "" && recents.length === 0 && (
+          {showRecents && query.length < 2 && recents.length === 0 && (
             <div className="px-4 py-3 text-[var(--green-100)] text-sm">No recent companies</div>
           )}
 

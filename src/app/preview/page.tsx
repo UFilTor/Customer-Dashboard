@@ -229,6 +229,7 @@ export default function Preview() {
   useKeyboardShortcuts({
     onSearch: () => {
       searchInputRef.current?.focus();
+      searchInputRef.current?.select();
     },
     onBack: () => {
       if (showHelp) {

@@ -105,6 +105,7 @@ export default function Dashboard() {
   useKeyboardShortcuts({
     onSearch: () => {
       searchInputRef.current?.focus();
+      searchInputRef.current?.select();
     },
     onBack: () => {
       if (showHelp) {

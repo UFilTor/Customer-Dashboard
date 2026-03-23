@@ -11,6 +11,7 @@ import { TasksTab } from "@/components/TasksTab";
 import { SkeletonCard, SkeletonBlock, SkeletonRecap } from "@/components/Skeleton";
 import AuthGate from "@/components/AuthGate";
 import { CompanySearchResult, CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
+import { AttentionList } from "@/components/AttentionList";
 
 interface CompanyData extends CompanyDetail {
   owners: OwnerMap;
@@ -63,9 +64,7 @@ export default function Dashboard() {
           )}
 
           {!companyData && !isLoading && (
-            <div className="flex items-center justify-center min-h-[60vh]">
-              <p className="text-[var(--green-100)] text-lg">Search for a company to get started</p>
-            </div>
+            <AttentionList onSelectCompany={handleSelect} />
           )}
 
           {isLoading && (

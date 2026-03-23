@@ -8,7 +8,7 @@ import { OverviewTab } from "@/components/OverviewTab";
 import { ActivityTab } from "@/components/ActivityTab";
 import { TasksTab } from "@/components/TasksTab";
 import { SkeletonCard, SkeletonBlock, SkeletonRecap } from "@/components/Skeleton";
-import { CompanyDetail, OwnerMap, StageMap, Engagement, TaskItem } from "@/lib/types";
+import { CompanyDetail, OwnerMap, StageMap, Engagement, TaskItem, AttentionResponse } from "@/lib/types";
 
 interface CompanyData extends CompanyDetail {
   owners: OwnerMap;
@@ -125,6 +125,46 @@ const MOCK_DATA: CompanyData = {
   },
 };
 
+const MOCK_ATTENTION: AttentionResponse = {
+  groups: [
+    {
+      signal: "overdue_invoices",
+      label: "Overdue Invoices",
+      companies: [
+        { id: "101", name: "Nordic Kayak Tours", detail: "Nordic Kayak - Pro" },
+        { id: "102", name: "Copenhagen Food Walks", detail: "Food Walks - Starter" },
+      ],
+    },
+    {
+      signal: "overdue_tasks",
+      label: "Overdue Tasks",
+      companies: [
+        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials (5d overdue)" },
+        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review (12d overdue)" },
+        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup (3d overdue)" },
+      ],
+    },
+    {
+      signal: "health_score",
+      label: "Health Score Issues",
+      companies: [
+        { id: "106", name: "Bergen Outdoor Co", detail: "Critical Churn Risk" },
+        { id: "107", name: "Helsinki Tasting Club", detail: "At Risk" },
+      ],
+    },
+    {
+      signal: "gone_quiet",
+      label: "Gone Quiet",
+      companies: [
+        { id: "108", name: "Oslo Creative Labs", detail: "Last contacted 62 days ago" },
+        { id: "109", name: "Aarhus Adventure Park", detail: "Last contacted 51 days ago" },
+        { id: "110", name: "Tampere Escape Rooms", detail: "Last contacted 48 days ago" },
+      ],
+    },
+  ],
+  updatedAt: new Date().toISOString(),
+};
+
 export default function Preview() {
   const [showData, setShowData] = useState(false);
   const [showLoading, setShowLoading] = useState(false);
@@ -157,14 +197,45 @@ export default function Preview() {
       {/* Content */}
       <main className="max-w-6xl mx-auto px-6 py-6">
         {!showData && !showLoading && (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-            <p className="text-[var(--green-100)] text-lg">Search for a company to get started</p>
-            <button
-              onClick={handleLoadMock}
-              className="bg-[var(--citrus)] text-[var(--moss)] px-4 py-2 rounded-[var(--border-radius)] text-sm font-semibold hover:bg-[var(--lichen)] transition-all duration-200"
-            >
-              Load mock data (Acme Adventures AB)
-            </button>
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-[var(--moss)]">Needs Attention</h2>
+                <p className="text-xs text-[var(--green-100)] mt-1">Preview with mock data</p>
+              </div>
+              <button
+                onClick={handleLoadMock}
+                className="bg-[var(--citrus)] text-[var(--moss)] px-4 py-2 rounded-[8px] text-sm font-semibold hover:bg-[var(--lichen)] transition-all duration-200"
+              >
+                Load company detail
+              </button>
+            </div>
+            {MOCK_ATTENTION.groups.map((group) => (
+              <div key={group.signal} className="mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="font-semibold text-[var(--moss)]">{group.label}</h3>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                    group.signal === "overdue_invoices" || group.signal === "overdue_tasks"
+                      ? "bg-[var(--rust)] text-white"
+                      : "bg-[var(--beige)] text-[var(--moss)]"
+                  }`}>
+                    {group.companies.length}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {group.companies.map((company) => (
+                    <button
+                      key={company.id}
+                      onClick={handleLoadMock}
+                      className="w-full bg-[var(--light-grey)] rounded-[var(--border-radius)] p-3 flex items-center justify-between text-left hover:bg-[var(--lichen)]/30 transition-all duration-200"
+                    >
+                      <span className="font-medium text-sm text-[var(--moss)]">{company.name}</span>
+                      <span className="text-xs text-[var(--green-100)]">{company.detail}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

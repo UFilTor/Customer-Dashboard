@@ -36,6 +36,7 @@ const MOCK_DATA: CompanyData = {
     Tags: "Paid",
     pipeline: "lifecycle",
     deal_currency_code: "SEK",
+    "Storefront link": "https://acmeadventures.understory.io",
   },
   engagements: [
     {
@@ -278,6 +279,7 @@ export default function Preview() {
             <CompanyHeader
               companyId="12345"
               company={MOCK_DATA.company}
+              deal={MOCK_DATA.deal}
               owners={MOCK_DATA.owners}
             />
             <MetricCards

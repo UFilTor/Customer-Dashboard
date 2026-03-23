@@ -116,6 +116,7 @@ export default function Dashboard() {
               <CompanyHeader
                 companyId={selectedCompanyId!}
                 company={companyData.company}
+                deal={companyData.deal}
                 owners={companyData.owners}
               />
               <MetricCards

@@ -3,16 +3,18 @@ import { OwnerMap } from "@/lib/types";
 interface Props {
   companyId: string;
   company: Record<string, string>;
+  deal: Record<string, string> | null;
   owners: OwnerMap;
 }
 
-export function CompanyHeader({ companyId, company, owners }: Props) {
+export function CompanyHeader({ companyId, company, deal, owners }: Props) {
   const name = company.name || "Unknown Company";
   const domain = company.domain || "";
   const ownerName = owners[company.hubspot_owner_id] || "-";
   const lastContacted = company.notes_last_contacted
     ? formatRelativeDate(company.notes_last_contacted)
     : "-";
+  const storefrontLink = deal?.["Storefront link"] || "";
 
   const portalId = process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID;
   const hubspotUrl = portalId
@@ -20,19 +22,47 @@ export function CompanyHeader({ companyId, company, owners }: Props) {
     : null;
 
   return (
-    <div className="flex justify-between items-center mb-4">
+    <div className="flex justify-between items-start mb-4">
       <div>
         <h1 className="text-2xl font-bold text-[var(--moss)]">{name}</h1>
-        <p className="text-sm text-[var(--green-100)]">
-          {domain} &middot; Owner: {ownerName} &middot; Last contacted: {lastContacted}
-        </p>
+        <div className="flex items-center gap-2 mt-1 text-sm text-[var(--green-100)]">
+          {domain && (
+            <>
+              <a
+                href={`https://${domain}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200"
+              >
+                {domain}
+              </a>
+              <span>&middot;</span>
+            </>
+          )}
+          {storefrontLink && (
+            <>
+              <a
+                href={storefrontLink.startsWith("http") ? storefrontLink : `https://${storefrontLink}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200"
+              >
+                Booking page
+              </a>
+              <span>&middot;</span>
+            </>
+          )}
+          <span>Owner: {ownerName}</span>
+          <span>&middot;</span>
+          <span>Last contacted: {lastContacted}</span>
+        </div>
       </div>
       {hubspotUrl && (
         <a
           href={hubspotUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200"
+          className="text-sm text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200 shrink-0"
         >
           Open in HubSpot
         </a>

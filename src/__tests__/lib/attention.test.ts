@@ -47,21 +47,23 @@ describe("fetchOverdueTasks", () => {
 
 describe("fetchHealthScoreIssues", () => {
   it("returns companies with At Risk or Critical Churn Risk scores", async () => {
+    // Search response
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         results: [
-          { id: "c1", properties: { name: "Acme Co", "Health Score Category": "At Risk" } },
-          { id: "c2", properties: { name: "Beta Inc", "Health Score Category": "Critical Churn Risk" } },
+          { id: "c1", properties: { name: "Acme Co", "Health Score Category": "At Risk", hubspot_owner_id: "1" } },
+          { id: "c2", properties: { name: "Beta Inc", "Health Score Category": "Critical Churn Risk", hubspot_owner_id: "2" } },
         ],
       }),
     });
+    // Property history + deal lookups will fail gracefully (no mocks = fetch throws)
+    mockFetch.mockResolvedValue({ ok: false });
 
     const result = await fetchHealthScoreIssues();
-    expect(result).toEqual([
-      { id: "c1", name: "Acme Co", detail: "At Risk" },
-      { id: "c2", name: "Beta Inc", detail: "Critical Churn Risk" },
-    ]);
+    expect(result.length).toBe(2);
+    expect(result[0]).toMatchObject({ id: "c1", name: "Acme Co", detail: "At Risk" });
+    expect(result[1]).toMatchObject({ id: "c2", name: "Beta Inc", detail: "Critical Churn Risk" });
   });
 
   it("returns empty array on API error", async () => {

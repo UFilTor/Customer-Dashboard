@@ -67,7 +67,7 @@ const COMPANY_PROPERTIES = [
 const DEAL_PROPERTIES = [
   "dealname", "dealstage", "confirmed__contract_mrr",
   "booking_fee", "understory_pay_status__customer", "Tags",
-  "pipeline",
+  "pipeline", "deal_currency_code",
 ];
 
 export async function getCompanyDetail(companyId: string): Promise<CompanyDetail> {

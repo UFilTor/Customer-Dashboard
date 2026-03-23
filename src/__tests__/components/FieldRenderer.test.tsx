@@ -3,9 +3,9 @@ import { render, screen } from "@testing-library/react";
 import { FieldRenderer } from "@/components/FieldRenderer";
 
 describe("FieldRenderer", () => {
-  it("renders currency formatted value", () => {
+  it("renders currency formatted value with default EUR", () => {
     render(<FieldRenderer value="2400" format="currency" />);
-    expect(screen.getByText("2 400 kr")).toBeTruthy();
+    expect(screen.getByText("\u20ac2 400")).toBeTruthy();
   });
 
   it("renders dash for null values", () => {

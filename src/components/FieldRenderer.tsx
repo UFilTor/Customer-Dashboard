@@ -4,10 +4,11 @@ import { formatValue } from "@/lib/format";
 interface Props {
   value: string | null | undefined;
   format: FormatType;
+  currencyCode?: string;
 }
 
-export function FieldRenderer({ value, format }: Props) {
-  const formatted = formatValue(value, format);
+export function FieldRenderer({ value, format, currencyCode }: Props) {
+  const formatted = formatValue(value, format, currencyCode);
 
   if (formatted === "-") {
     return <span className="text-[var(--green-100)]">-</span>;

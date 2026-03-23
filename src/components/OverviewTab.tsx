@@ -13,6 +13,8 @@ interface Props {
 }
 
 export function OverviewTab({ company, deal, owners, stages, recap, companyId }: Props) {
+  const currencyCode = deal?.deal_currency_code || "EUR";
+
   function resolveValue(property: string, source: Record<string, string> | null, format: string): string | null {
     const raw = source?.[property] ?? null;
     if (!raw) return null;
@@ -34,6 +36,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
                 <FieldRenderer
                   value={resolveValue(field.property, company, field.format)}
                   format={field.format}
+                  currencyCode={field.format === "currency" ? currencyCode : undefined}
                 />
               </div>
             ))}
@@ -50,6 +53,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
                   <FieldRenderer
                     value={resolveValue(field.property, deal, field.format)}
                     format={field.format}
+                    currencyCode={field.format === "currency" ? currencyCode : undefined}
                   />
                 </div>
               ))}

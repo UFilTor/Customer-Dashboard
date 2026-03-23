@@ -6,15 +6,30 @@ function formatNumber(value: string): string {
   return Math.round(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  EUR: "\u20ac",
+  DKK: "DKK ",
+  SEK: "SEK ",
+  NOK: "NOK ",
+  USD: "$",
+  GBP: "\u00a3",
+};
+
+function getCurrencyPrefix(code?: string): string {
+  if (!code) return "\u20ac";
+  return CURRENCY_SYMBOLS[code.toUpperCase()] || `${code} `;
+}
+
 export function formatValue(
   value: string | null | undefined,
-  format: FormatType
+  format: FormatType,
+  currencyCode?: string
 ): string {
   if (value === null || value === undefined || value === "") return "-";
 
   switch (format) {
     case "currency":
-      return `${formatNumber(value)} kr`;
+      return `${getCurrencyPrefix(currencyCode)}${formatNumber(value)}`;
     case "number":
       return formatNumber(value);
     case "percentage":

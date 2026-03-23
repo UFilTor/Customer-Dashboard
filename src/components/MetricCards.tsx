@@ -8,13 +8,14 @@ interface Props {
 
 export function MetricCards({ company, deal }: Props) {
   const count = dashboardConfig.metricCards.length;
+  const currencyCode = deal?.deal_currency_code || "EUR";
 
   return (
     <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}>
       {dashboardConfig.metricCards.map((card) => {
         const source = card.source === "deal" ? deal : company;
         const value = source?.[card.property] ?? null;
-        const formatted = formatValue(value, card.format);
+        const formatted = formatValue(value, card.format, card.format === "currency" ? currencyCode : undefined);
         const isInvoice = card.format === "invoiceStatus";
 
         let bgClass = "bg-[var(--light-grey)]";

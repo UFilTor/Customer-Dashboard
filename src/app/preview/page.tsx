@@ -35,6 +35,7 @@ const MOCK_DATA: CompanyData = {
     understory_pay_status__customer: "Active",
     Tags: "Paid",
     pipeline: "lifecycle",
+    deal_currency_code: "SEK",
   },
   engagements: [
     {

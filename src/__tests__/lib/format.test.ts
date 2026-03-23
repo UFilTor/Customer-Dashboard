@@ -2,8 +2,15 @@ import { describe, it, expect } from "vitest";
 import { formatValue } from "@/lib/format";
 
 describe("formatValue", () => {
-  it("formats currency values", () => {
-    expect(formatValue("2400", "currency")).toBe("2 400 kr");
+  it("formats currency with EUR as default", () => {
+    expect(formatValue("2400", "currency")).toBe("\u20ac2 400");
+  });
+
+  it("formats currency with specific currency code", () => {
+    expect(formatValue("2400", "currency", "SEK")).toBe("SEK 2 400");
+    expect(formatValue("2400", "currency", "DKK")).toBe("DKK 2 400");
+    expect(formatValue("2400", "currency", "NOK")).toBe("NOK 2 400");
+    expect(formatValue("2400", "currency", "EUR")).toBe("\u20ac2 400");
   });
 
   it("formats null/undefined as dash", () => {

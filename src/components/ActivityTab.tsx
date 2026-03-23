@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Engagement, OwnerMap } from "@/lib/types";
+import ActivityFilters from "./ActivityFilters";
+import { filterEngagements, ActivityFilterState } from "@/lib/filter-activities";
 
 interface Props {
   engagements: Engagement[];
@@ -87,19 +89,35 @@ function ActivityCard({ engagement, owners }: { engagement: Engagement; owners: 
 }
 
 export function ActivityTab({ engagements, owners }: Props) {
+  const [filters, setFilters] = useState<ActivityFilterState>({ types: null, daysBack: 90 });
+
+  const filteredEngagements = filterEngagements(engagements, filters);
+
   if (engagements.length === 0) {
     return <p className="text-[var(--green-100)] text-sm py-4">No activity in the last 90 days</p>;
   }
 
   return (
-    <div className="space-y-3">
-      {engagements.map((engagement, index) => (
-        <ActivityCard
-          key={`${engagement.type}-${engagement.timestamp}-${index}`}
-          engagement={engagement}
-          owners={owners}
-        />
-      ))}
+    <div>
+      <ActivityFilters onFilterChange={setFilters} />
+      <p className="text-xs text-[var(--green-100)] mb-3">
+        Showing {filteredEngagements.length} {filteredEngagements.length === 1 ? "activity" : "activities"}
+      </p>
+      {filteredEngagements.length === 0 ? (
+        <p className="text-center text-[var(--green-100)] text-sm py-8">
+          No activities match the current filters
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {filteredEngagements.map((engagement, index) => (
+            <ActivityCard
+              key={`${engagement.type}-${engagement.timestamp}-${index}`}
+              engagement={engagement}
+              owners={owners}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

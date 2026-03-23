@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { CompanyHeader } from "@/components/CompanyHeader";
 import { MetricCards } from "@/components/MetricCards";
 import { TabContainer } from "@/components/TabContainer";
@@ -10,11 +10,17 @@ import { TasksTab } from "@/components/TasksTab";
 import { SkeletonCard, SkeletonBlock, SkeletonRecap } from "@/components/Skeleton";
 import { AttentionGroup as AttentionGroupComponent } from "@/components/AttentionGroup";
 import { CompanyDetail, OwnerMap, StageMap, Engagement, TaskItem, AttentionResponse, CompanySearchResult } from "@/lib/types";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
+import { SearchBar } from "@/components/SearchBar";
 
 interface CompanyData extends CompanyDetail {
   owners: OwnerMap;
   stages: StageMap;
 }
+
+const now = Date.now();
+const daysAgo = (d: number) => String(now - d * 86400000);
 
 const MOCK_DATA: CompanyData = {
   company: {
@@ -45,7 +51,7 @@ const MOCK_DATA: CompanyData = {
       body: "Discussed upcoming season preparations. Anna mentioned they're expecting 40% more bookings this summer compared to last year. They want to explore group booking functionality and asked about integrating with their existing CRM. We also talked about their experience with Understory Pay - they're happy with the conversion rates but want better reporting on failed payments. Action item: send them the group booking beta docs and schedule a follow-up demo.",
       bodyPreview: "Discussed upcoming season preparations. Anna mentioned they're expecting 40% more bookings...",
       summary: "Customer expects 40% booking growth this summer and wants group booking functionality. Happy with Understory Pay conversion but needs better failed payment reporting. Action items: send group booking beta docs, schedule follow-up demo.",
-      timestamp: "1742569200000",
+      timestamp: daysAgo(3),
       direction: "OUTBOUND",
       status: "COMPLETED",
     },
@@ -55,7 +61,7 @@ const MOCK_DATA: CompanyData = {
       body: "Hi Filip,\n\nThanks for the help with the booking page! The new layout looks great and we've already seen a 15% increase in completed bookings since we switched over last week.\n\nOne thing - could we add a map widget to the kayaking tour page? Customers keep asking where the meeting point is.\n\nAlso, quick question: is there a way to set different cancellation policies per experience type? We want stricter rules for the multi-day tours.\n\nBest,\nAnna",
       bodyPreview: "Hi Filip, Thanks for the help with the booking page! The new layout looks great...",
       summary: "Customer reports 15% increase in completed bookings after page redesign. Requesting two features: a map widget for meeting point locations and per-experience cancellation policy settings for multi-day tours.",
-      timestamp: "1742396400000",
+      timestamp: daysAgo(5),
       direction: "INCOMING",
       fromEmail: "anna@acmeadventures.se",
       toEmail: "filip@understory.io",
@@ -66,7 +72,7 @@ const MOCK_DATA: CompanyData = {
       body: "Final onboarding session covering payment setup and booking flow customization. Walked through Understory Pay integration with their Stripe account. Set up automated confirmation emails with custom branding. Configured waitlist functionality for their popular weekend tours. Anna comfortable managing everything independently now. Remaining setup: connect their Google Calendar for availability sync (Anna to do on her end). Graduation from onboarding - moving to regular CS check-in cadence.",
       bodyPreview: "Final onboarding session covering payment setup and booking flow customization...",
       summary: "Completed final onboarding session. Set up Understory Pay with Stripe, automated confirmation emails, and waitlist for weekend tours. Customer is self-sufficient. One remaining item: Anna to connect Google Calendar for availability sync. Transitioning to regular CS check-in cadence.",
-      timestamp: "1741791600000",
+      timestamp: daysAgo(12),
       outcome: "COMPLETED",
     },
     {
@@ -75,7 +81,7 @@ const MOCK_DATA: CompanyData = {
       body: "Customer mentioned they want to start using Bloom for marketing next quarter. They've been doing their own email campaigns but want to leverage Understory's audience reach. Budget approved internally. Follow up in April to start the Bloom onboarding process. Also noted: they're considering adding winter activities (ice skating, northern lights tours) - could be a good case study.",
       bodyPreview: "Customer mentioned they want to start using Bloom for marketing next quarter...",
       summary: "Bloom upsell opportunity confirmed for next quarter with internal budget approved. Follow up in April. Also exploring winter activity expansion (ice skating, northern lights) which could serve as a case study.",
-      timestamp: "1741618800000",
+      timestamp: daysAgo(25),
       owner: "1",
     },
     {
@@ -84,7 +90,7 @@ const MOCK_DATA: CompanyData = {
       body: "Hi Anna,\n\nJust wanted to confirm the updated billing after your plan upgrade last week. Your new MRR is 2,400 kr (up from 1,800 kr) which includes the Pro tier features: advanced analytics, priority support, and custom domain.\n\nThe first invoice at the new rate will go out on the 1st. Let me know if you have any questions!\n\nBest,\nFilip",
       bodyPreview: "Hi Anna, Just wanted to confirm the updated billing after your plan upgrade...",
       summary: "Confirmed MRR increase from 1,800 kr to 2,400 kr after Pro tier upgrade. New features include advanced analytics, priority support, and custom domain. Next invoice at new rate on the 1st.",
-      timestamp: "1741100400000",
+      timestamp: daysAgo(45),
       direction: "OUTBOUND",
       fromEmail: "filip@understory.io",
       toEmail: "anna@acmeadventures.se",
@@ -128,23 +134,30 @@ const MOCK_DATA: CompanyData = {
   },
 };
 
+// overdue_invoices: company 101 has high MRR (daysOverdue 3), company 102 has low MRR (daysOverdue 14)
+// Sorting by MRR desc: 101, 102. Sorting by daysOverdue desc: 102, 101 — different order.
+//
+// overdue_tasks: company 103 has high MRR (SEK 3 800) but low daysOverdue (2)
+//               company 104 has mid MRR (SEK 2 200) and mid daysOverdue (8)
+//               company 105 has low MRR (EUR 950) but high daysOverdue (15)
+// Sort by MRR desc: 103, 104, 105. Sort by daysOverdue desc: 105, 104, 103 — opposite order.
 const MOCK_ATTENTION: AttentionResponse = {
   groups: [
     {
       signal: "overdue_invoices",
       label: "Overdue Invoices",
       companies: [
-        { id: "101", name: "Nordic Kayak Tours", detail: "Nordic Kayak - Pro", ownerId: "1", mrr: "\u20ac1 800/mo", currency: "EUR" },
-        { id: "102", name: "Copenhagen Food Walks", detail: "Food Walks - Starter", ownerId: "2", mrr: "DKK 4 500/mo", currency: "DKK" },
+        { id: "101", name: "Nordic Kayak Tours", detail: "Nordic Kayak - Pro", ownerId: "1", mrr: "\u20ac1 800/mo", currency: "EUR", daysOverdue: 3 },
+        { id: "102", name: "Copenhagen Food Walks", detail: "Food Walks - Starter", ownerId: "2", mrr: "DKK 4 500/mo", currency: "DKK", daysOverdue: 14 },
       ],
     },
     {
       signal: "overdue_tasks",
       label: "Overdue Tasks",
       companies: [
-        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials", ownerId: "1", daysOverdue: 5, mrr: "SEK 2 200/mo", currency: "SEK" },
-        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review", ownerId: "2", daysOverdue: 12, mrr: "SEK 3 800/mo", currency: "SEK" },
-        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup", ownerId: "1", daysOverdue: 3, mrr: "\u20ac950/mo", currency: "EUR" },
+        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials", ownerId: "1", daysOverdue: 2, mrr: "SEK 3 800/mo", currency: "SEK" },
+        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review", ownerId: "2", daysOverdue: 8, mrr: "SEK 2 200/mo", currency: "SEK" },
+        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup", ownerId: "1", daysOverdue: 15, mrr: "\u20ac950/mo", currency: "EUR" },
       ],
     },
     {
@@ -171,6 +184,9 @@ const MOCK_ATTENTION: AttentionResponse = {
 export default function Preview() {
   const [showData, setShowData] = useState(false);
   const [showLoading, setShowLoading] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [focusedAttentionIndex, setFocusedAttentionIndex] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   function handleLoadMock() {
     setShowLoading(true);
@@ -180,6 +196,50 @@ export default function Preview() {
       setShowData(true);
     }, 1000);
   }
+
+  useEffect(() => {
+    const items = document.querySelectorAll("[data-attention-item]");
+    items.forEach((el) => el.classList.remove("attention-item-focused"));
+    if (focusedAttentionIndex >= 0 && focusedAttentionIndex < items.length) {
+      items[focusedAttentionIndex].classList.add("attention-item-focused");
+      items[focusedAttentionIndex].scrollIntoView({ block: "nearest" });
+    }
+  }, [focusedAttentionIndex]);
+
+  useKeyboardShortcuts({
+    onSearch: () => {
+      searchInputRef.current?.focus();
+    },
+    onBack: () => {
+      if (showHelp) {
+        setShowHelp(false);
+      } else if (showData) {
+        setShowData(false);
+        setShowLoading(false);
+      }
+    },
+    onNavigate: (direction) => {
+      const items = document.querySelectorAll("[data-attention-item]");
+      const count = items.length;
+      if (count === 0) return;
+      setFocusedAttentionIndex((prev) => {
+        if (direction === "down") return Math.min(prev + 1, count - 1);
+        return Math.max(prev - 1, 0);
+      });
+    },
+    onSelect: () => {
+      if (focusedAttentionIndex >= 0) {
+        handleLoadMock();
+      }
+    },
+    onJumpToGroup: (index) => {
+      const groups = document.querySelectorAll("[data-attention-group]");
+      if (groups[index]) {
+        groups[index].scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    },
+    onToggleHelp: () => setShowHelp((prev) => !prev),
+  });
 
   return (
     <div className="min-h-screen bg-[var(--beige-new)]">
@@ -191,15 +251,10 @@ export default function Preview() {
         >
           Customer Dashboard
         </button>
-        <div className="relative w-full max-w-md">
-          <input
-            type="text"
-            defaultValue={showData ? "Acme Adventures AB" : ""}
-            placeholder="Search company..."
-            onFocus={handleLoadMock}
-            className="w-full bg-white/15 text-white placeholder-white/50 rounded-[var(--border-radius)] px-4 py-2 outline-none focus:bg-white/20 transition-all duration-200"
-          />
-        </div>
+        <SearchBar
+          ref={searchInputRef}
+          onSelect={() => handleLoadMock()}
+        />
       </nav>
 
       {/* Content */}
@@ -327,6 +382,8 @@ export default function Preview() {
           </>
         )}
       </main>
+
+      <ShortcutCheatSheet isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   );
 }

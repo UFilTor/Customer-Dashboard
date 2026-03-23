@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
+    pool: "vmForks",
     setupFiles: [],
     globals: true,
     passWithNoTests: true,

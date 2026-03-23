@@ -8,7 +8,7 @@ import { TabContainer } from "@/components/TabContainer";
 import { OverviewTab } from "@/components/OverviewTab";
 import { ActivityTab } from "@/components/ActivityTab";
 import { TasksTab } from "@/components/TasksTab";
-import { SkeletonCard, SkeletonBlock } from "@/components/Skeleton";
+import { SkeletonCard, SkeletonBlock, SkeletonRecap } from "@/components/Skeleton";
 import AuthGate from "@/components/AuthGate";
 import { CompanySearchResult, CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
 
@@ -41,9 +41,9 @@ export default function Dashboard() {
 
   return (
     <AuthGate>
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-[var(--beige-new)]">
         {/* Top bar */}
-        <nav className="bg-[#022C12] px-6 py-3 flex items-center justify-between">
+        <nav className="bg-[var(--moss)] px-6 py-3 flex items-center justify-between">
           <span className="text-white font-bold text-lg">Customer Dashboard</span>
           <SearchBar onSelect={handleSelect} />
         </nav>
@@ -51,11 +51,11 @@ export default function Dashboard() {
         {/* Content */}
         <main className="max-w-6xl mx-auto px-6 py-6">
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 flex justify-between items-center">
-              <span className="text-red-700 text-sm">{error}</span>
+            <div className="bg-[var(--rust)]/10 border border-[var(--rust)]/20 rounded-[var(--border-radius)] p-4 mb-4 flex justify-between items-center">
+              <span className="text-[var(--rust)] text-sm">{error}</span>
               <button
                 onClick={() => setError(null)}
-                className="text-red-700 text-sm underline"
+                className="text-[var(--rust)] text-sm underline"
               >
                 Dismiss
               </button>
@@ -64,7 +64,7 @@ export default function Dashboard() {
 
           {!companyData && !isLoading && (
             <div className="flex items-center justify-center min-h-[60vh]">
-              <p className="text-[#9ca3af] text-lg">Search for a company to get started</p>
+              <p className="text-[var(--green-100)] text-lg">Search for a company to get started</p>
             </div>
           )}
 
@@ -74,12 +74,14 @@ export default function Dashboard() {
                 <div className="h-8 w-64 bg-[#e5e7eb] rounded mb-2" />
                 <div className="h-4 w-96 bg-[#e5e7eb] rounded" />
               </div>
-              <div className="grid grid-cols-4 gap-3 mb-6">
+              <div className="grid grid-cols-5 gap-3 mb-6">
+                <SkeletonCard />
                 <SkeletonCard />
                 <SkeletonCard />
                 <SkeletonCard />
                 <SkeletonCard />
               </div>
+              <SkeletonRecap />
               <div className="grid grid-cols-2 gap-4">
                 <SkeletonBlock />
                 <SkeletonBlock />
@@ -109,6 +111,8 @@ export default function Dashboard() {
                         deal={companyData.deal}
                         owners={companyData.owners}
                         stages={companyData.stages}
+                        recap={companyData.recap}
+                        companyId={selectedCompanyId!}
                       />
                     ),
                   },

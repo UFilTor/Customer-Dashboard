@@ -98,6 +98,12 @@ export interface AttentionCompany {
   name: string;
   detail: string;
   ownerId?: string;
+  mrr?: string;
+  currency?: string;
+  daysOverdue?: number;
+  previousCategory?: string;
+  categoryChangedAt?: string;
+  daysSilent?: number;
 }
 
 export type AttentionSignal = "overdue_invoices" | "overdue_tasks" | "health_score" | "gone_quiet";

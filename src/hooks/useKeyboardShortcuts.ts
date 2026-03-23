@@ -73,12 +73,14 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
         return;
       }
 
-      // [ / ] for tab switching
-      if (e.key === "[") {
+      // Left / Right arrow for tab switching (when viewing company)
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
         actions.onSwitchTab("prev");
         return;
       }
-      if (e.key === "]") {
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
         actions.onSwitchTab("next");
         return;
       }

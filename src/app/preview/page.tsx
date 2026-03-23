@@ -274,17 +274,21 @@ export default function Preview() {
   return (
     <div className="min-h-screen bg-[var(--beige-new)]">
       {/* Top bar */}
-      <nav className="bg-[var(--moss)] px-6 py-3 flex items-center justify-between">
+      <nav className="bg-[var(--moss)] px-6 py-3 grid grid-cols-3 items-center">
         <button
           onClick={() => { setShowData(false); setShowLoading(false); }}
-          className="text-white font-bold text-lg hover:text-[var(--citrus)] transition-all duration-200"
+          className="flex items-center gap-2 justify-self-start hover:opacity-80 transition-opacity"
         >
-          Customer Dashboard
+          <img src="/understory-logo.png" alt="Understory" className="h-8 w-8 rounded" />
+          <span className="text-white font-bold text-lg">Customer Dashboard</span>
         </button>
-        <SearchBar
-          ref={searchInputRef}
-          onSelect={(c) => handleLoadMock(c)}
-        />
+        <div className="justify-self-center w-full max-w-md">
+          <SearchBar
+            ref={searchInputRef}
+            onSelect={(c) => handleLoadMock(c)}
+          />
+        </div>
+        <div />
       </nav>
 
       {/* Content */}

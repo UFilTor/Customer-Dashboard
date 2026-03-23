@@ -30,7 +30,7 @@ describe("FieldRenderer", () => {
     const { container } = render(<FieldRenderer value="Overdue" format="invoiceStatus" />);
     const el = container.querySelector("span");
     expect(el?.textContent).toBe("Overdue");
-    expect(el?.className).toContain("text-red");
+    expect(el?.className).toContain("text-[var(--rust)]");
   });
 
   it("renders invoiceStatus with correct color for Open", () => {
@@ -42,6 +42,6 @@ describe("FieldRenderer", () => {
   it("renders invoiceStatus with correct color for Paid", () => {
     const { container } = render(<FieldRenderer value="Paid" format="invoiceStatus" />);
     const el = container.querySelector("span");
-    expect(el?.className).toContain("text-green");
+    expect(el?.className).toContain("text-[var(--moss)]");
   });
 });

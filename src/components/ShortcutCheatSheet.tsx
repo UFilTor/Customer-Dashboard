@@ -15,6 +15,7 @@ const shortcuts = [
   { label: "Navigate list", keys: "Arrow Up / Down" },
   { label: "Open company", keys: "Enter" },
   { label: "Jump to group", keys: "1 - 4" },
+  { label: "Switch tab", keys: "[ / ]" },
   { label: "Show this help", keys: "?" },
 ];
 

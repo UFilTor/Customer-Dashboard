@@ -11,6 +11,7 @@ export interface ShortcutActions {
   onNavigate: (direction: "up" | "down") => void;  // Arrow keys
   onSelect: () => void;         // Enter
   onJumpToGroup: (index: number) => void;  // 1-4
+  onSwitchTab: (direction: "prev" | "next") => void;  // [ / ]
   onToggleHelp: () => void;     // ?
 }
 
@@ -69,6 +70,16 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
       const num = parseInt(e.key);
       if (num >= 1 && num <= 4) {
         actions.onJumpToGroup(num - 1); // 0-indexed
+        return;
+      }
+
+      // [ / ] for tab switching
+      if (e.key === "[") {
+        actions.onSwitchTab("prev");
+        return;
+      }
+      if (e.key === "]") {
+        actions.onSwitchTab("next");
         return;
       }
 

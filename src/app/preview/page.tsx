@@ -13,6 +13,7 @@ import { CompanyDetail, OwnerMap, StageMap, Engagement, TaskItem, AttentionRespo
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
 import { SearchBar } from "@/components/SearchBar";
+import { addRecentCompany } from "@/lib/recent-companies";
 
 interface CompanyData extends CompanyDetail {
   owners: OwnerMap;
@@ -188,9 +189,13 @@ export default function Preview() {
   const [focusedAttentionIndex, setFocusedAttentionIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  function handleLoadMock() {
+  function handleLoadMock(company?: CompanySearchResult) {
+    if (company) {
+      addRecentCompany({ id: company.id, name: company.name });
+    }
     setShowLoading(true);
     setShowData(false);
+    setFocusedAttentionIndex(-1);
     setTimeout(() => {
       setShowLoading(false);
       setShowData(true);
@@ -228,15 +233,40 @@ export default function Preview() {
       });
     },
     onSelect: () => {
-      if (focusedAttentionIndex >= 0) {
-        handleLoadMock();
+      if (showData) return;
+      if (focusedAttentionIndex < 0) return;
+      const items = document.querySelectorAll("[data-attention-item]");
+      const target = items[focusedAttentionIndex] as HTMLElement | undefined;
+      if (!target) return;
+      const id = target.getAttribute("data-company-id");
+      const name = target.getAttribute("data-company-name");
+      if (id && name) {
+        handleLoadMock({ id, name, domain: "" });
       }
     },
     onJumpToGroup: (index) => {
+      if (showData) return;
       const groups = document.querySelectorAll("[data-attention-group]");
-      if (groups[index]) {
-        groups[index].scrollIntoView({ behavior: "smooth", block: "start" });
-      }
+      if (index >= groups.length) return;
+      const group = groups[index];
+      group.scrollIntoView({ behavior: "smooth", block: "start" });
+      const firstItem = group.querySelector("[data-attention-item]");
+      if (!firstItem) return;
+      const allItems = Array.from(document.querySelectorAll("[data-attention-item]"));
+      const itemIndex = allItems.indexOf(firstItem);
+      if (itemIndex >= 0) setFocusedAttentionIndex(itemIndex);
+    },
+    onSwitchTab: (direction) => {
+      if (!showData) return;
+      const tabButtons = document.querySelectorAll<HTMLButtonElement>("[class*='border-b'] > button");
+      if (tabButtons.length === 0) return;
+      const activeIndex = Array.from(tabButtons).findIndex((b) =>
+        b.className.includes("font-semibold")
+      );
+      const nextIndex = direction === "next"
+        ? Math.min(activeIndex + 1, tabButtons.length - 1)
+        : Math.max(activeIndex - 1, 0);
+      tabButtons[nextIndex]?.click();
     },
     onToggleHelp: () => setShowHelp((prev) => !prev),
   });
@@ -253,7 +283,7 @@ export default function Preview() {
         </button>
         <SearchBar
           ref={searchInputRef}
-          onSelect={() => handleLoadMock()}
+          onSelect={(c) => handleLoadMock(c)}
         />
       </nav>
 
@@ -267,7 +297,7 @@ export default function Preview() {
                 <p className="text-xs text-[var(--green-100)] mt-1">Preview with mock data</p>
               </div>
               <button
-                onClick={handleLoadMock}
+                onClick={() => handleLoadMock()}
                 className="bg-[var(--citrus)] text-[var(--moss)] px-4 py-2 rounded-[8px] text-sm font-semibold hover:bg-[var(--lichen)] transition-all duration-200"
               >
                 Load company detail
@@ -293,7 +323,7 @@ export default function Preview() {
               <AttentionGroupComponent
                 key={group.signal}
                 group={group}
-                onSelectCompany={(c: CompanySearchResult) => { handleLoadMock(); }}
+                onSelectCompany={(c: CompanySearchResult) => { handleLoadMock(c); }}
               />
             ))}
           </div>

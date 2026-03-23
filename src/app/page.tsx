@@ -94,7 +94,7 @@ export default function Dashboard() {
         setShowHelp(false);
         return;
       }
-      if (companyData && navigationSource === "attention") {
+      if (companyData) {
         handleBack();
       }
     },
@@ -131,6 +131,18 @@ export default function Dashboard() {
       const allItems = Array.from(document.querySelectorAll("[data-attention-item]"));
       const itemIndex = allItems.indexOf(firstItem);
       if (itemIndex >= 0) setFocusedAttentionIndex(itemIndex);
+    },
+    onSwitchTab: (direction) => {
+      if (!companyData) return;
+      const tabButtons = document.querySelectorAll<HTMLButtonElement>("[class*='border-b'] > button");
+      if (tabButtons.length === 0) return;
+      const activeIndex = Array.from(tabButtons).findIndex((b) =>
+        b.className.includes("font-semibold")
+      );
+      const nextIndex = direction === "next"
+        ? Math.min(activeIndex + 1, tabButtons.length - 1)
+        : Math.max(activeIndex - 1, 0);
+      tabButtons[nextIndex]?.click();
     },
     onToggleHelp: () => setShowHelp((prev) => !prev),
   });

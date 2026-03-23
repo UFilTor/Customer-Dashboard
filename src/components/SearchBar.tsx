@@ -87,18 +87,18 @@ export function SearchBar({ onSelect, ref }: Props) {
     setIsFocused(false);
   }
 
-  // Filtered recents matching the current query
-  const matchingRecents =
+  // Filtered recents matching the current query (when typing, filter down)
+  const displayRecents =
     query.length >= 2
       ? recents.filter((r) => r.name.toLowerCase().includes(query.toLowerCase()))
-      : [];
+      : recents.slice(0, 5);
 
   // Total items in the current visible list for keyboard navigation
   const visibleItems: Array<{ type: "recent" | "result"; index: number }> = [];
-  if (showRecents && query.length < 2) {
-    recents.slice(0, 5).forEach((_, i) => visibleItems.push({ type: "recent", index: i }));
-  } else if (query.length >= 2) {
-    matchingRecents.forEach((_, i) => visibleItems.push({ type: "recent", index: i }));
+  if (showRecents && displayRecents.length > 0) {
+    displayRecents.forEach((_, i) => visibleItems.push({ type: "recent", index: i }));
+  }
+  if (query.length >= 2) {
     results.forEach((_, i) => visibleItems.push({ type: "result", index: i }));
   }
 
@@ -117,8 +117,7 @@ export function SearchBar({ onSelect, ref }: Props) {
       const item = visibleItems[highlightIndex];
       if (!item) return;
       if (item.type === "recent") {
-        const list = showRecents && query === "" ? recents.slice(0, 5) : matchingRecents;
-        const recent = list[item.index];
+        const recent = displayRecents[item.index];
         if (recent) handleSelect({ id: recent.id, name: recent.name, domain: "" });
       } else {
         handleSelect(results[item.index]);
@@ -126,6 +125,8 @@ export function SearchBar({ onSelect, ref }: Props) {
     } else if (e.key === "Escape") {
       setIsOpen(false);
       setShowRecents(false);
+      // Blur the input so global Esc handler can take over next press
+      (e.target as HTMLInputElement).blur();
     }
   }
 
@@ -170,15 +171,15 @@ export function SearchBar({ onSelect, ref }: Props) {
       {showDropdown && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-[var(--light-grey)] rounded-[var(--border-radius)] shadow-[0_10px_64px_rgba(102,84,78,0.15)] overflow-hidden z-50">
 
-          {/* Recent companies when query is short (not yet searching API) */}
-          {showRecents && query.length < 2 && recents.length > 0 && (
+          {/* Recent companies (always shown when showRecents, filtered when typing) */}
+          {showRecents && displayRecents.length > 0 && (
             <>
               <div className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--green-100)]/60">
                 Recent
               </div>
-              {recents.slice(0, 5).map((company, index) => (
+              {displayRecents.map((company, index) => (
                 <button
-                  key={company.id}
+                  key={`recent-${company.id}`}
                   onClick={() => handleSelect({ id: company.id, name: company.name, domain: "" })}
                   className={`w-full text-left px-4 py-2.5 flex items-center gap-2.5 border-t border-[var(--beige-gray)]/50 first:border-t-0 hover:bg-[var(--lichen)]/30 transition-all duration-200 ${
                     visibleItems[highlightIndex]?.type === "recent" &&
@@ -191,55 +192,28 @@ export function SearchBar({ onSelect, ref }: Props) {
                   <span className="font-medium text-[var(--moss)]">{company.name}</span>
                 </button>
               ))}
+              {query.length >= 2 && results.length > 0 && (
+                <div className="border-t border-[var(--beige-gray)] mx-2 my-1" />
+              )}
             </>
           )}
 
-          {/* Empty recents state */}
+          {/* Empty recents state (only when no query) */}
           {showRecents && query.length < 2 && recents.length === 0 && (
             <div className="px-4 py-3 text-[var(--green-100)] text-sm">No recent companies</div>
           )}
 
-          {/* Query mode: matching recents above divider, then API results */}
+          {/* API search results */}
           {query.length >= 2 && (
             <>
-              {matchingRecents.length > 0 && (
-                <>
-                  <div className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--green-100)]/60">
-                    Recent
-                  </div>
-                  {matchingRecents.map((company, index) => (
-                    <button
-                      key={`recent-${company.id}`}
-                      onClick={() =>
-                        handleSelect({ id: company.id, name: company.name, domain: "" })
-                      }
-                      className={`w-full text-left px-4 py-2.5 flex items-center gap-2.5 border-t border-[var(--beige-gray)]/50 first:border-t-0 hover:bg-[var(--lichen)]/30 transition-all duration-200 ${
-                        visibleItems[highlightIndex]?.type === "recent" &&
-                        visibleItems[highlightIndex]?.index === index
-                          ? "bg-[var(--lichen)]/30 border-l-2 border-l-[var(--moss)]"
-                          : ""
-                      }`}
-                    >
-                      <span className="text-[var(--green-100)]/50 text-sm leading-none">
-                        &#x1F552;
-                      </span>
-                      <span className="font-medium text-[var(--moss)]">{company.name}</span>
-                    </button>
-                  ))}
-                  {results.length > 0 && (
-                    <div className="border-t border-[var(--beige-gray)] mx-2 my-1" />
-                  )}
-                </>
-              )}
-
-              {isOpen && results.length === 0 && matchingRecents.length === 0 && (
+              {isOpen && results.length === 0 && displayRecents.length === 0 && (
                 <div className="px-4 py-3 text-[var(--green-100)] text-sm">
                   No companies found
                 </div>
               )}
 
               {results.map((company, index) => {
-                const visibleIdx = matchingRecents.length + index;
+                const visibleIdx = displayRecents.length + index;
                 return (
                   <button
                     key={company.id}

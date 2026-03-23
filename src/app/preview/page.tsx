@@ -8,7 +8,8 @@ import { OverviewTab } from "@/components/OverviewTab";
 import { ActivityTab } from "@/components/ActivityTab";
 import { TasksTab } from "@/components/TasksTab";
 import { SkeletonCard, SkeletonBlock, SkeletonRecap } from "@/components/Skeleton";
-import { CompanyDetail, OwnerMap, StageMap, Engagement, TaskItem, AttentionResponse } from "@/lib/types";
+import { AttentionGroup as AttentionGroupComponent } from "@/components/AttentionGroup";
+import { CompanyDetail, OwnerMap, StageMap, Engagement, TaskItem, AttentionResponse, CompanySearchResult } from "@/lib/types";
 
 interface CompanyData extends CompanyDetail {
   owners: OwnerMap;
@@ -232,30 +233,11 @@ export default function Preview() {
             </div>
 
             {MOCK_ATTENTION.groups.map((group) => (
-              <div key={group.signal} className="mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <h3 className="font-semibold text-[var(--moss)]">{group.label}</h3>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                    group.signal === "overdue_invoices" || group.signal === "overdue_tasks"
-                      ? "bg-[var(--rust)] text-white"
-                      : "bg-[var(--beige)] text-[var(--moss)]"
-                  }`}>
-                    {group.companies.length}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {group.companies.map((company) => (
-                    <button
-                      key={company.id}
-                      onClick={handleLoadMock}
-                      className="w-full bg-[var(--light-grey)] rounded-[var(--border-radius)] p-3 flex items-center justify-between text-left hover:bg-[var(--lichen)]/30 transition-all duration-200"
-                    >
-                      <span className="font-medium text-sm text-[var(--moss)]">{company.name}</span>
-                      <span className="text-xs text-[var(--green-100)]">{company.detail}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <AttentionGroupComponent
+                key={group.signal}
+                group={group}
+                onSelectCompany={(c: CompanySearchResult) => { handleLoadMock(); }}
+              />
             ))}
           </div>
         )}

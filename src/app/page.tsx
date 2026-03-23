@@ -32,10 +32,11 @@ export default function Dashboard() {
   const [navigationSource, setNavigationSource] = useState<"attention" | "search" | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [focusedAttentionIndex, setFocusedAttentionIndex] = useState(-1);
+  const [focusedTabItemIndex, setFocusedTabItemIndex] = useState(-1);
   const scrollPositionRef = useRef<number>(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync focused item highlight via DOM
+  // Sync focused attention item highlight
   useEffect(() => {
     const items = document.querySelectorAll("[data-attention-item]");
     items.forEach((el) => el.classList.remove("attention-item-focused"));
@@ -45,6 +46,22 @@ export default function Dashboard() {
       target.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }, [focusedAttentionIndex]);
+
+  // Sync focused tab item highlight
+  useEffect(() => {
+    const items = document.querySelectorAll("[data-tab-item]");
+    items.forEach((el) => el.classList.remove("tab-item-focused"));
+    if (focusedTabItemIndex >= 0 && focusedTabItemIndex < items.length) {
+      const target = items[focusedTabItemIndex];
+      target.classList.add("tab-item-focused");
+      target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [focusedTabItemIndex]);
+
+  // Reset tab item focus when leaving company view
+  useEffect(() => {
+    if (!companyData) setFocusedTabItemIndex(-1);
+  }, [companyData]);
 
   function handleBack() {
     setCompanyData(null);
@@ -100,16 +117,13 @@ export default function Dashboard() {
     },
     onNavigate: (direction) => {
       if (companyData) {
-        // Up/Down switches tabs when viewing a company
-        const tabButtons = document.querySelectorAll<HTMLButtonElement>("[class*='border-b'] > button");
-        if (tabButtons.length === 0) return;
-        const activeIndex = Array.from(tabButtons).findIndex((b) =>
-          b.className.includes("font-semibold")
-        );
-        const nextIndex = direction === "down"
-          ? Math.min(activeIndex + 1, tabButtons.length - 1)
-          : Math.max(activeIndex - 1, 0);
-        tabButtons[nextIndex]?.click();
+        // Up/Down navigates items within the active tab
+        const total = document.querySelectorAll("[data-tab-item]").length;
+        if (total === 0) return;
+        setFocusedTabItemIndex((prev) => {
+          if (direction === "down") return Math.min(prev + 1, total - 1);
+          return Math.max(prev - 1, 0);
+        });
         return;
       }
       const total = document.querySelectorAll("[data-attention-item]").length;
@@ -120,7 +134,16 @@ export default function Dashboard() {
       });
     },
     onSelect: () => {
-      if (companyData) return;
+      if (companyData) {
+        // Enter toggles expand/collapse on focused tab item
+        if (focusedTabItemIndex < 0) return;
+        const items = document.querySelectorAll("[data-tab-item]");
+        const target = items[focusedTabItemIndex] as HTMLElement | undefined;
+        if (!target) return;
+        const toggleBtn = target.querySelector<HTMLButtonElement>("button[class*='hover:underline']");
+        if (toggleBtn) toggleBtn.click();
+        return;
+      }
       if (focusedAttentionIndex < 0) return;
       const items = document.querySelectorAll("[data-attention-item]");
       const target = items[focusedAttentionIndex] as HTMLElement | undefined;
@@ -155,6 +178,7 @@ export default function Dashboard() {
         ? Math.min(activeIndex + 1, tabButtons.length - 1)
         : Math.max(activeIndex - 1, 0);
       tabButtons[nextIndex]?.click();
+      setFocusedTabItemIndex(-1);
     },
     onToggleHelp: () => setShowHelp((prev) => !prev),
   });

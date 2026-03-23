@@ -16,6 +16,7 @@ export function TasksTab({ tasks, owners }: Props) {
         <div
           key={`${task.subject}-${task.dueDate}-${index}`}
           className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4 flex items-center justify-between"
+          data-tab-item
         >
           <div>
             <h4 className="font-medium text-[var(--moss)] text-sm">{task.subject || "-"}</h4>

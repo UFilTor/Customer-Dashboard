@@ -24,7 +24,7 @@ function ActivityCard({ engagement, owners }: { engagement: Engagement; owners: 
   const hasBody = bodyText.length > 0;
 
   return (
-    <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
+    <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4" data-tab-item>
       <div className="flex items-start gap-3">
         <span
           className={`inline-block px-2 py-1 rounded-[8px] text-xs font-medium capitalize shrink-0 ${

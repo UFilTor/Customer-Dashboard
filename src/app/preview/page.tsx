@@ -187,6 +187,7 @@ export default function Preview() {
   const [showLoading, setShowLoading] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [focusedAttentionIndex, setFocusedAttentionIndex] = useState(-1);
+  const [focusedTabItemIndex, setFocusedTabItemIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   function handleLoadMock(company?: CompanySearchResult) {
@@ -211,6 +212,20 @@ export default function Preview() {
     }
   }, [focusedAttentionIndex]);
 
+  useEffect(() => {
+    const items = document.querySelectorAll("[data-tab-item]");
+    items.forEach((el) => el.classList.remove("tab-item-focused"));
+    if (focusedTabItemIndex >= 0 && focusedTabItemIndex < items.length) {
+      const target = items[focusedTabItemIndex];
+      target.classList.add("tab-item-focused");
+      target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [focusedTabItemIndex]);
+
+  useEffect(() => {
+    if (!showData) setFocusedTabItemIndex(-1);
+  }, [showData]);
+
   useKeyboardShortcuts({
     onSearch: () => {
       searchInputRef.current?.focus();
@@ -225,15 +240,12 @@ export default function Preview() {
     },
     onNavigate: (direction) => {
       if (showData) {
-        const tabButtons = document.querySelectorAll<HTMLButtonElement>("[class*='border-b'] > button");
-        if (tabButtons.length === 0) return;
-        const activeIndex = Array.from(tabButtons).findIndex((b) =>
-          b.className.includes("font-semibold")
-        );
-        const nextIndex = direction === "down"
-          ? Math.min(activeIndex + 1, tabButtons.length - 1)
-          : Math.max(activeIndex - 1, 0);
-        tabButtons[nextIndex]?.click();
+        const total = document.querySelectorAll("[data-tab-item]").length;
+        if (total === 0) return;
+        setFocusedTabItemIndex((prev) => {
+          if (direction === "down") return Math.min(prev + 1, total - 1);
+          return Math.max(prev - 1, 0);
+        });
         return;
       }
       const items = document.querySelectorAll("[data-attention-item]");
@@ -245,7 +257,15 @@ export default function Preview() {
       });
     },
     onSelect: () => {
-      if (showData) return;
+      if (showData) {
+        if (focusedTabItemIndex < 0) return;
+        const items = document.querySelectorAll("[data-tab-item]");
+        const target = items[focusedTabItemIndex] as HTMLElement | undefined;
+        if (!target) return;
+        const toggleBtn = target.querySelector<HTMLButtonElement>("button[class*='hover:underline']");
+        if (toggleBtn) toggleBtn.click();
+        return;
+      }
       if (focusedAttentionIndex < 0) return;
       const items = document.querySelectorAll("[data-attention-item]");
       const target = items[focusedAttentionIndex] as HTMLElement | undefined;
@@ -279,6 +299,7 @@ export default function Preview() {
         ? Math.min(activeIndex + 1, tabButtons.length - 1)
         : Math.max(activeIndex - 1, 0);
       tabButtons[nextIndex]?.click();
+      setFocusedTabItemIndex(-1);
     },
     onToggleHelp: () => setShowHelp((prev) => !prev),
   });

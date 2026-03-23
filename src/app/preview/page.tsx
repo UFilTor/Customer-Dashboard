@@ -131,34 +131,34 @@ const MOCK_ATTENTION: AttentionResponse = {
       signal: "overdue_invoices",
       label: "Overdue Invoices",
       companies: [
-        { id: "101", name: "Nordic Kayak Tours", detail: "Nordic Kayak - Pro" },
-        { id: "102", name: "Copenhagen Food Walks", detail: "Food Walks - Starter" },
+        { id: "101", name: "Nordic Kayak Tours", detail: "Nordic Kayak - Pro", ownerId: "1" },
+        { id: "102", name: "Copenhagen Food Walks", detail: "Food Walks - Starter", ownerId: "2" },
       ],
     },
     {
       signal: "overdue_tasks",
       label: "Overdue Tasks",
       companies: [
-        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials (5d overdue)" },
-        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review (12d overdue)" },
-        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup (3d overdue)" },
+        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials (5d overdue)", ownerId: "1" },
+        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review (12d overdue)", ownerId: "2" },
+        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup (3d overdue)", ownerId: "1" },
       ],
     },
     {
       signal: "health_score",
       label: "Health Score Issues",
       companies: [
-        { id: "106", name: "Bergen Outdoor Co", detail: "Critical Churn Risk" },
-        { id: "107", name: "Helsinki Tasting Club", detail: "At Risk" },
+        { id: "106", name: "Bergen Outdoor Co", detail: "Critical Churn Risk", ownerId: "1" },
+        { id: "107", name: "Helsinki Tasting Club", detail: "At Risk", ownerId: "2" },
       ],
     },
     {
       signal: "gone_quiet",
       label: "Gone Quiet",
       companies: [
-        { id: "108", name: "Oslo Creative Labs", detail: "Last contacted 62 days ago" },
-        { id: "109", name: "Aarhus Adventure Park", detail: "Last contacted 51 days ago" },
-        { id: "110", name: "Tampere Escape Rooms", detail: "Last contacted 48 days ago" },
+        { id: "108", name: "Oslo Creative Labs", detail: "Last contacted 62 days ago", ownerId: "2" },
+        { id: "109", name: "Aarhus Adventure Park", detail: "Last contacted 51 days ago", ownerId: "1" },
+        { id: "110", name: "Tampere Escape Rooms", detail: "Last contacted 48 days ago", ownerId: "1" },
       ],
     },
   ],
@@ -182,7 +182,12 @@ export default function Preview() {
     <div className="min-h-screen bg-[var(--beige-new)]">
       {/* Top bar */}
       <nav className="bg-[var(--moss)] px-6 py-3 flex items-center justify-between">
-        <span className="text-white font-bold text-lg">Customer Dashboard</span>
+        <button
+          onClick={() => { setShowData(false); setShowLoading(false); }}
+          className="text-white font-bold text-lg hover:text-[var(--citrus)] transition-all duration-200"
+        >
+          Customer Dashboard
+        </button>
         <div className="relative w-full max-w-md">
           <input
             type="text"
@@ -198,7 +203,7 @@ export default function Preview() {
       <main className="max-w-6xl mx-auto px-6 py-6">
         {!showData && !showLoading && (
           <div>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-xl font-bold text-[var(--moss)]">Needs Attention</h2>
                 <p className="text-xs text-[var(--green-100)] mt-1">Preview with mock data</p>
@@ -210,6 +215,22 @@ export default function Preview() {
                 Load company detail
               </button>
             </div>
+
+            <div className="grid grid-cols-5 gap-3 mb-6">
+              <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
+                <div className="text-[var(--green-100)] text-xs uppercase tracking-wide mb-1">Total</div>
+                <div className="text-xl font-bold text-[var(--moss)]">{MOCK_ATTENTION.groups.reduce((s, g) => s + g.companies.length, 0)}</div>
+              </div>
+              {MOCK_ATTENTION.groups.map((g) => (
+                <div key={g.signal} className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
+                  <div className="text-[var(--green-100)] text-xs uppercase tracking-wide mb-1">{g.label}</div>
+                  <div className={`text-xl font-bold ${(g.signal === "overdue_invoices" || g.signal === "overdue_tasks") && g.companies.length > 0 ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>
+                    {g.companies.length}
+                  </div>
+                </div>
+              ))}
+            </div>
+
             {MOCK_ATTENTION.groups.map((group) => (
               <div key={group.signal} className="mb-6">
                 <div className="flex items-center gap-2 mb-3">
@@ -262,6 +283,15 @@ export default function Preview() {
 
         {showData && (
           <>
+            <button
+              onClick={() => { setShowData(false); setShowLoading(false); }}
+              className="flex items-center gap-1 text-sm text-[var(--green-100)] hover:text-[var(--moss)] transition-all duration-200 mb-3"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
+              </svg>
+              Back to overview
+            </button>
             <CompanyHeader
               companyId="12345"
               company={MOCK_DATA.company}

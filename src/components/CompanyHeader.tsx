@@ -22,8 +22,8 @@ export function CompanyHeader({ companyId, company, owners }: Props) {
   return (
     <div className="flex justify-between items-center mb-4">
       <div>
-        <h1 className="text-2xl font-bold text-[#022C12]">{name}</h1>
-        <p className="text-sm text-[#9ca3af]">
+        <h1 className="text-2xl font-bold text-[var(--moss)]">{name}</h1>
+        <p className="text-sm text-[var(--green-100)]">
           {domain} &middot; Owner: {ownerName} &middot; Last contacted: {lastContacted}
         </p>
       </div>
@@ -32,7 +32,7 @@ export function CompanyHeader({ companyId, company, owners }: Props) {
           href={hubspotUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm text-[#022C12] underline hover:opacity-70"
+          className="text-sm text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200"
         >
           Open in HubSpot
         </a>

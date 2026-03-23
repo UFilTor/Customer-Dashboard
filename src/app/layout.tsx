@@ -19,24 +19,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} h-full antialiased`}
-      style={
-        {
-          "--color-primary": "#022C12",
-          "--color-accent": "#F1F97E",
-          "--color-background": "#FFFFFF",
-          "--color-text": "#4D4D4D",
-          "--radius-general": "16px",
-          "--radius-button": "8px",
-        } as React.CSSProperties
-      }
-    >
-      <body
-        className="min-h-full flex flex-col font-[var(--font-inter)]"
-        style={{ backgroundColor: "var(--color-background)", color: "var(--color-text)" }}
-      >
+    <html lang="en" className={`${inter.variable} h-full antialiased`}>
+      <body className="min-h-full flex flex-col font-[var(--font-inter)] bg-[var(--beige-new)] text-[var(--moss)]">
         <SessionWrapper>{children}</SessionWrapper>
       </body>
     </html>

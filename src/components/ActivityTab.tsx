@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { Engagement, OwnerMap } from "@/lib/types";
 
 interface Props {
@@ -6,55 +9,96 @@ interface Props {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  call: "bg-blue-100 text-blue-700",
-  meeting: "bg-purple-100 text-purple-700",
-  note: "bg-yellow-100 text-yellow-700",
-  email: "bg-green-100 text-green-700",
+  call: "bg-[var(--sky-blue)]/40 text-[var(--moss)]",
+  meeting: "bg-[var(--lilac)]/40 text-[var(--moss)]",
+  note: "bg-[var(--beige)] text-[var(--moss)]",
+  email: "bg-[var(--lichen)]/60 text-[var(--moss)]",
 };
+
+function ActivityCard({ engagement, owners }: { engagement: Engagement; owners: OwnerMap }) {
+  const [expanded, setExpanded] = useState(false);
+  const bodyText = stripHtml(engagement.body || "");
+  const hasSummary = engagement.summary && engagement.summary.length > 0;
+  const hasBody = bodyText.length > 0;
+
+  return (
+    <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
+      <div className="flex items-start gap-3">
+        <span
+          className={`inline-block px-2 py-1 rounded-[8px] text-xs font-medium capitalize shrink-0 ${
+            TYPE_COLORS[engagement.type] || "bg-[var(--grey)] text-[var(--moss)]"
+          }`}
+        >
+          {engagement.type}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-start">
+            <h4 className="font-medium text-[var(--moss)] text-sm truncate">
+              {engagement.title}
+            </h4>
+            <span className="text-xs text-[var(--green-100)] whitespace-nowrap ml-2">
+              {formatTimestamp(engagement.timestamp)}
+            </span>
+          </div>
+
+          <div className="flex gap-3 mt-1 text-xs text-[var(--green-100)]">
+            {engagement.direction && (
+              <span>{engagement.direction === "INBOUND" || engagement.direction === "INCOMING" ? "Inbound" : "Outbound"}</span>
+            )}
+            {engagement.outcome && <span>Outcome: {engagement.outcome}</span>}
+            {engagement.status && <span>Status: {engagement.status}</span>}
+            {engagement.owner && <span>By: {owners[engagement.owner] || engagement.owner}</span>}
+            {engagement.fromEmail && <span>From: {engagement.fromEmail}</span>}
+            {engagement.toEmail && <span>To: {engagement.toEmail}</span>}
+          </div>
+
+          {hasSummary && (
+            <p className="text-sm text-[var(--dark-moss)] mt-2 leading-relaxed">
+              {engagement.summary}
+            </p>
+          )}
+
+          {!hasSummary && hasBody && (
+            <p className="text-sm text-[var(--dark-moss)] mt-2 leading-relaxed line-clamp-3">
+              {bodyText}
+            </p>
+          )}
+
+          {hasBody && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs text-[var(--moss)] font-semibold mt-2 hover:underline transition-all duration-200"
+            >
+              {expanded ? "Hide full content" : "Show full content"}
+            </button>
+          )}
+
+          {expanded && hasBody && (
+            <div className="mt-2 pt-2 border-t border-[var(--beige-gray)]">
+              <p className="text-sm text-[var(--dark-moss)] leading-relaxed whitespace-pre-wrap">
+                {bodyText}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function ActivityTab({ engagements, owners }: Props) {
   if (engagements.length === 0) {
-    return <p className="text-[#9ca3af] text-sm py-4">No activity in the last 90 days</p>;
+    return <p className="text-[var(--green-100)] text-sm py-4">No activity in the last 90 days</p>;
   }
 
   return (
     <div className="space-y-3">
       {engagements.map((engagement, index) => (
-        <div
+        <ActivityCard
           key={`${engagement.type}-${engagement.timestamp}-${index}`}
-          className="bg-white border border-[#e5e7eb] rounded-2xl p-4"
-        >
-          <div className="flex items-start gap-3">
-            <span
-              className={`inline-block px-2 py-1 rounded text-xs font-medium capitalize ${
-                TYPE_COLORS[engagement.type] || "bg-gray-100 text-gray-700"
-              }`}
-            >
-              {engagement.type}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="flex justify-between items-start">
-                <h4 className="font-medium text-[#022C12] text-sm truncate">
-                  {engagement.title}
-                </h4>
-                <span className="text-xs text-[#9ca3af] whitespace-nowrap ml-2">
-                  {formatTimestamp(engagement.timestamp)}
-                </span>
-              </div>
-              {engagement.bodyPreview && (
-                <p className="text-sm text-[#4D4D4D] mt-1 line-clamp-2">
-                  {stripHtml(engagement.bodyPreview)}
-                </p>
-              )}
-              <div className="flex gap-3 mt-1 text-xs text-[#9ca3af]">
-                {engagement.direction && <span>Direction: {engagement.direction}</span>}
-                {engagement.outcome && <span>Outcome: {engagement.outcome}</span>}
-                {engagement.owner && <span>By: {owners[engagement.owner] || engagement.owner}</span>}
-                {engagement.fromEmail && <span>From: {engagement.fromEmail}</span>}
-              </div>
-            </div>
-          </div>
-        </div>
+          engagement={engagement}
+          owners={owners}
+        />
       ))}
     </div>
   );

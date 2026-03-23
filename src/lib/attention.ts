@@ -29,7 +29,7 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
 
     if (deals.length === 0) return [];
 
-    const companyMap = new Map<string, { name: string; detail: string }>();
+    const companyMap = new Map<string, { name: string; detail: string; ownerId?: string }>();
 
     for (const deal of deals) {
       try {
@@ -55,7 +55,7 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
       headers: hubspotHeaders(),
       body: JSON.stringify({
         inputs: companyIds.map((id) => ({ id })),
-        properties: ["name"],
+        properties: ["name", "hubspot_owner_id"],
       }),
     });
     if (!batchRes.ok) return [];
@@ -63,7 +63,10 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
 
     for (const company of batchData.results || []) {
       const entry = companyMap.get(company.id);
-      if (entry) entry.name = company.properties.name || "Unknown";
+      if (entry) {
+        entry.name = company.properties.name || "Unknown";
+        entry.ownerId = company.properties.hubspot_owner_id || "";
+      }
     }
 
     return companyIds
@@ -103,7 +106,7 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
 
     if (tasks.length === 0) return [];
 
-    const companyMap = new Map<string, { name: string; detail: string }>();
+    const companyMap = new Map<string, { name: string; detail: string; ownerId?: string }>();
 
     for (const task of tasks) {
       try {
@@ -140,7 +143,7 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
       headers: hubspotHeaders(),
       body: JSON.stringify({
         inputs: companyIds.map((id) => ({ id })),
-        properties: ["name"],
+        properties: ["name", "hubspot_owner_id"],
       }),
     });
     if (!batchRes.ok) return [];
@@ -148,7 +151,10 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
 
     for (const company of batchData.results || []) {
       const entry = companyMap.get(company.id);
-      if (entry) entry.name = company.properties.name || "Unknown";
+      if (entry) {
+        entry.name = company.properties.name || "Unknown";
+        entry.ownerId = company.properties.hubspot_owner_id || "";
+      }
     }
 
     return companyIds
@@ -181,7 +187,7 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
             }],
           },
         ],
-        properties: ["name", "Health Score Category"],
+        properties: ["name", "Health Score Category", "hubspot_owner_id"],
         limit: 100,
       }),
     });
@@ -189,10 +195,11 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
     const data = await res.json();
 
     return (data.results || []).map(
-      (c: { id: string; properties: { name: string; "Health Score Category": string } }) => ({
+      (c: { id: string; properties: Record<string, string> }) => ({
         id: c.id,
         name: c.properties.name || "Unknown",
         detail: c.properties["Health Score Category"] || "Unknown",
+        ownerId: c.properties.hubspot_owner_id || "",
       })
     );
   } catch {
@@ -217,7 +224,7 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
             value: thresholdStr,
           }],
         }],
-        properties: ["name", "notes_last_contacted"],
+        properties: ["name", "notes_last_contacted", "hubspot_owner_id"],
         limit: 100,
       }),
     });
@@ -225,13 +232,14 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
     const data = await res.json();
 
     return (data.results || []).map(
-      (c: { id: string; properties: { name: string; notes_last_contacted: string } }) => {
+      (c: { id: string; properties: Record<string, string> }) => {
         const lastDate = new Date(c.properties.notes_last_contacted);
         const daysAgo = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
         return {
           id: c.id,
           name: c.properties.name || "Unknown",
           detail: `Last contacted ${daysAgo} days ago`,
+          ownerId: c.properties.hubspot_owner_id || "",
         };
       }
     );

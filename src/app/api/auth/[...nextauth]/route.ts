@@ -37,6 +37,20 @@ export const authOptions: NextAuthOptions = {
       },
     },
   ],
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.hubspotOwnerId = user.id;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        (session.user as { hubspotOwnerId?: string }).hubspotOwnerId = token.hubspotOwnerId as string;
+      }
+      return session;
+    },
+  },
   pages: {
     signIn: "/auth/signin",
   },

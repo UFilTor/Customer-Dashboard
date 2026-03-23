@@ -87,7 +87,7 @@ export function SearchBar({ onSelect }: Props) {
           onKeyDown={handleKeyDown}
           onFocus={() => results.length > 0 && setIsOpen(true)}
           placeholder="Search company..."
-          className="w-full bg-white/15 text-white placeholder-white/60 rounded-lg px-4 py-2 outline-none focus:bg-white/20 transition-colors"
+          className="w-full bg-white/15 text-white placeholder-white/50 rounded-[var(--border-radius)] px-4 py-2 outline-none focus:bg-white/20 transition-all duration-200"
         />
         {isLoading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -97,21 +97,21 @@ export function SearchBar({ onSelect }: Props) {
       </div>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg border border-[#e5e7eb] shadow-lg overflow-hidden z-50">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-[var(--light-grey)] rounded-[var(--border-radius)] shadow-[0_10px_64px_rgba(102,84,78,0.15)] overflow-hidden z-50">
           {results.length === 0 ? (
-            <div className="px-4 py-3 text-[#9ca3af] text-sm">No companies found</div>
+            <div className="px-4 py-3 text-[var(--green-100)] text-sm">No companies found</div>
           ) : (
             results.map((company, index) => (
               <button
                 key={company.id}
                 onClick={() => handleSelect(company)}
-                className={`w-full text-left px-4 py-3 border-t border-[#f3f4f6] first:border-t-0 hover:bg-[#f0fdf4] transition-colors ${
-                  index === highlightIndex ? "bg-[#f0fdf4] border-l-2 border-l-[#022C12]" : ""
+                className={`w-full text-left px-4 py-3 border-t border-[var(--beige-gray)]/50 first:border-t-0 hover:bg-[var(--lichen)]/30 transition-all duration-200 ${
+                  index === highlightIndex ? "bg-[var(--lichen)]/30 border-l-2 border-l-[var(--moss)]" : ""
                 }`}
               >
-                <div className="font-medium text-[#022C12]">{company.name}</div>
+                <div className="font-medium text-[var(--moss)]">{company.name}</div>
                 {company.domain && (
-                  <div className="text-xs text-[#9ca3af]">{company.domain}</div>
+                  <div className="text-xs text-[var(--green-100)]">{company.domain}</div>
                 )}
               </button>
             ))

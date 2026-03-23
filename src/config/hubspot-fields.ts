@@ -6,6 +6,7 @@ export const dashboardConfig: DashboardConfig = {
     { label: "Last 12M Volume", property: "understory_booking_volume_last_12_months", source: "company", format: "currency" },
     { label: "Understory Pay", property: "understory_pay_status__customer", source: "deal", format: "text" },
     { label: "Invoice", property: "Tags", source: "deal", format: "invoiceStatus" },
+    { label: "Health Score", property: "Health Score Category", source: "company", format: "text" },
   ],
   tabs: {
     overview: {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { SearchBar } from "@/components/SearchBar";
 import { CompanyHeader } from "@/components/CompanyHeader";
 import { MetricCards } from "@/components/MetricCards";
@@ -19,10 +20,18 @@ interface CompanyData extends CompanyDetail {
 }
 
 export default function Dashboard() {
+  const { data: session } = useSession();
+  const currentOwnerId = (session?.user as { hubspotOwnerId?: string } | undefined)?.hubspotOwnerId;
   const [companyData, setCompanyData] = useState<CompanyData | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function handleBack() {
+    setCompanyData(null);
+    setSelectedCompanyId(null);
+    setError(null);
+  }
 
   async function handleSelect(company: CompanySearchResult) {
     setIsLoading(true);
@@ -45,7 +54,12 @@ export default function Dashboard() {
       <div className="min-h-screen bg-[var(--beige-new)]">
         {/* Top bar */}
         <nav className="bg-[var(--moss)] px-6 py-3 flex items-center justify-between">
-          <span className="text-white font-bold text-lg">Customer Dashboard</span>
+          <button
+            onClick={handleBack}
+            className="text-white font-bold text-lg hover:text-[var(--citrus)] transition-all duration-200"
+          >
+            Customer Dashboard
+          </button>
           <SearchBar onSelect={handleSelect} />
         </nav>
 
@@ -64,7 +78,7 @@ export default function Dashboard() {
           )}
 
           {!companyData && !isLoading && (
-            <AttentionList onSelectCompany={handleSelect} />
+            <AttentionList onSelectCompany={handleSelect} currentOwnerId={currentOwnerId} />
           )}
 
           {isLoading && (
@@ -90,6 +104,15 @@ export default function Dashboard() {
 
           {companyData && !isLoading && (
             <>
+              <button
+                onClick={handleBack}
+                className="flex items-center gap-1 text-sm text-[var(--green-100)] hover:text-[var(--moss)] transition-all duration-200 mb-3"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
+                </svg>
+                Back to overview
+              </button>
               <CompanyHeader
                 companyId={selectedCompanyId!}
                 company={companyData.company}

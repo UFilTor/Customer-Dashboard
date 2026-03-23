@@ -6,12 +6,14 @@ import { AttentionResponse, CompanySearchResult } from "@/lib/types";
 
 interface Props {
   onSelectCompany: (company: CompanySearchResult) => void;
+  currentOwnerId?: string;
 }
 
-export function AttentionList({ onSelectCompany }: Props) {
+export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
   const [data, setData] = useState<AttentionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showMine, setShowMine] = useState(true);
 
   async function fetchAttention(refresh = false) {
     setIsLoading(true);
@@ -68,34 +70,98 @@ export function AttentionList({ onSelectCompany }: Props) {
     );
   }
 
+  const shouldFilter = showMine && currentOwnerId;
+  const filteredGroups = shouldFilter
+    ? data.groups
+        .map((g) => ({
+          ...g,
+          companies: g.companies.filter((c) => c.ownerId === currentOwnerId),
+        }))
+        .filter((g) => g.companies.length > 0)
+    : data.groups;
+
+  const totalCompanies = filteredGroups.reduce((sum, g) => sum + g.companies.length, 0);
+  const signalCounts = filteredGroups.map((g) => ({ label: g.label, count: g.companies.length, signal: g.signal }));
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-xl font-bold text-[var(--moss)]">Needs Attention</h2>
           <p className="text-xs text-[var(--green-100)] mt-1">
             {formatUpdatedAt(data.updatedAt)}
           </p>
         </div>
-        <button
-          onClick={() => fetchAttention(true)}
-          className="text-sm text-[var(--moss)] hover:text-[var(--green-100)] transition-all duration-200"
-          title="Refresh"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-            <path d="M21 3v5h-5" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-3">
+          {currentOwnerId && (
+            <div className="flex items-center bg-[var(--light-grey)] rounded-[var(--border-radius)] p-1">
+              <button
+                onClick={() => setShowMine(true)}
+                className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
+                  showMine
+                    ? "bg-[var(--moss)] text-white"
+                    : "text-[var(--green-100)] hover:text-[var(--moss)]"
+                }`}
+              >
+                My accounts
+              </button>
+              <button
+                onClick={() => setShowMine(false)}
+                className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
+                  !showMine
+                    ? "bg-[var(--moss)] text-white"
+                    : "text-[var(--green-100)] hover:text-[var(--moss)]"
+                }`}
+              >
+                All accounts
+              </button>
+            </div>
+          )}
+          <button
+            onClick={() => fetchAttention(true)}
+            className="text-sm text-[var(--moss)] hover:text-[var(--green-100)] transition-all duration-200"
+            title="Refresh"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {data.groups.map((group) => (
-        <AttentionGroupComponent
-          key={group.signal}
-          group={group}
-          onSelectCompany={onSelectCompany}
-        />
-      ))}
+      <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: `repeat(${signalCounts.length + 1}, minmax(0, 1fr))` }}>
+        <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
+          <div className="text-[var(--green-100)] text-xs uppercase tracking-wide mb-1">Total</div>
+          <div className="text-xl font-bold text-[var(--moss)]">{totalCompanies}</div>
+        </div>
+        {signalCounts.map((s) => {
+          const isUrgent = s.signal === "overdue_invoices" || s.signal === "overdue_tasks";
+          return (
+            <div key={s.signal} className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
+              <div className="text-[var(--green-100)] text-xs uppercase tracking-wide mb-1">{s.label}</div>
+              <div className={`text-xl font-bold ${isUrgent && s.count > 0 ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>
+                {s.count}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {filteredGroups.length === 0 ? (
+        <div className="py-8 text-center">
+          <p className="text-[var(--moss)] text-lg font-medium">All clear</p>
+          <p className="text-[var(--green-100)] text-sm mt-1">No accounts need your immediate attention.</p>
+        </div>
+      ) : (
+        filteredGroups.map((group) => (
+          <AttentionGroupComponent
+            key={group.signal}
+            group={group}
+            onSelectCompany={onSelectCompany}
+          />
+        ))
+      )}
     </div>
   );
 }

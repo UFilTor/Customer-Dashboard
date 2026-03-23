@@ -7,30 +7,42 @@ interface Props {
 }
 
 export function MetricCards({ company, deal }: Props) {
+  const count = dashboardConfig.metricCards.length;
+
   return (
-    <div className="grid grid-cols-4 gap-3 mb-6">
+    <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}>
       {dashboardConfig.metricCards.map((card) => {
         const source = card.source === "deal" ? deal : company;
         const value = source?.[card.property] ?? null;
         const formatted = formatValue(value, card.format);
         const isInvoice = card.format === "invoiceStatus";
 
-        let colorClass = "text-[#022C12]";
+        let bgClass = "bg-[var(--light-grey)]";
+        let textClass = "text-[var(--moss)]";
+        let labelClass = "text-[var(--green-100)]";
+
         if (isInvoice) {
-          colorClass =
-            formatted === "Overdue"
-              ? "text-red-600"
-              : formatted === "Open"
-              ? "text-orange-500"
-              : "text-green-600";
+          if (formatted === "Overdue") {
+            bgClass = "bg-[var(--rust)]/10";
+            textClass = "text-[var(--rust)]";
+            labelClass = "text-[var(--rust)]/70";
+          } else if (formatted === "Open") {
+            bgClass = "bg-orange-100";
+            textClass = "text-orange-800";
+            labelClass = "text-orange-600";
+          } else {
+            bgClass = "bg-[var(--lichen)]/40";
+            textClass = "text-[var(--moss)]";
+            labelClass = "text-[var(--green-100)]";
+          }
         }
 
         return (
-          <div key={card.property} className="bg-[#f0fdf4] rounded-2xl p-4">
-            <div className="text-[#6b7280] text-xs uppercase tracking-wide mb-1">
+          <div key={card.property} className={`${bgClass} rounded-[var(--border-radius)] p-4`}>
+            <div className={`${labelClass} text-xs uppercase tracking-wide mb-1`}>
               {card.label}
             </div>
-            <div className={`text-xl font-bold ${colorClass}`}>{formatted}</div>
+            <div className={`text-xl font-bold ${textClass}`}>{formatted}</div>
           </div>
         );
       })}

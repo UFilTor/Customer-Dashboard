@@ -17,15 +17,15 @@ export function TabContainer({ tabs }: Props) {
 
   return (
     <div>
-      <div className="flex border-b-2 border-[#e5e7eb] mb-4">
+      <div className="flex border-b border-[var(--beige-gray)] mb-4">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 -mb-[2px] transition-colors ${
+            className={`px-4 py-2 -mb-px transition-all duration-200 ${
               activeTab === tab.id
-                ? "border-b-2 border-[#022C12] text-[#022C12] font-semibold"
-                : "text-[#9ca3af] hover:text-[#4D4D4D]"
+                ? "border-b-2 border-[var(--moss)] text-[var(--moss)] font-semibold"
+                : "text-[var(--green-100)] hover:text-[var(--moss)]"
             }`}
           >
             {tab.label}

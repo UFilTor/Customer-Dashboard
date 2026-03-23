@@ -97,6 +97,7 @@ export interface AttentionCompany {
   id: string;
   name: string;
   detail: string;
+  ownerId?: string;
 }
 
 export type AttentionSignal = "overdue_invoices" | "overdue_tasks" | "health_score" | "gone_quiet";

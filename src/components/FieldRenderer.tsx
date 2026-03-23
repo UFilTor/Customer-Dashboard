@@ -10,7 +10,7 @@ export function FieldRenderer({ value, format }: Props) {
   const formatted = formatValue(value, format);
 
   if (formatted === "-") {
-    return <span className="text-[#9ca3af]">-</span>;
+    return <span className="text-[var(--green-100)]">-</span>;
   }
 
   switch (format) {
@@ -20,7 +20,7 @@ export function FieldRenderer({ value, format }: Props) {
           href={`https://${formatted}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[#022C12] underline hover:opacity-70"
+          className="text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200"
         >
           {formatted}
         </a>
@@ -28,7 +28,7 @@ export function FieldRenderer({ value, format }: Props) {
 
     case "badge":
       return (
-        <span className="inline-block bg-[#f0fdf4] text-[#022C12] px-2 py-0.5 rounded text-sm">
+        <span className="inline-block bg-[var(--lichen)]/40 text-[var(--moss)] px-2 py-0.5 rounded-[8px] text-sm">
           {formatted}
         </span>
       );
@@ -36,14 +36,14 @@ export function FieldRenderer({ value, format }: Props) {
     case "invoiceStatus": {
       const colorClass =
         formatted === "Overdue"
-          ? "text-red-600"
+          ? "text-[var(--rust)]"
           : formatted === "Open"
-          ? "text-orange-500"
-          : "text-green-600";
+          ? "text-orange-600"
+          : "text-[var(--moss)]";
       return <span className={`font-semibold ${colorClass}`}>{formatted}</span>;
     }
 
     default:
-      return <span>{formatted}</span>;
+      return <span className="text-[var(--moss)]">{formatted}</span>;
   }
 }

@@ -1,26 +1,41 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Understory Brand Tokens */
+  --moss: #022C12;
+  --citrus: #F1F97E;
+  --white: #FFFFFF;
+  --grey: #F3F3F3;
+  --light-grey: #F8F6ED;
+  --light-grey-2: #DBD8CE;
+  --beige: #EDE8D0;
+  --beige-new: #EAE8DD;
+  --beige-gray: #D3D1C6;
+  --lichen: #D5DFCA;
+  --green-100: #B9C2B2;
+  --dark-moss: #1D261F;
+  --lilac: #D1BEE7;
+  --sky-blue: #CFE8FF;
+  --rust: #933F29;
+  --red: #7E0C04;
+  --focus-blue: #4D65FF;
+  --border-radius: 0.75rem;
+
+  --background: var(--beige-new);
+  --foreground: var(--moss);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-inter);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }

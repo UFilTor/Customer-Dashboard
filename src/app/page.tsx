@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { SearchBar } from "@/components/SearchBar";
 import { CompanyHeader } from "@/components/CompanyHeader";
@@ -14,6 +14,8 @@ import AuthGate from "@/components/AuthGate";
 import { CompanySearchResult, CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
 import { AttentionList } from "@/components/AttentionList";
 import { addRecentCompany, removeRecentCompany } from "@/lib/recent-companies";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
 
 interface CompanyData extends CompanyDetail {
   owners: OwnerMap;
@@ -28,7 +30,21 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [navigationSource, setNavigationSource] = useState<"attention" | "search" | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
+  const [focusedAttentionIndex, setFocusedAttentionIndex] = useState(-1);
   const scrollPositionRef = useRef<number>(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync focused item highlight via DOM
+  useEffect(() => {
+    const items = document.querySelectorAll("[data-attention-item]");
+    items.forEach((el) => el.classList.remove("attention-item-focused"));
+    if (focusedAttentionIndex >= 0 && focusedAttentionIndex < items.length) {
+      const target = items[focusedAttentionIndex];
+      target.classList.add("attention-item-focused");
+      target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [focusedAttentionIndex]);
 
   function handleBack() {
     setCompanyData(null);
@@ -43,6 +59,7 @@ export default function Dashboard() {
     setIsLoading(true);
     setError(null);
     setSelectedCompanyId(company.id);
+    setFocusedAttentionIndex(-1);
     try {
       const res = await fetch(`/api/companies/${company.id}`);
       if (!res.ok) throw new Error("Failed to load company data");
@@ -68,6 +85,56 @@ export default function Dashboard() {
     fetchCompany(company);
   }
 
+  useKeyboardShortcuts({
+    onSearch: () => {
+      searchInputRef.current?.focus();
+    },
+    onBack: () => {
+      if (showHelp) {
+        setShowHelp(false);
+        return;
+      }
+      if (companyData && navigationSource === "attention") {
+        handleBack();
+      }
+    },
+    onNavigate: (direction) => {
+      if (companyData) return;
+      const total = document.querySelectorAll("[data-attention-item]").length;
+      if (total === 0) return;
+      setFocusedAttentionIndex((prev) => {
+        if (direction === "down") return Math.min(prev + 1, total - 1);
+        return Math.max(prev - 1, 0);
+      });
+    },
+    onSelect: () => {
+      if (companyData) return;
+      if (focusedAttentionIndex < 0) return;
+      const items = document.querySelectorAll("[data-attention-item]");
+      const target = items[focusedAttentionIndex] as HTMLElement | undefined;
+      if (!target) return;
+      const id = target.getAttribute("data-company-id");
+      const name = target.getAttribute("data-company-name");
+      if (id && name) {
+        handleAttentionSelect({ id, name, domain: "" });
+      }
+    },
+    onJumpToGroup: (index) => {
+      if (companyData) return;
+      const groups = document.querySelectorAll("[data-attention-group]");
+      if (index >= groups.length) return;
+      const group = groups[index];
+      group.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Find the first attention item inside this group
+      const firstItem = group.querySelector("[data-attention-item]");
+      if (!firstItem) return;
+      const allItems = Array.from(document.querySelectorAll("[data-attention-item]"));
+      const itemIndex = allItems.indexOf(firstItem);
+      if (itemIndex >= 0) setFocusedAttentionIndex(itemIndex);
+    },
+    onToggleHelp: () => setShowHelp((prev) => !prev),
+  });
+
   return (
     <AuthGate>
       <div className="min-h-screen bg-[var(--beige-new)]">
@@ -79,7 +146,7 @@ export default function Dashboard() {
           >
             Customer Dashboard
           </button>
-          <SearchBar onSelect={handleSearchSelect} />
+          <SearchBar ref={searchInputRef} onSelect={handleSearchSelect} />
         </nav>
 
         {/* Content */}
@@ -177,6 +244,8 @@ export default function Dashboard() {
           )}
         </main>
       </div>
+
+      <ShortcutCheatSheet isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </AuthGate>
   );
 }

@@ -95,7 +95,7 @@ export function AttentionGroup({ group, onSelectCompany }: Props) {
   const sortedCompanies = sortAttentionCompanies(group.companies, sortField);
 
   return (
-    <div className="mb-6">
+    <div className="mb-6" data-attention-group={group.signal}>
       <div className="flex items-center gap-2 mb-3">
         <h3 className="font-semibold text-[var(--moss)]">{group.label}</h3>
         <span
@@ -136,12 +136,18 @@ export function AttentionGroup({ group, onSelectCompany }: Props) {
 
       <div className="space-y-2">
         {sortedCompanies.slice(0, displayCount).map((company) => (
-          <CompanyRow
+          <div
             key={company.id}
-            company={company}
-            signal={group.signal}
-            onClick={() => onSelectCompany({ id: company.id, name: company.name, domain: "" })}
-          />
+            data-attention-item
+            data-company-id={company.id}
+            data-company-name={company.name}
+          >
+            <CompanyRow
+              company={company}
+              signal={group.signal}
+              onClick={() => onSelectCompany({ id: company.id, name: company.name, domain: "" })}
+            />
+          </div>
         ))}
       </div>
 

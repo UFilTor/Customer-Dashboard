@@ -39,3 +39,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
+
+.attention-item-focused {
+  outline: 2px solid var(--moss);
+  outline-offset: -2px;
+  border-radius: 8px;
+}

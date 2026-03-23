@@ -92,3 +92,22 @@ export interface Recap {
   } | null;
   error?: boolean;
 }
+
+export interface AttentionCompany {
+  id: string;
+  name: string;
+  detail: string;
+}
+
+export type AttentionSignal = "overdue_invoices" | "overdue_tasks" | "health_score" | "gone_quiet";
+
+export interface AttentionGroup {
+  signal: AttentionSignal;
+  label: string;
+  companies: AttentionCompany[];
+}
+
+export interface AttentionResponse {
+  groups: AttentionGroup[];
+  updatedAt: string;
+}

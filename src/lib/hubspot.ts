@@ -75,6 +75,7 @@ const COMPANY_PROPERTIES = [
   "understory_total_number_of_transactions",
   "understory_booking_volume_all_time",
   "understory_booking_volume_last_12_months",
+  "Health Score Category",
 ];
 
 const DEAL_PROPERTIES = [
@@ -97,6 +98,7 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
     deal: dealResult?.properties || null,
     engagements: engagementsRes,
     tasks: tasksRes,
+    recap: null,
   };
 }
 
@@ -216,6 +218,7 @@ function mapEngagement(type: string, props: Record<string, string>): Engagement 
         title: props.hs_call_title || "Call",
         body: props.hs_call_body || "",
         bodyPreview: props.hs_body_preview || "",
+        summary: "",
         timestamp: props.hs_timestamp || "",
         direction: props.hs_call_direction,
         status: props.hs_call_status,
@@ -226,6 +229,7 @@ function mapEngagement(type: string, props: Record<string, string>): Engagement 
         title: props.hs_meeting_title || "Meeting",
         body: props.hs_meeting_body || "",
         bodyPreview: props.hs_body_preview || "",
+        summary: "",
         timestamp: props.hs_timestamp || "",
         outcome: props.hs_meeting_outcome,
       };
@@ -235,6 +239,7 @@ function mapEngagement(type: string, props: Record<string, string>): Engagement 
         title: "Note",
         body: props.hs_note_body || "",
         bodyPreview: (props.hs_note_body || "").slice(0, 200),
+        summary: "",
         timestamp: props.hs_timestamp || "",
         owner: props.hubspot_owner_id,
       };
@@ -244,6 +249,7 @@ function mapEngagement(type: string, props: Record<string, string>): Engagement 
         title: props.hs_email_subject || "Email",
         body: props.hs_email_body || "",
         bodyPreview: (props.hs_email_body || "").slice(0, 200),
+        summary: "",
         timestamp: props.hs_timestamp || "",
         direction: props.hs_email_direction,
         fromEmail: props.hs_email_from_email,
@@ -255,6 +261,7 @@ function mapEngagement(type: string, props: Record<string, string>): Engagement 
         title: "Unknown",
         body: "",
         bodyPreview: "",
+        summary: "",
         timestamp: props.hs_timestamp || "",
       };
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyDetail, getOwners, getDealStages } from "@/lib/hubspot";
+import { summarizeEngagements, generateRecap } from "@/lib/summarize";
 import { Cache } from "@/lib/cache";
 import { CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
 
@@ -24,12 +25,22 @@ export async function GET(
 
   try {
     const detail = await getCompanyDetail(id);
-    companyCache.set(id, detail);
 
     const [owners, stages] = await Promise.all([
       getCachedOwners(),
       getCachedStages(),
     ]);
+
+    detail.engagements = await summarizeEngagements(detail.engagements);
+    detail.recap = await generateRecap(
+      detail.engagements,
+      detail.company,
+      detail.deal,
+      owners,
+      stages
+    );
+
+    companyCache.set(id, detail);
 
     return NextResponse.json({ ...detail, owners, stages });
   } catch {

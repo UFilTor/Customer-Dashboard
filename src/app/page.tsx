@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { SearchBar } from "@/components/SearchBar";
 import { CompanyHeader } from "@/components/CompanyHeader";
@@ -13,6 +13,7 @@ import { SkeletonCard, SkeletonBlock, SkeletonRecap } from "@/components/Skeleto
 import AuthGate from "@/components/AuthGate";
 import { CompanySearchResult, CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
 import { AttentionList } from "@/components/AttentionList";
+import { addRecentCompany, removeRecentCompany } from "@/lib/recent-companies";
 
 interface CompanyData extends CompanyDetail {
   owners: OwnerMap;
@@ -26,14 +27,19 @@ export default function Dashboard() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [navigationSource, setNavigationSource] = useState<"attention" | "search" | null>(null);
+  const scrollPositionRef = useRef<number>(0);
 
   function handleBack() {
     setCompanyData(null);
     setSelectedCompanyId(null);
     setError(null);
+    const pos = scrollPositionRef.current;
+    setNavigationSource(null);
+    requestAnimationFrame(() => window.scrollTo(0, pos));
   }
 
-  async function handleSelect(company: CompanySearchResult) {
+  async function fetchCompany(company: CompanySearchResult) {
     setIsLoading(true);
     setError(null);
     setSelectedCompanyId(company.id);
@@ -42,11 +48,24 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to load company data");
       const data = await res.json();
       setCompanyData(data);
+      addRecentCompany({ id: company.id, name: company.name });
     } catch {
       setError("Could not load data. Please try again.");
+      removeRecentCompany(company.id);
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function handleAttentionSelect(company: CompanySearchResult) {
+    scrollPositionRef.current = window.scrollY;
+    setNavigationSource("attention");
+    fetchCompany(company);
+  }
+
+  function handleSearchSelect(company: CompanySearchResult) {
+    setNavigationSource("search");
+    fetchCompany(company);
   }
 
   return (
@@ -60,7 +79,7 @@ export default function Dashboard() {
           >
             Customer Dashboard
           </button>
-          <SearchBar onSelect={handleSelect} />
+          <SearchBar onSelect={handleSearchSelect} />
         </nav>
 
         {/* Content */}
@@ -78,7 +97,7 @@ export default function Dashboard() {
           )}
 
           {!companyData && !isLoading && (
-            <AttentionList onSelectCompany={handleSelect} currentOwnerId={currentOwnerId} />
+            <AttentionList onSelectCompany={handleAttentionSelect} currentOwnerId={currentOwnerId} />
           )}
 
           {isLoading && (
@@ -104,20 +123,13 @@ export default function Dashboard() {
 
           {companyData && !isLoading && (
             <>
-              <button
-                onClick={handleBack}
-                className="flex items-center gap-1 text-sm text-[var(--green-100)] hover:text-[var(--moss)] transition-all duration-200 mb-3"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
-                </svg>
-                Back to overview
-              </button>
               <CompanyHeader
                 companyId={selectedCompanyId!}
                 company={companyData.company}
                 deal={companyData.deal}
                 owners={companyData.owners}
+                showBack={navigationSource === "attention"}
+                onBack={handleBack}
               />
               <MetricCards
                 company={companyData.company}

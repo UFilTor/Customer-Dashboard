@@ -1,3 +1,5 @@
+"use client";
+
 import { OwnerMap } from "@/lib/types";
 
 interface Props {
@@ -5,9 +7,11 @@ interface Props {
   company: Record<string, string>;
   deal: Record<string, string> | null;
   owners: OwnerMap;
+  onBack?: () => void;
+  showBack?: boolean;
 }
 
-export function CompanyHeader({ companyId, company, deal, owners }: Props) {
+export function CompanyHeader({ companyId, company, deal, owners, onBack, showBack }: Props) {
   const name = company.name || "Unknown Company";
   const domain = company.domain || "";
   const ownerName = owners[company.hubspot_owner_id] || "-";
@@ -23,38 +27,49 @@ export function CompanyHeader({ companyId, company, deal, owners }: Props) {
 
   return (
     <div className="flex justify-between items-start mb-4">
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--moss)]">{name}</h1>
-        <div className="flex items-center gap-2 mt-1 text-sm text-[var(--green-100)]">
-          {domain && (
-            <>
-              <a
-                href={`https://${domain}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200"
-              >
-                {domain}
-              </a>
-              <span>&middot;</span>
-            </>
-          )}
-          {storefrontLink && (
-            <>
-              <a
-                href={storefrontLink.startsWith("http") ? storefrontLink : `https://${storefrontLink}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200"
-              >
-                Booking page
-              </a>
-              <span>&middot;</span>
-            </>
-          )}
-          <span>Owner: {ownerName}</span>
-          <span>&middot;</span>
-          <span>Last contacted: {lastContacted}</span>
+      <div className="flex items-start gap-3">
+        {showBack && (
+          <button
+            onClick={onBack}
+            aria-label="Back to overview"
+            className="w-8 h-8 flex items-center justify-center rounded-[8px] border border-gray-200 bg-white hover:bg-[#F8F6ED] transition-colors duration-150 shrink-0 mt-0.5"
+          >
+            <span className="text-[var(--moss)] text-base leading-none">←</span>
+          </button>
+        )}
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--moss)]">{name}</h1>
+          <div className="flex items-center gap-2 mt-1 text-sm text-[var(--green-100)]">
+            {domain && (
+              <>
+                <a
+                  href={`https://${domain}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200"
+                >
+                  {domain}
+                </a>
+                <span>&middot;</span>
+              </>
+            )}
+            {storefrontLink && (
+              <>
+                <a
+                  href={storefrontLink.startsWith("http") ? storefrontLink : `https://${storefrontLink}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200"
+                >
+                  Booking page
+                </a>
+                <span>&middot;</span>
+              </>
+            )}
+            <span>Owner: {ownerName}</span>
+            <span>&middot;</span>
+            <span>Last contacted: {lastContacted}</span>
+          </div>
         </div>
       </div>
       {hubspotUrl && (

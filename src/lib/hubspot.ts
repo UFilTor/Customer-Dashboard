@@ -140,6 +140,13 @@ const COMPANY_PROPERTIES = [
   "understory_booking_volume_12m",
   "understory_total_platform_fee_cents_received",
   "health_score", "createdate",
+  "understory_health_score_actual_acv",
+  "understory_health_score_customer_storefront_visits",
+  "understory_health_score_customer_widget_visits",
+  "understory_health_score_features_enabled",
+  "understory_health_score_login_last_month",
+  "understory_health_score_transactions_diff",
+  "understory_health_score_upcoming_events",
 ];
 
 const DEAL_PROPERTIES = [

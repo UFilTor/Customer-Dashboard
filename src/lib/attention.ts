@@ -331,12 +331,14 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
             }],
           },
         ],
-        properties: ["name", "health_score", "hubspot_owner_id", "understory_booking_volume_12m", "understory_company_country"],
+        properties: ["name", "health_score", "hubspot_owner_id", "understory_booking_volume_12m", "understory_company_country", "notes_last_contacted"],
         limit: 100,
       }),
     });
     if (!res.ok) return [];
     const data = await res.json();
+
+    const fourteenDaysAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
 
     const companies: (AttentionCompany & { _bookingVolume?: string })[] = (data.results || []).map(
       (c: { id: string; properties: Record<string, string> }) => ({
@@ -346,12 +348,23 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
         ownerId: c.properties.hubspot_owner_id || "",
         country: c.properties.understory_company_country || "",
         _bookingVolume: c.properties.understory_booking_volume_12m || "",
+        _notesLastContacted: c.properties.notes_last_contacted || "",
       })
     );
 
+    // Exclude companies contacted in the last 14 days
+    const notRecentlyContacted = companies.filter((company) => {
+      const lastContacted = (company as AttentionCompany & { _notesLastContacted?: string })._notesLastContacted;
+      if (!lastContacted) return true;
+      const contactedAt = new Date(lastContacted).getTime();
+      return isNaN(contactedAt) || contactedAt < fourteenDaysAgo;
+    });
+
     // Fetch property history and MRR for each company
+    const toExcludeImproved = new Set<string>();
+
     await Promise.all(
-      companies.map(async (company) => {
+      notRecentlyContacted.map(async (company) => {
         try {
           // Get health score property history
           const histRes = await fetch(
@@ -364,6 +377,20 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
             if (history && history.length >= 2) {
               company.previousCategory = history[1].value;
               company.categoryChangedAt = history[0].timestamp;
+
+              // Exclude if score improved 15+ points within last 14 days
+              const changeTimestamp = new Date(history[0].timestamp).getTime();
+              const currentScore = parseFloat(history[0].value);
+              const previousScore = parseFloat(history[1].value);
+              if (
+                !isNaN(changeTimestamp) &&
+                changeTimestamp >= fourteenDaysAgo &&
+                !isNaN(currentScore) &&
+                !isNaN(previousScore) &&
+                currentScore - previousScore >= 15
+              ) {
+                toExcludeImproved.add(company.id);
+              }
             } else if (history && history.length === 1) {
               company.categoryChangedAt = history[0].timestamp;
             }
@@ -380,7 +407,8 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
       })
     );
 
-    return companies;
+    // Remove companies whose score improved 15+ points in the last 14 days
+    return notRecentlyContacted.filter((company) => !toExcludeImproved.has(company.id));
   } catch {
     return [];
   }

@@ -185,6 +185,26 @@ export function AttentionList({ onSelectCompany }: Props) {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
+            {(() => {
+              const saved = loadDefaultFilter();
+              const isDefault = !saved
+                ? filterMode === "All"
+                : saved.filterMode === filterMode && saved.regionOption === regionOption && saved.personOption === personOption;
+              if (isDefault) return null;
+              return (
+                <button
+                  onClick={() => {
+                    saveDefaultFilter({ filterMode, regionOption, personOption });
+                    setSavedIndicator(true);
+                    setTimeout(() => setSavedIndicator(false), 2000);
+                  }}
+                  className="text-[10px] text-[var(--green-100)] hover:text-[var(--moss)] transition-colors"
+                  title="Save current filter as your default"
+                >
+                  {savedIndicator ? "Saved!" : "Save as default"}
+                </button>
+              );
+            })()}
             <select
               value={filterMode}
               onChange={(e) => setFilterMode(e.target.value as FilterMode)}
@@ -216,17 +236,6 @@ export function AttentionList({ onSelectCompany }: Props) {
                 ))}
               </select>
             )}
-            <button
-              onClick={() => {
-                saveDefaultFilter({ filterMode, regionOption, personOption });
-                setSavedIndicator(true);
-                setTimeout(() => setSavedIndicator(false), 2000);
-              }}
-              className="text-[10px] text-[var(--green-100)] hover:text-[var(--moss)] transition-colors"
-              title="Save current filter as your default"
-            >
-              {savedIndicator ? "Saved!" : "Save as default"}
-            </button>
           </div>
           <div className="flex items-center bg-[#F7F7F5] rounded-[10px] p-1">
             <span className="text-xs text-[#AAA] px-2">Sort:</span>

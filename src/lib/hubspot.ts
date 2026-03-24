@@ -64,10 +64,10 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
               });
               if (batchRes.ok) {
                 const batchData = await batchRes.json();
-                const lifecyclePipelineId = process.env.HUBSPOT_LIFECYCLE_PIPELINE_ID;
+                const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
                 const lifecycleDeal = batchData.results?.find(
                   (d: { properties: Record<string, string> }) =>
-                    d.properties.pipeline === lifecyclePipelineId
+                    pipelineIds.includes(d.properties.pipeline)
                 );
                 if (lifecycleDeal) {
                   revenue = computeSearchRevenue(
@@ -201,10 +201,10 @@ async function fetchLifecycleDeal(companyId: string): Promise<{ properties: Reco
     if (!batchRes.ok) return null;
     const batchData = await batchRes.json();
 
-    const lifecyclePipelineId = process.env.HUBSPOT_LIFECYCLE_PIPELINE_ID;
+    const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
     const lifecycleDeal = batchData.results?.find(
       (d: { properties: Record<string, string> }) =>
-        d.properties.pipeline === lifecyclePipelineId
+        pipelineIds.includes(d.properties.pipeline)
     );
 
     return {

@@ -29,7 +29,7 @@ async function fetchCompanyBatch(
 
 async function fetchDealForCompany(companyId: string): Promise<Record<string, string> | null> {
   try {
-    const pipelineId = process.env.HUBSPOT_LIFECYCLE_PIPELINE_ID;
+    const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
     const assocRes = await fetch(
       `${HUBSPOT_API}/crm/v3/objects/companies/${companyId}/associations/deals`,
       { headers: hubspotHeaders() }
@@ -51,7 +51,7 @@ async function fetchDealForCompany(companyId: string): Promise<Record<string, st
     const batchData = await batchRes.json();
 
     const deal = batchData.results?.find(
-      (d: { properties: Record<string, string> }) => d.properties.pipeline === pipelineId
+      (d: { properties: Record<string, string> }) => pipelineIds.includes(d.properties.pipeline)
     );
     return deal?.properties || null;
   } catch {
@@ -85,17 +85,17 @@ function formatRevenue(revenueEur: number): string {
 
 export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
   try {
-    const pipelineId = process.env.HUBSPOT_LIFECYCLE_PIPELINE_ID;
+    const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
     const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
       method: "POST",
       headers: hubspotHeaders(),
       body: JSON.stringify({
-        filterGroups: [{
+        filterGroups: pipelineIds.map((pid) => ({
           filters: [
-            { propertyName: "pipeline", operator: "EQ", value: pipelineId },
+            { propertyName: "pipeline", operator: "EQ", value: pid },
             { propertyName: "Tags", operator: "CONTAINS_TOKEN", value: "Overdue" },
           ],
-        }],
+        })),
         properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee"],
         limit: 100,
       }),

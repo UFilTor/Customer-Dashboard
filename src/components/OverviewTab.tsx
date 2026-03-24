@@ -165,7 +165,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
         {/* Card 3: Platform Activity */}
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Activity</div>
-          <div className="flex flex-col gap-2 flex-1 justify-center w-full">
+          <div className="flex flex-col gap-2 flex-1 justify-center items-center">
             {[
               { key: "understory_backoffice_latest_visit", label: "Backoffice" },
               { key: "understory_storefront_latest_visit", label: "Storefront" },
@@ -178,10 +178,10 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
               const formatted = date && !isNaN(date.getTime()) ? formatRelativeDate(date) : "No data";
               const textColor = days <= 30 ? "text-[var(--moss)]" : "text-[var(--rust)]";
               return (
-                <div key={key} className="flex items-center gap-2">
+                <div key={key} className="flex items-center gap-1.5">
                   <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-                  <span className="text-xs text-[var(--green-100)]">{label}</span>
-                  <span className={`text-sm font-semibold ml-auto ${textColor}`}>{formatted}</span>
+                  <span className="text-sm text-[var(--green-100)] w-24">{label}</span>
+                  <span className={`text-sm font-semibold ${textColor}`}>{formatted}</span>
                 </div>
               );
             })}

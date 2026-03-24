@@ -109,7 +109,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
 
         {/* Card 1: Health Breakdown - circles grid */}
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col">
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Health</div>
           <div className="grid grid-cols-4 gap-1 flex-1 content-center">
             {HEALTH_COMPONENTS.map(({ key, label }) => {
@@ -134,7 +134,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
 
         {/* Card 2: Volume Trend */}
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
-          <div className="flex items-center justify-between mb-2 w-full">
+          <div className="flex items-center justify-center gap-3 mb-2 w-full">
             <span className="text-[10px] text-[var(--green-100)] uppercase tracking-wide">Volume</span>
             {growthPct !== null && (
               <span className={`text-xs font-semibold ${growthPct > 0 ? "text-[#065F46]" : "text-[var(--rust)]"}`}>
@@ -163,9 +163,9 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
         </div>
 
         {/* Card 3: Platform Activity */}
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center justify-center">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Activity</div>
-          <div className="flex flex-col gap-2.5 flex-1 justify-center w-full">
+          <div className="flex flex-col gap-1.5 w-full">
             {[
               { key: "understory_backoffice_latest_visit", label: "Backoffice" },
               { key: "understory_storefront_latest_visit", label: "Storefront" },
@@ -186,8 +186,8 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
           </div>
         </div>
 
-        {/* Card 4: Understory Pay - bigger text, spaced */}
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
+        {/* Card 4: Understory Pay */}
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center justify-center">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Understory Pay</div>
           {company.understory_pay_unwilling === "true" ? (
             <div className="flex-1 flex flex-col justify-center w-full">
@@ -204,7 +204,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
               )}
             </div>
           ) : (
-            <div className="flex flex-col gap-2.5 flex-1 justify-center w-full">
+            <div className="flex flex-col gap-2.5">
               {[
                 { label: "Not Started", active: false },
                 { label: "Onboarding", active: company.understory_has_started_understory_pay_onboarding === "true" },

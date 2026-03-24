@@ -31,12 +31,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [overdueInvoices, overdueTasks, healthScore, goneQuiet] = await Promise.all([
-      fetchOverdueInvoices(),
-      fetchOverdueTasks(),
-      fetchHealthScoreIssues(),
-      fetchGoneQuiet(),
-    ]);
+    // Fetch sequentially to avoid HubSpot rate limits
+    const overdueInvoices = await fetchOverdueInvoices();
+    const overdueTasks = await fetchOverdueTasks();
+    const healthScore = await fetchHealthScoreIssues();
+    const goneQuiet = await fetchGoneQuiet();
 
     const groups = [
       { signal: "overdue_invoices" as const, label: "Overdue Invoices", companies: overdueInvoices },

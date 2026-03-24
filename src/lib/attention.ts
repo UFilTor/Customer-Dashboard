@@ -121,8 +121,8 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
 
     // Fetch deal->company associations in batches of 10 to avoid rate limits
     const assocResults: ({ companyId: string; deal: DealInfo } | null)[] = [];
-    for (let i = 0; i < deals.length; i += 10) {
-      const batch = deals.slice(i, i + 10);
+    for (let i = 0; i < deals.length; i += 5) {
+      const batch = deals.slice(i, i + 5);
       const batchResults = await Promise.all(
         batch.map(async (deal) => {
           try {
@@ -233,8 +233,8 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
 
     // Fetch task->company associations in batches of 10 to avoid rate limits
     const taskAssocResults: ({ companyId: string; task: TaskInfo } | null)[] = [];
-    for (let i = 0; i < tasks.length; i += 10) {
-      const batch = tasks.slice(i, i + 10);
+    for (let i = 0; i < tasks.length; i += 5) {
+      const batch = tasks.slice(i, i + 5);
       const batchResults = await Promise.all(
         batch.map(async (task) => {
           try {

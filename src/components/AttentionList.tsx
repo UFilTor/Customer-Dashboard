@@ -190,6 +190,29 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
         })}
       </div>
 
+      {(() => {
+        const companyIds = new Set<string>();
+        let totalRevenue = 0;
+        let healthIssueCount = 0;
+        for (const g of ownerFilteredGroups) {
+          for (const c of g.companies) {
+            if (!isCompanySnoozed(c.id, g.signal)) {
+              companyIds.add(c.id);
+              totalRevenue += parseFloat((c.mrr || "").replace(/[^\d]/g, "")) || 0;
+              if (g.signal === "health_score") healthIssueCount++;
+            }
+          }
+        }
+        const customerCount = companyIds.size;
+        const formattedRevenue = totalRevenue.toLocaleString("sv-SE").replace(/\s/g, "\u00A0");
+        if (customerCount === 0) return null;
+        return (
+          <p className="text-xs text-[var(--green-100)] mb-4">
+            €{formattedRevenue} total revenue · {customerCount} {customerCount === 1 ? "company" : "companies"}{healthIssueCount > 0 ? ` · ${healthIssueCount} health ${healthIssueCount === 1 ? "issue" : "issues"}` : ""}
+          </p>
+        );
+      })()}
+
       {ownerFilteredGroups.length === 0 ? (
         <div className="py-8 text-center flex flex-col items-center">
           <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--moss)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-3 opacity-60">

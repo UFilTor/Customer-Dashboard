@@ -90,8 +90,21 @@ function ActivityCard({ engagement, owners }: { engagement: Engagement; owners: 
 
 export function ActivityTab({ engagements, owners }: Props) {
   const [filters, setFilters] = useState<ActivityFilterState>({ types: null, daysBack: 90 });
+  const [searchQuery, setSearchQuery] = useState("");
 
   const filteredEngagements = filterEngagements(engagements, filters);
+
+  const keywordFiltered = searchQuery.trim()
+    ? filteredEngagements.filter((e) => {
+        const q = searchQuery.toLowerCase();
+        return (
+          e.title?.toLowerCase().includes(q) ||
+          e.body?.toLowerCase().includes(q) ||
+          e.bodyPreview?.toLowerCase().includes(q) ||
+          e.summary?.toLowerCase().includes(q)
+        );
+      })
+    : filteredEngagements;
 
   if (engagements.length === 0) {
     return <p className="text-[var(--green-100)] text-sm py-4">No activity in the last 90 days</p>;
@@ -99,11 +112,37 @@ export function ActivityTab({ engagements, owners }: Props) {
 
   return (
     <div>
-      <ActivityFilters onFilterChange={setFilters} />
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        <div className="relative flex items-center">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="absolute left-2.5 text-[var(--green-100)] pointer-events-none"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search activities..."
+            className="text-sm border border-[#E5E5E0] rounded-lg pl-8 pr-3 py-1 w-48 outline-none focus:border-[var(--moss)]"
+          />
+        </div>
+        <ActivityFilters onFilterChange={setFilters} />
+      </div>
       <p className="text-xs text-[var(--green-100)] mb-3">
-        Showing {filteredEngagements.length} {filteredEngagements.length === 1 ? "activity" : "activities"}
+        Showing {keywordFiltered.length} {keywordFiltered.length === 1 ? "activity" : "activities"}
       </p>
-      {filteredEngagements.length === 0 ? (
+      {keywordFiltered.length === 0 ? (
         <div className="text-center py-8 flex flex-col items-center">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2 text-[var(--green-100)] opacity-60">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
@@ -112,7 +151,7 @@ export function ActivityTab({ engagements, owners }: Props) {
         </div>
       ) : (
         <div>
-          {filteredEngagements.map((engagement, index) => (
+          {keywordFiltered.map((engagement, index) => (
             <ActivityCard
               key={`${engagement.type}-${engagement.timestamp}-${index}`}
               engagement={engagement}

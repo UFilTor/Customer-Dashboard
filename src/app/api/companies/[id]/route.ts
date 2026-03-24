@@ -31,7 +31,8 @@ export async function GET(
       getCachedStages(),
     ]);
 
-    detail.engagements = await summarizeEngagements(detail.engagements);
+    // Skip individual engagement summaries to save tokens (1 API call instead of 11)
+    // The recap gets all the context it needs from raw engagement content
     detail.recap = await generateRecap(
       detail.engagements,
       detail.company,

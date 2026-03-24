@@ -69,7 +69,8 @@ export async function generateRecap(
       const date = new Date(e.timestamp);
       const dateStr = isNaN(date.getTime()) ? "Unknown date" : date.toLocaleDateString("sv-SE");
       const ownerName = e.owner ? (owners[e.owner] || e.owner) : "";
-      return `[${e.type.toUpperCase()}] ${dateStr} - ${e.title}${ownerName ? ` (${ownerName})` : ""}\nSummary: ${e.summary || stripHtml(e.body).slice(0, 200)}`;
+      const bodyText = stripHtml(e.body).slice(0, 500);
+      return `[${e.type.toUpperCase()}] ${dateStr} - ${e.title}${ownerName ? ` (${ownerName})` : ""}\n${bodyText}`;
     })
     .join("\n\n");
 

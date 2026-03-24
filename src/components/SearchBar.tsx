@@ -79,6 +79,7 @@ export function SearchBar({ onSelect, ref }: Props) {
     setIsFocused(true);
     setRecents(getRecentCompanies());
     setShowRecents(true);
+    setHighlightIndex(0);
     if (query.length >= 2 && results.length > 0) {
       setIsOpen(true);
     }

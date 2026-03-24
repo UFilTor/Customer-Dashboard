@@ -132,7 +132,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
           </div>
         </div>
 
-        {/* Card 2: Volume Trend - 2x2 grid, bigger text */}
+        {/* Card 2: Volume Trend */}
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] text-[var(--green-100)] uppercase tracking-wide">Volume</span>
@@ -142,7 +142,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
               </span>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 flex-1 content-center">
+          <div className="flex flex-col gap-2.5 flex-1 justify-center">
             {[
               { key: "understory_booking_volume_12m", label: "12M" },
               { key: "understory_booking_volume_6m", label: "6M" },
@@ -151,21 +151,21 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
             ].map(({ key, label }) => {
               const val = parseFloat(company[key] || "0");
               return (
-                <div key={key}>
-                  <div className="text-[10px] text-[var(--green-100)]">{label}</div>
-                  <div className="text-sm font-bold text-[var(--moss)]">
+                <div key={key} className="flex items-center gap-2">
+                  <span className="text-sm text-[var(--green-100)] w-8">{label}</span>
+                  <span className="text-sm font-semibold text-[var(--moss)]">
                     {val > 0 ? `€${Math.round(val).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}` : "-"}
-                  </div>
+                  </span>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Card 3: Platform Activity - bigger text, spaced */}
+        {/* Card 3: Platform Activity */}
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Activity</div>
-          <div className="flex flex-col gap-3 flex-1 justify-center">
+          <div className="flex flex-col gap-2.5 flex-1 justify-center">
             {[
               { key: "understory_backoffice_latest_visit", label: "Backoffice" },
               { key: "understory_storefront_latest_visit", label: "Storefront" },
@@ -176,8 +176,9 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
               const isOld = date ? (Date.now() - date.getTime()) > 30 * 86400000 : true;
               const formatted = date && !isNaN(date.getTime()) ? formatRelativeDate(date) : "No data";
               return (
-                <div key={key} className="flex justify-between items-baseline">
-                  <span className="text-xs text-[var(--green-100)]">{label}</span>
+                <div key={key} className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${isOld ? "bg-[var(--rust)]" : "bg-[#6EE7B7]"}`} />
+                  <span className="text-sm text-[var(--green-100)] flex-1">{label}</span>
                   <span className={`text-sm font-semibold ${isOld ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>{formatted}</span>
                 </div>
               );

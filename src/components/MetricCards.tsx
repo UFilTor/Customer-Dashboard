@@ -7,22 +7,24 @@ const TO_EUR: Record<string, number> = {
 };
 
 function computeRevenueLastYear(company: Record<string, string>, deal: Record<string, string> | null): string {
+  // Volume is already in EUR, MRR is in deal currency
   const volume = parseFloat(company.understory_booking_volume_12m || "0") || 0;
   const fee = parseFloat(deal?.booking_fee || deal?.confirmed_booking_fee || "0") || 0;
   const mrr = parseFloat(deal?.confirmed__contract_mrr || "0") || 0;
   const currency = (deal?.deal_currency_code || "EUR").toUpperCase();
-  const rate = TO_EUR[currency] ?? 1;
+  const mrrRate = TO_EUR[currency] ?? 1;
 
-  // Calculate months as customer (max 12)
+  // Months as customer (max 12)
   const createDate = company.createdate ? new Date(company.createdate).getTime() : 0;
   const monthsAsCustomer = createDate > 0
     ? Math.min(12, Math.floor((Date.now() - createDate) / (30.44 * 24 * 60 * 60 * 1000)))
     : 12;
 
-  const revenueLocal = (volume * fee) + (mrr * monthsAsCustomer);
-  if (revenueLocal === 0) return "-";
-  const eur = Math.round(revenueLocal * rate);
-  return `\u20ac${eur.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
+  const bookingFeeRevenue = volume * fee; // Already EUR
+  const mrrRevenue = mrr * monthsAsCustomer * mrrRate; // Convert to EUR
+  const total = Math.round(bookingFeeRevenue + mrrRevenue);
+  if (total === 0) return "-";
+  return `\u20ac${total.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
 }
 
 interface Props {

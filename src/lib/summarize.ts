@@ -115,7 +115,9 @@ ${activitySummary}`,
       return { summary: null, suggestedAction: null, error: true };
     }
 
-    const parsed = JSON.parse(block.text);
+    // Strip markdown code block wrapper if present (```json ... ```)
+    const cleanText = block.text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    const parsed = JSON.parse(cleanText);
     if (!parsed.summary || !parsed.suggestedAction?.text || !parsed.suggestedAction?.type) {
       return { summary: null, suggestedAction: null, error: true };
     }

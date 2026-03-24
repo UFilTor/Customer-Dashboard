@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { AttentionGroup as AttentionGroupComponent } from "./AttentionGroup";
 import { AttentionResponse, CompanySearchResult } from "@/lib/types";
 import type { SortField } from "@/lib/sort-attention";
+import { isCompanySnoozed } from "@/lib/snooze";
 
 interface Props {
   onSelectCompany: (company: CompanySearchResult, meta?: { previousCategory?: string }) => void;
@@ -16,6 +17,7 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [showMine, setShowMine] = useState(true);
   const [sortField, setSortField] = useState<SortField>("mrr");
+  const [snoozeVersion, setSnoozeVersion] = useState(0);
 
   async function fetchAttention(refresh = false) {
     setIsLoading(true);
@@ -72,8 +74,11 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
     );
   }
 
+  // snoozeVersion is read here to make the computed values reactive when snooze state changes
+  void snoozeVersion;
+
   const shouldFilter = showMine && currentOwnerId;
-  const filteredGroups = shouldFilter
+  const ownerFilteredGroups = shouldFilter
     ? data.groups
         .map((g) => ({
           ...g,
@@ -82,8 +87,14 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
         .filter((g) => g.companies.length > 0)
     : data.groups;
 
-  const totalCompanies = filteredGroups.reduce((sum, g) => sum + g.companies.length, 0);
-  const signalCounts = filteredGroups.map((g) => ({ label: g.label, count: g.companies.length, signal: g.signal }));
+  // Compute active (non-snoozed) counts for summary tiles
+  const filteredGroups = ownerFilteredGroups.map((g) => ({
+    ...g,
+    activeCount: g.companies.filter((c) => !isCompanySnoozed(c.id, g.signal)).length,
+  }));
+
+  const totalCompanies = filteredGroups.reduce((sum, g) => sum + g.activeCount, 0);
+  const signalCounts = filteredGroups.map((g) => ({ label: g.label, count: g.activeCount, signal: g.signal }));
 
   return (
     <div>
@@ -173,18 +184,19 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
         })}
       </div>
 
-      {filteredGroups.length === 0 ? (
+      {ownerFilteredGroups.length === 0 ? (
         <div className="py-8 text-center">
           <p className="text-[var(--moss)] text-lg font-medium">All clear</p>
           <p className="text-[var(--green-100)] text-sm mt-1">No accounts need your immediate attention.</p>
         </div>
       ) : (
-        filteredGroups.map((group) => (
+        ownerFilteredGroups.map((group) => (
           <AttentionGroupComponent
             key={group.signal}
             group={group}
             onSelectCompany={onSelectCompany}
             sortField={sortField}
+            onSnoozeChange={() => setSnoozeVersion((v) => v + 1)}
           />
         ))
       )}

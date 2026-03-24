@@ -7,73 +7,55 @@ function formatRelativeDate(date: Date): string {
   const days = Math.floor((Date.now() - date.getTime()) / 86400000);
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
-  if (days < 30) return `${days} days ago`;
-  if (days < 365) return `${Math.floor(days / 30)} months ago`;
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
   return date.toISOString().split("T")[0];
 }
 
 function renderPayStatus(company: Record<string, string>, deal: Record<string, string> | null) {
+  if (company.understory_pay_unwilling === "true") {
+    return (
+      <span className="text-xs font-medium text-[var(--rust)]">
+        Unwilling{company.understory_pay_unwilling_reason ? ` - ${company.understory_pay_unwilling_reason}` : ""}
+      </span>
+    );
+  }
+  if (company.understory_pay_ineligible === "true") {
+    return (
+      <span className="text-xs font-medium text-orange-600">
+        Ineligible{company.understory_pay_ineligible_reason ? ` - ${company.understory_pay_ineligible_reason}` : ""}
+      </span>
+    );
+  }
+
   const stages = [
     { label: "Not Started", active: false },
     { label: "Onboarding", active: company.understory_has_started_understory_pay_onboarding === "true" },
     { label: "Verification", active: !!company.understory_pay_verification_status },
     { label: "Live", active: company.understory_pay_live === "true" },
   ];
-
-  if (company.understory_pay_unwilling === "true") {
-    return (
-      <div>
-        <div className="text-sm font-medium text-[var(--rust)]">Unwilling</div>
-        {company.understory_pay_unwilling_reason && (
-          <div className="text-xs text-[var(--green-100)] mt-1">Reason: {company.understory_pay_unwilling_reason}</div>
-        )}
-      </div>
-    );
-  }
-
-  if (company.understory_pay_ineligible === "true") {
-    return (
-      <div>
-        <div className="text-sm font-medium text-orange-600">Ineligible</div>
-        {company.understory_pay_ineligible_reason && (
-          <div className="text-xs text-[var(--green-100)] mt-1">Reason: {company.understory_pay_ineligible_reason}</div>
-        )}
-      </div>
-    );
-  }
-
   let currentStageIndex = 0;
   for (let i = stages.length - 1; i >= 0; i--) {
     if (stages[i].active) { currentStageIndex = i; break; }
   }
 
-  const shareOfTx = deal?.share_of_transactions_via_understory_pay;
-
   return (
-    <div>
-      <div className="flex items-center gap-1 mb-2">
-        {stages.map((stage, i) => (
-          <div key={stage.label} className="flex items-center gap-1">
-            <div className={`w-2 h-2 rounded-full ${i <= currentStageIndex ? "bg-[var(--moss)]" : "bg-[#EDEDEA]"}`} />
-            <span className={`text-xs ${i <= currentStageIndex ? "text-[var(--moss)] font-medium" : "text-[var(--green-100)]"}`}>
-              {stage.label}
-            </span>
-            {i < stages.length - 1 && <div className={`w-4 h-px ${i < currentStageIndex ? "bg-[var(--moss)]" : "bg-[#EDEDEA]"}`} />}
-          </div>
-        ))}
-      </div>
-      {company.understory_pay_live === "true" && company.understory_pay_live_date && (
-        <div className="text-xs text-[var(--green-100)]">Live since {new Date(company.understory_pay_live_date).toLocaleDateString("sv-SE")}</div>
-      )}
-      {shareOfTx && (
-        <div className="text-xs text-[var(--green-100)]">Share of transactions via Pay: {Math.round(parseFloat(shareOfTx) * 100)}%</div>
-      )}
+    <div className="flex items-center gap-1">
+      {stages.map((stage, i) => (
+        <div key={stage.label} className="flex items-center gap-1">
+          <div className={`w-1.5 h-1.5 rounded-full ${i <= currentStageIndex ? "bg-[var(--moss)]" : "bg-[#EDEDEA]"}`} />
+          <span className={`text-[10px] ${i <= currentStageIndex ? "text-[var(--moss)] font-medium" : "text-[var(--green-100)]"}`}>
+            {stage.label}
+          </span>
+          {i < stages.length - 1 && <div className={`w-3 h-px ${i < currentStageIndex ? "bg-[var(--moss)]" : "bg-[#EDEDEA]"}`} />}
+        </div>
+      ))}
     </div>
   );
 }
 
 const HEALTH_COMPONENTS = [
-  { key: "understory_health_score_actual_acv", label: "Business Volume" },
+  { key: "understory_health_score_actual_acv", label: "Volume" },
   { key: "understory_health_score_customer_storefront_visits", label: "Storefront" },
   { key: "understory_health_score_customer_widget_visits", label: "Widget" },
   { key: "understory_health_score_features_enabled", label: "Features" },
@@ -103,7 +85,6 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
     if (!raw) return null;
     if (format === "owner") return owners[raw] || raw;
     if (format === "badge" && property === "dealstage") return stages[raw] || raw;
-    // Convert deal currency values to EUR (company values are already EUR)
     if (format === "currency" && source === deal && currencyCode !== "EUR") {
       const num = parseFloat(raw);
       if (!isNaN(num)) {
@@ -114,42 +95,82 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
     return raw;
   }
 
+  // Volume trend growth calc
+  const m3 = parseFloat(company.understory_booking_volume_3m || "0");
+  const m6 = parseFloat(company.understory_booking_volume_6m || "0");
+  const previous3m = m6 > 0 && m3 > 0 ? m6 - m3 : 0;
+  const growthPct = previous3m > 0 ? Math.round(((m3 - previous3m) / previous3m) * 100) : null;
+
   return (
     <div>
       <RecapCard recap={recap} companyId={companyId} />
 
-      {/* Health Score Breakdown */}
-      {company.health_score && (
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 mb-4">
-          <h3 className="font-semibold text-[var(--moss)] mb-3">Health Score Breakdown</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {HEALTH_COMPONENTS.map(({ key, label }) => {
-              const val = parseFloat(company[key] || "0");
-              const pct = Math.round(val * 100);
-              const color = pct >= 70 ? "#065F46" : pct >= 40 ? "#92400E" : "#991B1B";
-              const barColor = pct >= 70 ? "#6EE7B7" : pct >= 40 ? "#FCD34D" : "#FCA5A5";
-              return (
-                <div key={key} className="text-center">
-                  <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-1">{label}</div>
-                  <div className="text-sm font-bold" style={{ color }}>{pct}%</div>
-                  <div className="w-full h-1.5 rounded-full mt-1" style={{ backgroundColor: "#EDEDEA" }}>
-                    <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: barColor }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Combined insights row: Health + Engagement + Pay + Volume */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
 
-      {/* Platform Engagement */}
-      <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 mb-4">
-        <h3 className="font-semibold text-[var(--moss)] mb-3">Platform Engagement</h3>
-        <div className="grid grid-cols-3 gap-4">
+        {/* Health Score Breakdown - compact */}
+        {company.health_score && (
+          <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
+            <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Health Breakdown</div>
+            <div className="grid grid-cols-4 gap-2">
+              {HEALTH_COMPONENTS.map(({ key, label }) => {
+                const pct = Math.round(parseFloat(company[key] || "0") * 100);
+                const color = pct >= 70 ? "#065F46" : pct >= 40 ? "#92400E" : "#991B1B";
+                const barColor = pct >= 70 ? "#6EE7B7" : pct >= 40 ? "#FCD34D" : "#FCA5A5";
+                return (
+                  <div key={key} className="text-center">
+                    <div className="text-[9px] text-[var(--green-100)] truncate">{label}</div>
+                    <div className="text-xs font-bold" style={{ color }}>{pct}%</div>
+                    <div className="w-full h-1 rounded-full mt-0.5" style={{ backgroundColor: "#EDEDEA" }}>
+                      <div className="h-1 rounded-full" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Booking Volume Trend - compact */}
+        {company.understory_booking_volume_12m && (
+          <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] text-[var(--green-100)] uppercase tracking-wide">Volume Trend</span>
+              {growthPct !== null && (
+                <span className={`text-[10px] font-medium ${growthPct > 0 ? "text-[#065F46]" : "text-[var(--rust)]"}`}>
+                  {growthPct > 0 ? "↑" : "↓"} {Math.abs(growthPct)}% vs prev 3mo
+                </span>
+              )}
+            </div>
+            <div className="flex gap-3">
+              {[
+                { key: "understory_booking_volume_1m", label: "1M" },
+                { key: "understory_booking_volume_3m", label: "3M" },
+                { key: "understory_booking_volume_6m", label: "6M" },
+                { key: "understory_booking_volume_12m", label: "12M" },
+              ].map(({ key, label }) => {
+                const val = parseFloat(company[key] || "0");
+                return (
+                  <div key={key} className="text-center flex-1">
+                    <div className="text-[9px] text-[var(--green-100)]">{label}</div>
+                    <div className="text-xs font-bold text-[var(--moss)]">
+                      {val > 0 ? `€${Math.round(val).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}` : "-"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Platform Engagement + Pay Status - single compact row */}
+      <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 mb-3">
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-2">
           {[
-            { key: "understory_backoffice_latest_visit", label: "Last Backoffice Login" },
-            { key: "understory_storefront_latest_visit", label: "Last Storefront Visit" },
-            { key: "understory_widget_latest_visit", label: "Last Widget Visit" },
+            { key: "understory_backoffice_latest_visit", label: "Backoffice" },
+            { key: "understory_storefront_latest_visit", label: "Storefront" },
+            { key: "understory_widget_latest_visit", label: "Widget" },
           ].map(({ key, label }) => {
             const value = company[key];
             const date = value ? new Date(value) : null;
@@ -157,67 +178,25 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
             const formatted = date && !isNaN(date.getTime()) ? formatRelativeDate(date) : "No data";
             return (
               <div key={key}>
-                <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-1">{label}</div>
-                <div className={`text-sm font-medium ${isOld ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>
-                  {formatted}
-                </div>
+                <span className="text-[9px] text-[var(--green-100)] uppercase tracking-wide">{label}: </span>
+                <span className={`text-xs font-medium ${isOld ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>{formatted}</span>
               </div>
             );
           })}
-        </div>
-      </div>
-
-      {/* Understory Pay Status */}
-      <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 mb-4">
-        <h3 className="font-semibold text-[var(--moss)] mb-3">Understory Pay</h3>
-        {renderPayStatus(company, deal)}
-      </div>
-
-      {/* Booking Volume Trend */}
-      {company.understory_booking_volume_12m && (
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 mb-4">
-          <h3 className="font-semibold text-[var(--moss)] mb-3">Booking Volume Trend</h3>
-          <div className="flex items-end gap-4">
-            {[
-              { key: "understory_booking_volume_1m", label: "1M" },
-              { key: "understory_booking_volume_3m", label: "3M" },
-              { key: "understory_booking_volume_6m", label: "6M" },
-              { key: "understory_booking_volume_12m", label: "12M" },
-            ].map(({ key, label }) => {
-              const val = parseFloat(company[key] || "0");
-              const formatted = val > 0 ? `€${Math.round(val).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}` : "-";
-              return (
-                <div key={key} className="text-center flex-1">
-                  <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-1">{label}</div>
-                  <div className="text-sm font-bold text-[var(--moss)]">{formatted}</div>
-                </div>
-              );
-            })}
+          <div className="border-l border-[#EDEDEA] pl-4">
+            <span className="text-[9px] text-[var(--green-100)] uppercase tracking-wide">Pay: </span>
+            {renderPayStatus(company, deal)}
           </div>
-          {(() => {
-            const m3 = parseFloat(company.understory_booking_volume_3m || "0");
-            const m6 = parseFloat(company.understory_booking_volume_6m || "0");
-            if (m6 === 0 || m3 === 0) return null;
-            // Compare 3m pace vs previous 3m pace
-            const previous3m = m6 - m3;
-            if (previous3m <= 0) return null;
-            const growthPct = Math.round(((m3 - previous3m) / previous3m) * 100);
-            const isGrowing = growthPct > 0;
-            return (
-              <div className={`text-xs mt-2 ${isGrowing ? "text-[#065F46]" : "text-[var(--rust)]"}`}>
-                {isGrowing ? "↑" : "↓"} {Math.abs(growthPct)}% vs previous 3 months
-              </div>
-            );
-          })()}
         </div>
-      )}
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
-          <h3 className="font-semibold text-[var(--moss)] mb-3">Company Info</h3>
+      {/* Company Info + Deal Info */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
+          <h3 className="font-semibold text-[var(--moss)] text-sm mb-2">Company Info</h3>
           <div className="space-y-0">
             {dashboardConfig.tabs.overview.companyInfo.map((field) => (
-              <div key={field.property} className="flex justify-between text-sm py-2 border-b border-[#F0EEE8] last:border-b-0">
+              <div key={field.property} className="flex justify-between text-xs py-1.5 border-b border-[#F0EEE8] last:border-b-0">
                 <span className="text-[var(--green-100)]">{field.label}</span>
                 <FieldRenderer
                   value={resolveValue(field.property, company, field.format)}
@@ -229,24 +208,24 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
           </div>
         </div>
 
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="font-semibold text-[var(--moss)]">Lifecycle Deal</h3>
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-semibold text-[var(--moss)] text-sm">Lifecycle Deal</h3>
             {deal?.hs_object_id && (
               <a
                 href={`https://app.hubspot.com/contacts/${process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID}/deal/${deal.hs_object_id}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200"
+                className="text-[10px] text-[var(--moss)] underline hover:text-[var(--green-100)]"
               >
-                Open deal in HubSpot
+                Open in HubSpot
               </a>
             )}
           </div>
           {deal ? (
             <div className="space-y-0">
               {dashboardConfig.tabs.overview.dealInfo.map((field) => (
-                <div key={field.property} className="flex justify-between text-sm py-2 border-b border-[#F0EEE8] last:border-b-0">
+                <div key={field.property} className="flex justify-between text-xs py-1.5 border-b border-[#F0EEE8] last:border-b-0">
                   <span className="text-[var(--green-100)]">{field.label}</span>
                   <FieldRenderer
                     value={resolveValue(field.property, deal, field.format)}
@@ -257,7 +236,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
               ))}
             </div>
           ) : (
-            <p className="text-[var(--green-100)] text-sm">No lifecycle deal found</p>
+            <p className="text-[var(--green-100)] text-xs">No lifecycle deal found</p>
           )}
         </div>
       </div>

@@ -280,15 +280,15 @@ export function AttentionList({ onSelectCompany }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
+      <div className="flex gap-3 mb-4">
+        <div className="flex-1 min-w-0 border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
           <div className="text-[#999] text-xs uppercase tracking-wide mb-1">Total</div>
           <div className="text-lg font-bold text-[var(--moss)]">{totalCompanies}</div>
         </div>
         {signalCounts.map((s) => {
           const isUrgent = s.signal === "overdue_invoices" || s.signal === "overdue_tasks";
           return (
-            <div key={s.signal} className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
+            <div key={s.signal} className="flex-1 min-w-0 border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
               <div className="text-[#999] text-xs uppercase tracking-wide mb-1">{s.label}</div>
               <div className={`text-lg font-bold ${isUrgent && s.count > 0 ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>
                 {s.count}

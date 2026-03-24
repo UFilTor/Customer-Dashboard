@@ -83,7 +83,7 @@ function formatRevenue(revenueEur: number): string {
   return `\u20ac${formatted}`;
 }
 
-export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
+export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; open: AttentionCompany[] }> {
   try {
     const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
     const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
@@ -93,17 +93,18 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
         filterGroups: pipelineIds.map((pid) => ({
           filters: [
             { propertyName: "pipeline", operator: "EQ", value: pid },
-            { propertyName: "unpaid_invoice", operator: "EQ", value: "true" },
+            { propertyName: "number_of_open_invoices", operator: "GT", value: "0" },
           ],
         })),
-        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "outstanding_amount"],
+        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "outstanding_amount", "invoice_due_date", "number_of_open_invoices"],
         limit: 100,
       }),
     });
-    if (!res.ok) return [];
+    const emptyResult = { overdue: [] as AttentionCompany[], open: [] as AttentionCompany[] };
+    if (!res.ok) return emptyResult;
     const data = await res.json();
 
-    interface DealInfo { id: string; dealname: string; mrr: string; currency: string; bookingFee: string; outstandingAmount: string }
+    interface DealInfo { id: string; dealname: string; mrr: string; currency: string; bookingFee: string; outstandingAmount: string; invoiceDueDate: string; openInvoices: number }
     const deals: DealInfo[] = data.results?.map(
       (d: { id: string; properties: Record<string, string> }) => ({
         id: d.id,
@@ -112,10 +113,12 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
         currency: d.properties.deal_currency_code || "EUR",
         bookingFee: d.properties.booking_fee || "",
         outstandingAmount: d.properties.outstanding_amount || "",
+        invoiceDueDate: d.properties.invoice_due_date || "",
+        openInvoices: parseInt(d.properties.number_of_open_invoices || "0") || 0,
       })
     ) || [];
 
-    if (deals.length === 0) return [];
+    if (deals.length === 0) return emptyResult;
 
     const companyMap = new Map<string, AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string }>();
 
@@ -142,12 +145,17 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
       assocResults.push(...batchResults);
     }
 
+    const today = new Date().toISOString().split("T")[0];
     for (const result of assocResults) {
       if (!result || companyMap.has(result.companyId)) continue;
       const { companyId, deal } = result;
       const outstandingNum = parseFloat(deal.outstandingAmount) || 0;
       const rate = TO_EUR[(deal.currency || "EUR").toUpperCase()] ?? 1;
       const outstandingEur = Math.round(outstandingNum * rate);
+      const isOverdue = deal.invoiceDueDate ? deal.invoiceDueDate < today : false;
+      const daysOverdue = isOverdue && deal.invoiceDueDate
+        ? Math.floor((Date.now() - new Date(deal.invoiceDueDate).getTime()) / 86400000)
+        : undefined;
 
       companyMap.set(companyId, {
         id: companyId,
@@ -155,13 +163,15 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
         detail: deal.dealname,
         mrr: outstandingEur > 0 ? formatRevenue(outstandingEur) : "-",
         currency: "EUR",
+        daysOverdue,
         _dealMrr: deal.mrr,
         _dealCurrency: deal.currency,
         _dealBookingFee: deal.bookingFee,
-      } as AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string });
+        _isOverdue: isOverdue,
+      } as AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string; _isOverdue: boolean });
     }
 
-    if (companyMap.size === 0) return [];
+    if (companyMap.size === 0) return emptyResult;
 
     const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_12m", "understory_company_country"]);
     for (const [id, props] of Object.entries(companies)) {
@@ -185,9 +195,13 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
       }
     }
 
-    return Array.from(companyMap.values()).filter((c) => c.name);
+    const all = Array.from(companyMap.values()).filter((c) => c.name) as (AttentionCompany & { _isOverdue?: boolean })[];
+    return {
+      overdue: all.filter((c) => c._isOverdue === true),
+      open: all.filter((c) => c._isOverdue !== true),
+    };
   } catch {
-    return [];
+    return { overdue: [], open: [] };
   }
 }
 

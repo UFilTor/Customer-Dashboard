@@ -15,7 +15,7 @@ interface Props {
   onSnoozeChange?: () => void;
 }
 
-const URGENT_SIGNALS: AttentionSignal[] = ["overdue_invoices", "overdue_tasks"];
+const URGENT_SIGNALS: AttentionSignal[] = ["overdue_invoices", "open_invoices", "overdue_tasks"];
 
 function formatRelativeDate(iso: string): string {
   const date = new Date(iso);
@@ -77,8 +77,13 @@ function CompanyRow({
           )}
         </div>
         <div className="flex items-center gap-2 mt-1">
-          {signal === "overdue_invoices" && (
-            <span className="text-xs text-[var(--green-100)]">{company.detail}</span>
+          {(signal === "overdue_invoices" || signal === "open_invoices") && (
+            <>
+              <span className="text-xs text-[var(--green-100)]">{company.detail}</span>
+              {company.daysOverdue !== undefined && (
+                <span className="text-xs font-medium text-[var(--rust)]">{company.daysOverdue}d overdue</span>
+              )}
+            </>
           )}
           {signal === "overdue_tasks" && (
             <>
@@ -149,7 +154,7 @@ function CompanyRow({
 function getEffectiveSortField(signal: AttentionSignal, globalSort: SortField): SortField {
   if (globalSort === "mrr") return "mrr";
   // "urgency" sort maps to the relevant time-based field per group
-  if (signal === "overdue_invoices" || signal === "overdue_tasks") return "daysOverdue";
+  if (signal === "overdue_invoices" || signal === "open_invoices" || signal === "overdue_tasks") return "daysOverdue";
   if (signal === "gone_quiet") return "daysSilent";
   // health_score has no time field, always sort by MRR
   return "mrr";

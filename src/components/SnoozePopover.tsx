@@ -53,7 +53,7 @@ export default function SnoozePopover({ isOpen, onSnooze, onClose }: Props) {
   return (
     <div
       ref={popoverRef}
-      className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-52 z-50"
+      className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-52 z-50 animate-fadeIn"
     >
       <div className="text-xs font-semibold text-[var(--moss)] mb-2">
         Snooze this company

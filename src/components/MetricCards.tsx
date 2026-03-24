@@ -14,7 +14,7 @@ export function MetricCards({ company, deal, previousCategory }: Props) {
   const currencyCode = deal?.deal_currency_code || "EUR";
 
   return (
-    <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}>
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
       {dashboardConfig.metricCards.map((card) => {
         const source = card.source === "deal" ? deal : company;
         const value = source?.[card.property] ?? null;
@@ -44,11 +44,11 @@ export function MetricCards({ company, deal, previousCategory }: Props) {
         const isHealthScore = card.property === "Health Score Category";
 
         return (
-          <div key={card.property} className={`${bgClass} rounded-[var(--border-radius)] p-4`}>
+          <div key={card.property} className={`${bgClass} rounded-[var(--border-radius)] p-3`}>
             <div className={`${labelClass} text-xs uppercase tracking-wide mb-1`}>
               {card.label}
             </div>
-            <div className={`text-xl font-bold ${textClass}`}>{formatted}</div>
+            <div className={`text-lg font-bold ${textClass}`}>{formatted}</div>
             {isHealthScore && formatted && formatted !== "-" && previousCategory && previousCategory !== formatted && (
               <div className="mt-1.5 text-xs text-[var(--green-100)]">
                 {previousCategory && (

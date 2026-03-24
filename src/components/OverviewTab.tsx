@@ -26,7 +26,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
   return (
     <div>
       <RecapCard recap={recap} companyId={companyId} />
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
           <h3 className="font-semibold text-[var(--moss)] mb-3">Company Info</h3>
           <div className="space-y-0">

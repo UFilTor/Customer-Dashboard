@@ -144,7 +144,7 @@ export function SearchBar({ onSelect, ref }: Props) {
   const showDropdown = showRecents || isOpen;
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-md">
+    <div ref={containerRef} className="relative w-full max-w-sm lg:max-w-md">
       <div className="relative">
         <input
           ref={ref}

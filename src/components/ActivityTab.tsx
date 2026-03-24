@@ -76,7 +76,7 @@ function ActivityCard({ engagement, owners }: { engagement: Engagement; owners: 
           )}
 
           {expanded && hasBody && (
-            <div className="mt-2 pt-2 border-t border-[var(--beige-gray)]">
+            <div className="mt-2 pt-2 border-t border-[var(--beige-gray)] animate-fadeIn">
               <p className="text-sm text-[var(--dark-moss)] leading-relaxed whitespace-pre-wrap">
                 {bodyText}
               </p>
@@ -104,9 +104,12 @@ export function ActivityTab({ engagements, owners }: Props) {
         Showing {filteredEngagements.length} {filteredEngagements.length === 1 ? "activity" : "activities"}
       </p>
       {filteredEngagements.length === 0 ? (
-        <p className="text-center text-[var(--green-100)] text-sm py-8">
-          No activities match the current filters
-        </p>
+        <div className="text-center py-8 flex flex-col items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2 text-[var(--green-100)] opacity-60">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+          </svg>
+          <p className="text-[var(--green-100)] text-sm">No activities match the current filters</p>
+        </div>
       ) : (
         <div>
           {filteredEngagements.map((engagement, index) => (

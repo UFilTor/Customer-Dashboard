@@ -323,7 +323,7 @@ export default function Preview() {
           <img src="/understory-logo.png" alt="Understory" className="h-8 w-8 rounded" />
           <span className="text-white font-bold text-lg">Customer Dashboard</span>
         </button>
-        <div className="justify-self-center w-full max-w-md">
+        <div className="justify-self-center w-full max-w-sm lg:max-w-md">
           <SearchBar
             ref={searchInputRef}
             onSelect={(c) => handleLoadMock(c)}
@@ -333,7 +333,7 @@ export default function Preview() {
       </nav>
 
       {/* Content */}
-      <main className="max-w-6xl mx-auto px-6 py-6">
+      <main className="max-w-7xl mx-auto px-6 py-4">
         {!showData && !showLoading && (
           <div>
             <div className="flex items-center justify-between mb-4">
@@ -383,7 +383,7 @@ export default function Preview() {
               <div className="h-8 w-64 bg-[#e5e7eb] rounded mb-2" />
               <div className="h-4 w-96 bg-[#e5e7eb] rounded" />
             </div>
-            <div className="grid grid-cols-5 gap-3 mb-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
               <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
@@ -391,7 +391,7 @@ export default function Preview() {
               <SkeletonCard />
             </div>
             <SkeletonRecap />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <SkeletonBlock />
               <SkeletonBlock />
             </div>

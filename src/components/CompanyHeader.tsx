@@ -25,7 +25,7 @@ export function CompanyHeader({ companyId, company, deal, owners, onBack, showBa
     : null;
 
   return (
-    <div className="flex justify-between items-start mb-4">
+    <div className="flex justify-between items-start mb-3">
       <div className="flex items-start gap-3">
         {showBack && (
           <button

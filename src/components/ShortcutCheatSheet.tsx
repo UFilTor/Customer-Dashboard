@@ -25,12 +25,12 @@ export default function ShortcutCheatSheet({ isOpen, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center animate-fadeIn"
       onClick={onClose}
     >
       <div className="absolute inset-0 bg-black/30" />
       <div
-        className="relative bg-white rounded-2xl shadow-lg p-6 w-80"
+        className="relative bg-white rounded-2xl shadow-lg p-6 w-80 animate-modalIn"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="font-semibold text-[var(--moss)] mb-4">

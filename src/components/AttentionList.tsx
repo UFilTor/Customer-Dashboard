@@ -67,7 +67,11 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
 
   if (!data || data.groups.length === 0) {
     return (
-      <div className="py-12 text-center">
+      <div className="py-12 text-center flex flex-col items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--moss)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-3 opacity-60">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9 12l2 2 4-4" />
+        </svg>
         <p className="text-[var(--moss)] text-lg font-medium">All clear</p>
         <p className="text-[var(--green-100)] text-sm mt-1">No customers need immediate attention.</p>
       </div>
@@ -168,17 +172,17 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
         </div>
       </div>
 
-      <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: `repeat(${signalCounts.length + 1}, minmax(0, 1fr))` }}>
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
           <div className="text-[#999] text-xs uppercase tracking-wide mb-1">Total</div>
-          <div className="text-xl font-bold text-[var(--moss)]">{totalCompanies}</div>
+          <div className="text-lg font-bold text-[var(--moss)]">{totalCompanies}</div>
         </div>
         {signalCounts.map((s) => {
           const isUrgent = s.signal === "overdue_invoices" || s.signal === "overdue_tasks";
           return (
-            <div key={s.signal} className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
+            <div key={s.signal} className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
               <div className="text-[#999] text-xs uppercase tracking-wide mb-1">{s.label}</div>
-              <div className={`text-xl font-bold ${isUrgent && s.count > 0 ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>
+              <div className={`text-lg font-bold ${isUrgent && s.count > 0 ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>
                 {s.count}
               </div>
             </div>
@@ -187,20 +191,26 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
       </div>
 
       {ownerFilteredGroups.length === 0 ? (
-        <div className="py-8 text-center">
+        <div className="py-8 text-center flex flex-col items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--moss)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-3 opacity-60">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9 12l2 2 4-4" />
+          </svg>
           <p className="text-[var(--moss)] text-lg font-medium">All clear</p>
           <p className="text-[var(--green-100)] text-sm mt-1">No accounts need your immediate attention.</p>
         </div>
       ) : (
-        ownerFilteredGroups.map((group) => (
-          <AttentionGroupComponent
-            key={group.signal}
-            group={group}
-            onSelectCompany={onSelectCompany}
-            sortField={sortField}
-            onSnoozeChange={() => setSnoozeVersion((v) => v + 1)}
-          />
-        ))
+        <div className="animate-fadeIn">
+          {ownerFilteredGroups.map((group) => (
+            <AttentionGroupComponent
+              key={group.signal}
+              group={group}
+              onSelectCompany={onSelectCompany}
+              sortField={sortField}
+              onSnoozeChange={() => setSnoozeVersion((v) => v + 1)}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

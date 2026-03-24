@@ -212,14 +212,14 @@ export default function Dashboard() {
             <img src="/understory-logo.png" alt="Understory" className="h-8 w-8 rounded" />
             <span className="text-white font-bold text-lg">Customer Dashboard</span>
           </button>
-          <div className="justify-self-center w-full max-w-md">
+          <div className="justify-self-center w-full max-w-sm lg:max-w-md">
             <SearchBar ref={searchInputRef} onSelect={handleSearchSelect} />
           </div>
           <div />
         </nav>
 
         {/* Content */}
-        <main className="max-w-6xl mx-auto px-6 py-6">
+        <main className="max-w-7xl mx-auto px-6 py-4">
           {error && (
             <div className="bg-[var(--rust)]/10 border border-[var(--rust)]/20 rounded-[var(--border-radius)] p-4 mb-4 flex justify-between items-center">
               <span className="text-[var(--rust)] text-sm">{error}</span>
@@ -233,7 +233,9 @@ export default function Dashboard() {
           )}
 
           {!companyData && !isLoading && (
-            <AttentionList onSelectCompany={handleAttentionSelect} currentOwnerId={currentOwnerId} />
+            <div className="animate-fadeIn">
+              <AttentionList onSelectCompany={handleAttentionSelect} currentOwnerId={currentOwnerId} />
+            </div>
           )}
 
           {isLoading && (
@@ -242,7 +244,7 @@ export default function Dashboard() {
                 <div className="h-8 w-64 bg-[#e5e7eb] rounded mb-2" />
                 <div className="h-4 w-96 bg-[#e5e7eb] rounded" />
               </div>
-              <div className="grid grid-cols-5 gap-3 mb-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
                 <SkeletonCard />
                 <SkeletonCard />
                 <SkeletonCard />
@@ -250,7 +252,7 @@ export default function Dashboard() {
                 <SkeletonCard />
               </div>
               <SkeletonRecap />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <SkeletonBlock />
                 <SkeletonBlock />
               </div>
@@ -258,7 +260,7 @@ export default function Dashboard() {
           )}
 
           {companyData && !isLoading && (
-            <>
+            <div className="animate-fadeIn">
               <CompanyHeader
                 companyId={selectedCompanyId!}
                 company={companyData.company}
@@ -310,7 +312,7 @@ export default function Dashboard() {
                   },
                 ]}
               />
-            </>
+            </div>
           )}
         </main>
       </div>

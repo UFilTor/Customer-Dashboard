@@ -117,36 +117,43 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
 
     if (deals.length === 0) return [];
 
-    const companyMap = new Map<string, AttentionCompany>();
+    const companyMap = new Map<string, AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string }>();
 
-    for (const deal of deals) {
-      try {
-        const assocRes = await fetch(
-          `${HUBSPOT_API}/crm/v3/objects/deals/${deal.id}/associations/companies`,
-          { headers: hubspotHeaders() }
-        );
-        if (!assocRes.ok) continue;
-        const assocData = await assocRes.json();
-        const companyId = assocData.results?.[0]?.id;
-        if (!companyId || companyMap.has(companyId)) continue;
-        // For overdue invoices, show the outstanding amount converted to EUR
-        const outstandingNum = parseFloat(deal.outstandingAmount) || 0;
-        const rate = TO_EUR[(deal.currency || "EUR").toUpperCase()] ?? 1;
-        const outstandingEur = Math.round(outstandingNum * rate);
+    // Fetch all deal->company associations in parallel
+    const assocResults = await Promise.all(
+      deals.map(async (deal) => {
+        try {
+          const assocRes = await fetch(
+            `${HUBSPOT_API}/crm/v3/objects/deals/${deal.id}/associations/companies`,
+            { headers: hubspotHeaders() }
+          );
+          if (!assocRes.ok) return null;
+          const assocData = await assocRes.json();
+          const companyId = assocData.results?.[0]?.id;
+          return companyId ? { companyId, deal } : null;
+        } catch {
+          return null;
+        }
+      })
+    );
 
-        companyMap.set(companyId, {
-          id: companyId,
-          name: "",
-          detail: deal.dealname,
-          mrr: outstandingEur > 0 ? formatRevenue(outstandingEur) : "-",
-          currency: "EUR",
-          _dealMrr: deal.mrr,
-          _dealCurrency: deal.currency,
-          _dealBookingFee: deal.bookingFee,
-        } as AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string });
-      } catch {
-        continue;
-      }
+    for (const result of assocResults) {
+      if (!result || companyMap.has(result.companyId)) continue;
+      const { companyId, deal } = result;
+      const outstandingNum = parseFloat(deal.outstandingAmount) || 0;
+      const rate = TO_EUR[(deal.currency || "EUR").toUpperCase()] ?? 1;
+      const outstandingEur = Math.round(outstandingNum * rate);
+
+      companyMap.set(companyId, {
+        id: companyId,
+        name: "",
+        detail: deal.dealname,
+        mrr: outstandingEur > 0 ? formatRevenue(outstandingEur) : "-",
+        currency: "EUR",
+        _dealMrr: deal.mrr,
+        _dealCurrency: deal.currency,
+        _dealBookingFee: deal.bookingFee,
+      } as AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string });
     }
 
     if (companyMap.size === 0) return [];
@@ -219,29 +226,36 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
 
     const companyMap = new Map<string, AttentionCompany & { _daysOverdue: number }>();
 
-    for (const task of tasks) {
-      try {
-        const assocRes = await fetch(
-          `${HUBSPOT_API}/crm/v3/objects/tasks/${task.id}/associations/companies`,
-          { headers: hubspotHeaders() }
-        );
-        if (!assocRes.ok) continue;
-        const assocData = await assocRes.json();
-        const companyId = assocData.results?.[0]?.id;
-        if (!companyId) continue;
-
-        const existing = companyMap.get(companyId);
-        if (!existing || task.daysOverdue > existing._daysOverdue) {
-          companyMap.set(companyId, {
-            id: companyId,
-            name: "",
-            detail: task.subject,
-            daysOverdue: task.daysOverdue,
-            _daysOverdue: task.daysOverdue,
-          });
+    // Fetch all task->company associations in parallel
+    const taskAssocResults = await Promise.all(
+      tasks.map(async (task) => {
+        try {
+          const assocRes = await fetch(
+            `${HUBSPOT_API}/crm/v3/objects/tasks/${task.id}/associations/companies`,
+            { headers: hubspotHeaders() }
+          );
+          if (!assocRes.ok) return null;
+          const assocData = await assocRes.json();
+          const companyId = assocData.results?.[0]?.id;
+          return companyId ? { companyId, task } : null;
+        } catch {
+          return null;
         }
-      } catch {
-        continue;
+      })
+    );
+
+    for (const result of taskAssocResults) {
+      if (!result) continue;
+      const { companyId, task } = result;
+      const existing = companyMap.get(companyId);
+      if (!existing || task.daysOverdue > existing._daysOverdue) {
+        companyMap.set(companyId, {
+          id: companyId,
+          name: "",
+          detail: task.subject,
+          daysOverdue: task.daysOverdue,
+          _daysOverdue: task.daysOverdue,
+        });
       }
     }
 

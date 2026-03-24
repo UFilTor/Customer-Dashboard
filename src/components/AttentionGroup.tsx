@@ -183,7 +183,7 @@ export function AttentionGroup({ group, onSelectCompany, sortField = "mrr", onSn
   }
 
   return (
-    <div className="mb-6" data-attention-group={group.signal}>
+    <div className="mb-4" data-attention-group={group.signal}>
       <div className="flex items-center gap-2 mb-3">
         <h3 className="font-semibold text-[var(--moss)]">{group.label}</h3>
         <span

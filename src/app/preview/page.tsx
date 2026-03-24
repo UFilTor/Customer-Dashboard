@@ -364,21 +364,6 @@ export default function Preview() {
               </div>
             </div>
 
-            <div className="grid grid-cols-5 gap-3 mb-6">
-              <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
-                <div className="text-[var(--green-100)] text-xs uppercase tracking-wide mb-1">Total</div>
-                <div className="text-xl font-bold text-[var(--moss)]">{MOCK_ATTENTION.groups.reduce((s, g) => s + g.companies.length, 0)}</div>
-              </div>
-              {MOCK_ATTENTION.groups.map((g) => (
-                <div key={g.signal} className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
-                  <div className="text-[var(--green-100)] text-xs uppercase tracking-wide mb-1">{g.label}</div>
-                  <div className={`text-xl font-bold ${(g.signal === "overdue_invoices" || g.signal === "overdue_tasks") && g.companies.length > 0 ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>
-                    {g.companies.length}
-                  </div>
-                </div>
-              ))}
-            </div>
-
             {MOCK_ATTENTION.groups.map((group) => (
               <AttentionGroupComponent
                 key={group.signal}

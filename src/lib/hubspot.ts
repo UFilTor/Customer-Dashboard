@@ -139,12 +139,12 @@ const COMPANY_PROPERTIES = [
   "understory_booking_volume_all_time",
   "understory_booking_volume_12m",
   "understory_total_platform_fee_cents_received",
-  "health_score",
+  "health_score", "createdate",
 ];
 
 const DEAL_PROPERTIES = [
   "dealname", "dealstage", "confirmed__contract_mrr",
-  "booking_fee", "understory_pay_status__customer", "unpaid_invoice",
+  "booking_fee", "confirmed_booking_fee", "understory_pay_status__customer", "unpaid_invoice",
   "pipeline", "deal_currency_code", "Storefront link",
 ];
 

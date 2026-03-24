@@ -169,7 +169,7 @@ export function ActivityTab({ engagements, owners }: Props) {
 }
 
 function formatTimestamp(ts: string): string {
-  const date = new Date(parseInt(ts) || ts);
+  const date = new Date(ts);
   if (isNaN(date.getTime())) return ts;
   return date.toLocaleDateString("sv-SE");
 }

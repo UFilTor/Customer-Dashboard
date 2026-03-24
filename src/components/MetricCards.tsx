@@ -6,10 +6,22 @@ const TO_EUR: Record<string, number> = {
   EUR: 1, USD: 0.92, GBP: 1.16, SEK: 0.087, NOK: 0.086, DKK: 0.134,
 };
 
-function computeRevenuePlatformFee(company: Record<string, string>): string {
-  const cents = parseFloat(company.understory_total_platform_fee_cents_received || "0") || 0;
-  if (cents === 0) return "-";
-  const eur = Math.round(cents / 100);
+function computeRevenueLastYear(company: Record<string, string>, deal: Record<string, string> | null): string {
+  const volume = parseFloat(company.understory_booking_volume_12m || "0") || 0;
+  const fee = parseFloat(deal?.booking_fee || deal?.confirmed_booking_fee || "0") || 0;
+  const mrr = parseFloat(deal?.confirmed__contract_mrr || "0") || 0;
+  const currency = (deal?.deal_currency_code || "EUR").toUpperCase();
+  const rate = TO_EUR[currency] ?? 1;
+
+  // Calculate months as customer (max 12)
+  const createDate = company.createdate ? new Date(company.createdate).getTime() : 0;
+  const monthsAsCustomer = createDate > 0
+    ? Math.min(12, Math.floor((Date.now() - createDate) / (30.44 * 24 * 60 * 60 * 1000)))
+    : 12;
+
+  const revenueLocal = (volume * fee) + (mrr * monthsAsCustomer);
+  if (revenueLocal === 0) return "-";
+  const eur = Math.round(revenueLocal * rate);
   return `\u20ac${eur.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
 }
 
@@ -30,7 +42,7 @@ export function MetricCards({ company, deal, previousCategory }: Props) {
 
         let formatted: string;
         if (card.format === "revenue12m") {
-          formatted = computeRevenuePlatformFee(company);
+          formatted = computeRevenueLastYear(company, deal);
         } else if (card.format === "currency") {
           const currency = currencyCode.toUpperCase();
           const rate = TO_EUR[currency] ?? 1;

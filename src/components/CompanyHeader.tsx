@@ -1,8 +1,6 @@
 "use client";
 
 import { OwnerMap } from "@/lib/types";
-import HealthBadge from "./HealthBadge";
-
 interface Props {
   companyId: string;
   company: Record<string, string>;
@@ -10,10 +8,9 @@ interface Props {
   owners: OwnerMap;
   onBack?: () => void;
   showBack?: boolean;
-  previousCategory?: string;
 }
 
-export function CompanyHeader({ companyId, company, deal, owners, onBack, showBack, previousCategory }: Props) {
+export function CompanyHeader({ companyId, company, deal, owners, onBack, showBack }: Props) {
   const name = company.name || "Unknown Company";
   const domain = company.domain || "";
   const ownerName = owners[company.hubspot_owner_id] || "-";
@@ -40,15 +37,7 @@ export function CompanyHeader({ companyId, company, deal, owners, onBack, showBa
           </button>
         )}
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-[var(--moss)]">{name}</h1>
-            {company["Health Score Category"] && (
-              <HealthBadge
-                category={company["Health Score Category"]}
-                previousCategory={previousCategory}
-              />
-            )}
-          </div>
+          <h1 className="text-2xl font-bold text-[var(--moss)]">{name}</h1>
           <div className="flex items-center gap-2 mt-1 text-sm text-[var(--green-100)]">
             {domain && (
               <>

@@ -414,11 +414,11 @@ export default function Preview() {
               company={MOCK_DATA.company}
               deal={MOCK_DATA.deal}
               owners={MOCK_DATA.owners}
-              previousCategory="At Risk"
             />
             <MetricCards
               company={MOCK_DATA.company}
               deal={MOCK_DATA.deal}
+              previousCategory="At Risk"
             />
             <TabContainer
               tabs={[

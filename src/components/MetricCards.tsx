@@ -1,12 +1,14 @@
 import { dashboardConfig } from "@/config/hubspot-fields";
 import { formatValue } from "@/lib/format";
+import HealthBadge from "./HealthBadge";
 
 interface Props {
   company: Record<string, string>;
   deal: Record<string, string> | null;
+  previousCategory?: string;
 }
 
-export function MetricCards({ company, deal }: Props) {
+export function MetricCards({ company, deal, previousCategory }: Props) {
   const count = dashboardConfig.metricCards.length;
   const currencyCode = deal?.deal_currency_code || "EUR";
 
@@ -38,12 +40,19 @@ export function MetricCards({ company, deal }: Props) {
           }
         }
 
+        const isHealthScore = card.property === "Health Score Category";
+
         return (
           <div key={card.property} className={`${bgClass} rounded-[var(--border-radius)] p-4`}>
             <div className={`${labelClass} text-xs uppercase tracking-wide mb-1`}>
               {card.label}
             </div>
             <div className={`text-xl font-bold ${textClass}`}>{formatted}</div>
+            {isHealthScore && formatted && formatted !== "-" && previousCategory && (
+              <div className="mt-2">
+                <HealthBadge category={formatted} previousCategory={previousCategory} />
+              </div>
+            )}
           </div>
         );
       })}

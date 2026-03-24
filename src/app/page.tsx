@@ -266,11 +266,11 @@ export default function Dashboard() {
                 owners={companyData.owners}
                 showBack={navigationSource === "attention"}
                 onBack={handleBack}
-                previousCategory={attentionMetaRef.current?.previousCategory}
               />
               <MetricCards
                 company={companyData.company}
                 deal={companyData.deal}
+                previousCategory={attentionMetaRef.current?.previousCategory}
               />
               <TabContainer
                 tabs={[

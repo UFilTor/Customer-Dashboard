@@ -20,8 +20,10 @@ interface CompanyData extends CompanyDetail {
   stages: StageMap;
 }
 
-const now = Date.now();
-const daysAgo = (d: number) => String(now - d * 86400000);
+// Static timestamps to avoid SSR/client hydration mismatch
+// These represent relative days ago from 2026-03-24
+const daysAgo = (d: number) => String(new Date("2026-03-24T12:00:00Z").getTime() - d * 86400000);
+const daysAgoISO = (d: number) => new Date(new Date("2026-03-24T12:00:00Z").getTime() - d * 86400000).toISOString();
 
 const MOCK_DATA: CompanyData = {
   company: {
@@ -156,9 +158,9 @@ const MOCK_ATTENTION: AttentionResponse = {
       signal: "overdue_tasks",
       label: "Overdue Tasks",
       companies: [
-        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials", ownerId: "1", daysOverdue: 2, mrr: "SEK 3 800/mo", currency: "SEK", enteredGroupAt: new Date(Date.now() - 2 * 86400000).toISOString() },
-        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review", ownerId: "2", daysOverdue: 8, mrr: "SEK 2 200/mo", currency: "SEK", enteredGroupAt: new Date(Date.now() - 8 * 86400000).toISOString() },
-        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup", ownerId: "1", daysOverdue: 15, mrr: "\u20ac950/mo", currency: "EUR", enteredGroupAt: new Date(Date.now() - 15 * 86400000).toISOString() },
+        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials", ownerId: "1", daysOverdue: 2, mrr: "SEK 3 800/mo", currency: "SEK", enteredGroupAt: daysAgoISO(2) },
+        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review", ownerId: "2", daysOverdue: 8, mrr: "SEK 2 200/mo", currency: "SEK", enteredGroupAt: daysAgoISO(8) },
+        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup", ownerId: "1", daysOverdue: 15, mrr: "\u20ac950/mo", currency: "EUR", enteredGroupAt: daysAgoISO(15) },
       ],
     },
     {
@@ -173,9 +175,9 @@ const MOCK_ATTENTION: AttentionResponse = {
       signal: "gone_quiet",
       label: "Gone Quiet",
       companies: [
-        { id: "108", name: "Oslo Creative Labs", detail: "Last contacted 62 days ago", ownerId: "2", daysSilent: 62, mrr: "NOK 12 000/mo", currency: "NOK", enteredGroupAt: new Date(Date.now() - 62 * 86400000).toISOString() },
-        { id: "109", name: "Aarhus Adventure Park", detail: "Last contacted 51 days ago", ownerId: "1", daysSilent: 51, mrr: "DKK 7 200/mo", currency: "DKK", enteredGroupAt: new Date(Date.now() - 51 * 86400000).toISOString() },
-        { id: "110", name: "Tampere Escape Rooms", detail: "Last contacted 48 days ago", ownerId: "1", daysSilent: 48, mrr: "\u20ac600/mo", currency: "EUR", enteredGroupAt: new Date(Date.now() - 48 * 86400000).toISOString() },
+        { id: "108", name: "Oslo Creative Labs", detail: "Last contacted 62 days ago", ownerId: "2", daysSilent: 62, mrr: "NOK 12 000/mo", currency: "NOK", enteredGroupAt: daysAgoISO(62) },
+        { id: "109", name: "Aarhus Adventure Park", detail: "Last contacted 51 days ago", ownerId: "1", daysSilent: 51, mrr: "DKK 7 200/mo", currency: "DKK", enteredGroupAt: daysAgoISO(51) },
+        { id: "110", name: "Tampere Escape Rooms", detail: "Last contacted 48 days ago", ownerId: "1", daysSilent: 48, mrr: "\u20ac600/mo", currency: "EUR", enteredGroupAt: daysAgoISO(48) },
       ],
     },
   ],

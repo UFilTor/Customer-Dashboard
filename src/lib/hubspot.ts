@@ -238,8 +238,11 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
         );
         if (!assocRes.ok) return [];
         const assocData = await assocRes.json();
-        const ids: string[] = assocData.results?.map((r: { id: string }) => r.id) || [];
+        let ids: string[] = assocData.results?.map((r: { id: string }) => r.id) || [];
         if (ids.length === 0) return [];
+
+        // Limit emails to most recent 10 associations to avoid flooding
+        if (type === "emails") ids = ids.slice(0, 10);
 
         const batchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/${type}/batch/read`, {
           method: "POST",

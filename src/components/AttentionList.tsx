@@ -13,11 +13,14 @@ interface Props {
 
 type RegionFilter = "All" | "SE+" | "DK+" | "Italy" | "Me";
 
+// SE+ = Sweden, Norway, Finland. IT = Italy. DK+ = everything else
+const SE_PLUS = ["SE", "NO", "FI"];
+const IT_COUNTRIES = ["IT"];
 const REGION_COUNTRY_MAP: Record<RegionFilter, string[]> = {
   All: [],
-  "SE+": ["SE", "NO"],
-  "DK+": ["DK"],
-  Italy: ["IT"],
+  "SE+": SE_PLUS,
+  "DK+": [], // "everything else" - handled specially in filter logic
+  Italy: IT_COUNTRIES,
   Me: [],
 };
 
@@ -105,6 +108,18 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
         }))
         .filter((g) => g.companies.length > 0);
     }
+    if (regionFilter === "DK+") {
+      // DK+ = everything NOT in SE+ or Italy
+      const excluded = [...SE_PLUS, ...IT_COUNTRIES];
+      return data.groups
+        .map((g) => ({
+          ...g,
+          companies: g.companies.filter((c) =>
+            !excluded.includes((c.country || "").toUpperCase())
+          ),
+        }))
+        .filter((g) => g.companies.length > 0);
+    }
     const allowedCountries = REGION_COUNTRY_MAP[regionFilter];
     return data.groups
       .map((g) => ({
@@ -142,7 +157,7 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
           >
             <option value="All">All regions</option>
             <option value="SE+">SE+ (Sweden & Norway)</option>
-            <option value="DK+">DK+ (Denmark)</option>
+            <option value="DK+">DK+ (Rest of world)</option>
             <option value="Italy">Italy</option>
             <option value="Me">My accounts</option>
           </select>

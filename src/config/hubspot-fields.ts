@@ -2,8 +2,8 @@ import { DashboardConfig } from "@/lib/types";
 
 export const dashboardConfig: DashboardConfig = {
   metricCards: [
-    { label: "Revenue last year", property: "understory_total_platform_fee_cents_received", source: "company", format: "revenue12m" },
     { label: "Booking Volume 12M", property: "understory_booking_volume_12m", source: "company", format: "currency" },
+    { label: "Revenue last year", property: "understory_total_platform_fee_cents_received", source: "company", format: "revenue12m" },
     { label: "Understory Pay", property: "understory_pay_status__customer", source: "deal", format: "text" },
     { label: "Invoice", property: "unpaid_invoice", source: "deal", format: "invoiceStatus" },
     { label: "Health Score", property: "health_score", source: "company", format: "text" },

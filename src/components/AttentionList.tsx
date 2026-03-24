@@ -225,9 +225,9 @@ export function AttentionList({ onSelectCompany }: Props) {
                 onChange={(e) => setRegionOption(e.target.value as RegionOption)}
                 className="text-xs font-medium border border-[#E5E5E0] rounded-lg px-3 py-1.5 bg-white text-[var(--moss)] outline-none focus:border-[var(--moss)] cursor-pointer"
               >
-                <option value="DK+">DK+ (Rest of world)</option>
-                <option value="IT">Italy</option>
-                <option value="SE+">SE+ (Sweden, Norway, Finland)</option>
+                <option value="DK+">DK+</option>
+                <option value="IT">IT</option>
+                <option value="SE+">SE+</option>
               </select>
             )}
             {filterMode === "Person" && (

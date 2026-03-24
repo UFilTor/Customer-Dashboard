@@ -64,13 +64,12 @@ describe("sortAttentionCompanies", () => {
     expect(sorted.map((c) => c.id)).toEqual(["a", "b"]);
   });
 
-  it("sorts MRR with currency conversion (EUR > SEK at same numeric value)", () => {
+  it("sorts by EUR revenue values (all values already in EUR)", () => {
     const companies = [
-      makeCompany({ id: "a", name: "A", mrr: "3800", currency: "SEK" }),
-      makeCompany({ id: "b", name: "B", mrr: "950", currency: "EUR" }),
+      makeCompany({ id: "a", name: "A", mrr: "\u20ac3 800" }),
+      makeCompany({ id: "b", name: "B", mrr: "\u20ac25 000" }),
     ];
     const sorted = sortAttentionCompanies(companies, "mrr");
-    // 950 EUR (~950) > 3800 SEK (~330 EUR)
     expect(sorted.map((c) => c.id)).toEqual(["b", "a"]);
   });
 

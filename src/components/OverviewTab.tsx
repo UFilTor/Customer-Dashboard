@@ -3,6 +3,10 @@ import { FieldRenderer } from "./FieldRenderer";
 import { RecapCard } from "./RecapCard";
 import { OwnerMap, StageMap, Recap } from "@/lib/types";
 
+const TO_EUR: Record<string, number> = {
+  EUR: 1, USD: 0.92, GBP: 1.16, SEK: 0.087, NOK: 0.086, DKK: 0.134,
+};
+
 interface Props {
   company: Record<string, string>;
   deal: Record<string, string> | null;
@@ -20,6 +24,14 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
     if (!raw) return null;
     if (format === "owner") return owners[raw] || raw;
     if (format === "badge" && property === "dealstage") return stages[raw] || raw;
+    // Convert currency values to EUR
+    if (format === "currency" && currencyCode !== "EUR") {
+      const num = parseFloat(raw);
+      if (!isNaN(num)) {
+        const rate = TO_EUR[currencyCode.toUpperCase()] ?? 1;
+        return String(Math.round(num * rate));
+      }
+    }
     return raw;
   }
 
@@ -36,7 +48,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
                 <FieldRenderer
                   value={resolveValue(field.property, company, field.format)}
                   format={field.format}
-                  currencyCode={field.format === "currency" ? currencyCode : undefined}
+                  currencyCode={field.format === "currency" ? "EUR" : undefined}
                 />
               </div>
             ))}
@@ -53,7 +65,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
                   <FieldRenderer
                     value={resolveValue(field.property, deal, field.format)}
                     format={field.format}
-                    currencyCode={field.format === "currency" ? currencyCode : undefined}
+                    currencyCode={field.format === "currency" ? "EUR" : undefined}
                   />
                 </div>
               ))}

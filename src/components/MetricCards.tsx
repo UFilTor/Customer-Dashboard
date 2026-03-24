@@ -19,7 +19,7 @@ interface Props {
   previousCategory?: string;
 }
 
-export function MetricCards({ company, deal }: Props) {
+export function MetricCards({ company, deal, previousCategory }: Props) {
   const currencyCode = deal?.deal_currency_code || "EUR";
 
   return (
@@ -83,6 +83,11 @@ export function MetricCards({ company, deal }: Props) {
               {card.label}
             </div>
             <div className={`text-lg font-bold ${textClass}`}>{formatted}</div>
+            {card.property === "health_score" && previousCategory && value && (
+              <div className="mt-1 text-xs text-[var(--green-100)]">
+                {parseFloat(value) > parseFloat(previousCategory) ? "↑" : "↓"} was {getHealthLabel(previousCategory)} ({Math.round(parseFloat(previousCategory))})
+              </div>
+            )}
           </div>
         );
       })}

@@ -135,21 +135,17 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center bg-[#F7F7F5] rounded-[10px] p-1">
-            {(["All", "SE+", "DK+", "Italy", "Me"] as RegionFilter[]).map((r) => (
-              <button
-                key={r}
-                onClick={() => setRegionFilter(r)}
-                className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
-                  regionFilter === r
-                    ? "bg-[var(--moss)] text-white"
-                    : "text-[#999] hover:text-[var(--moss)]"
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
+          <select
+            value={regionFilter}
+            onChange={(e) => setRegionFilter(e.target.value as RegionFilter)}
+            className="text-xs font-medium border border-[#E5E5E0] rounded-lg px-3 py-1.5 bg-white text-[var(--moss)] outline-none focus:border-[var(--moss)] cursor-pointer"
+          >
+            <option value="All">All regions</option>
+            <option value="SE+">SE+ (Sweden & Norway)</option>
+            <option value="DK+">DK+ (Denmark)</option>
+            <option value="Italy">Italy</option>
+            <option value="Me">My accounts</option>
+          </select>
           <div className="flex items-center bg-[#F7F7F5] rounded-[10px] p-1">
             <span className="text-xs text-[#AAA] px-2">Sort:</span>
             <button

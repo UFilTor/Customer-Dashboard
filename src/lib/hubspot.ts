@@ -254,7 +254,9 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
 
         return (batchData.results || [])
           .filter((e: { properties: Record<string, string> }) => {
-            const ts = parseInt(e.properties.hs_timestamp);
+            const tsStr = e.properties.hs_timestamp;
+            if (!tsStr) return false;
+            const ts = new Date(tsStr).getTime();
             return !isNaN(ts) && ts >= sinceTimestamp;
           })
           .map((e: { properties: Record<string, string> }) => mapEngagement(type, e.properties));

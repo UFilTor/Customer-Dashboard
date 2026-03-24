@@ -25,6 +25,13 @@ export function formatValue(
   format: FormatType,
   currencyCode?: string
 ): string {
+  // Handle invoice status before the null check - null means no open invoices
+  if (format === "invoiceStatus") {
+    if (!value || value === "false" || value === "-" || value === "null") return "Up to date";
+    if (value === "true") return "Overdue";
+    return value;
+  }
+
   if (value === null || value === undefined || value === "") return "-";
 
   switch (format) {

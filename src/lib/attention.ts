@@ -32,7 +32,7 @@ async function fetchDealForCompany(companyId: string): Promise<Record<string, st
     const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
     const assocRes = await fetch(
       `${HUBSPOT_API}/crm/v3/objects/companies/${companyId}/associations/deals`,
-      { headers: hubspotHeaders() }
+      { headers: hubspotHeaders(), cache: "no-store" as RequestCache }
     );
     if (!assocRes.ok) return null;
     const assocData = await assocRes.json();
@@ -131,7 +131,7 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
           try {
             const assocRes = await fetch(
               `${HUBSPOT_API}/crm/v3/objects/deals/${deal.id}/associations/companies`,
-              { headers: hubspotHeaders() }
+              { headers: hubspotHeaders(), cache: "no-store" as RequestCache }
             );
             if (!assocRes.ok) return null;
             const assocData = await assocRes.json();
@@ -254,7 +254,7 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
           try {
             const assocRes = await fetch(
               `${HUBSPOT_API}/crm/v3/objects/tasks/${task.id}/associations/companies`,
-              { headers: hubspotHeaders() }
+              { headers: hubspotHeaders(), cache: "no-store" as RequestCache }
             );
             if (!assocRes.ok) return null;
             const assocData = await assocRes.json();
@@ -369,7 +369,7 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
           // Get health score property history
           const histRes = await fetch(
             `${HUBSPOT_API}/crm/v3/objects/companies/${company.id}?propertiesWithHistory=health_score`,
-            { headers: hubspotHeaders() }
+            { headers: hubspotHeaders(), cache: "no-store" as RequestCache }
           );
           if (histRes.ok) {
             const histData = await histRes.json();
@@ -567,7 +567,7 @@ export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
           try {
             const assocRes = await fetch(
               `${HUBSPOT_API}/crm/v3/objects/deals/${deal.id}/associations/companies`,
-              { headers: hubspotHeaders() }
+              { headers: hubspotHeaders(), cache: "no-store" as RequestCache }
             );
             if (!assocRes.ok) return null;
             const assocData = await assocRes.json();

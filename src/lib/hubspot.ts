@@ -48,7 +48,7 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
         try {
           const assocRes = await fetch(
             `${HUBSPOT_API}/crm/v3/objects/companies/${r.id}/associations/deals`,
-            { headers: headers() }
+            { headers: headers(), cache: "no-store" as RequestCache }
           );
           if (assocRes.ok) {
             const assocData = await assocRes.json();
@@ -103,7 +103,7 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
 
 export async function getOwners(): Promise<OwnerMap> {
   try {
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/owners`, { headers: headers() });
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/owners`, { headers: headers(), cache: "no-store" as RequestCache });
     if (!res.ok) return {};
     const data = await res.json();
     const map: OwnerMap = {};
@@ -118,7 +118,7 @@ export async function getOwners(): Promise<OwnerMap> {
 
 export async function getDealStages(): Promise<StageMap> {
   try {
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/pipelines/deals`, { headers: headers() });
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/pipelines/deals`, { headers: headers(), cache: "no-store" as RequestCache });
     if (!res.ok) return {};
     const data = await res.json();
     const map: StageMap = {};
@@ -195,7 +195,7 @@ async function fetchCompany(id: string): Promise<Record<string, string>> {
   try {
     const res = await fetch(
       `${HUBSPOT_API}/crm/v3/objects/companies/${id}?properties=${COMPANY_PROPERTIES.join(",")}`,
-      { headers: headers() }
+      { headers: headers(), cache: "no-store" }
     );
     if (!res.ok) return {};
     const data = await res.json();
@@ -209,7 +209,7 @@ async function fetchLifecycleDeal(companyId: string): Promise<{ properties: Reco
   try {
     const assocRes = await fetch(
       `${HUBSPOT_API}/crm/v3/objects/companies/${companyId}/associations/deals`,
-      { headers: headers() }
+      { headers: headers(), cache: "no-store" as RequestCache }
     );
     if (!assocRes.ok) return null;
     const assocData = await assocRes.json();
@@ -259,7 +259,7 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
       try {
         const assocRes = await fetch(
           `${HUBSPOT_API}/crm/v3/objects/companies/${companyId}/associations/${type}`,
-          { headers: headers() }
+          { headers: headers(), cache: "no-store" as RequestCache }
         );
         if (!assocRes.ok) return [];
         const assocData = await assocRes.json();
@@ -390,9 +390,9 @@ function mapEngagement(type: string, props: Record<string, string>): Engagement 
 async function fetchTasks(companyId: string, dealIds: string[] = []): Promise<TaskItem[]> {
   try {
     const assocPromises = [
-      fetch(`${HUBSPOT_API}/crm/v3/objects/companies/${companyId}/associations/tasks`, { headers: headers() }),
+      fetch(`${HUBSPOT_API}/crm/v3/objects/companies/${companyId}/associations/tasks`, { headers: headers(), cache: "no-store" as RequestCache }),
       ...dealIds.map((dealId) =>
-        fetch(`${HUBSPOT_API}/crm/v3/objects/deals/${dealId}/associations/tasks`, { headers: headers() })
+        fetch(`${HUBSPOT_API}/crm/v3/objects/deals/${dealId}/associations/tasks`, { headers: headers(), cache: "no-store" as RequestCache })
       ),
     ];
     const assocResults = await Promise.all(assocPromises);

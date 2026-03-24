@@ -134,10 +134,10 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
 
         {/* Card 2: Volume Trend */}
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
-          <div className="flex items-center justify-between mb-2 w-full">
-            <span className="text-[10px] text-[var(--green-100)] uppercase tracking-wide">Volume</span>
+          <div className="relative w-full text-center text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">
+            Volume
             {growthPct !== null && (
-              <span className={`text-[10px] font-semibold ${growthPct > 0 ? "text-[#065F46]" : "text-[var(--rust)]"}`}>
+              <span className={`absolute right-0 font-semibold ${growthPct > 0 ? "text-[#065F46]" : "text-[var(--rust)]"}`}>
                 {growthPct > 0 ? "↑" : "↓"}{Math.abs(growthPct)}%
               </span>
             )}
@@ -163,7 +163,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
         </div>
 
         {/* Card 3: Platform Activity */}
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col">
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Activity</div>
           <div className="flex flex-col gap-1 flex-1 justify-center items-center">
             {[
@@ -186,7 +186,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
         </div>
 
         {/* Card 4: Understory Pay */}
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center justify-center">
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Understory Pay</div>
           {company.understory_pay_unwilling === "true" ? (
             <div className="flex-1 flex flex-col justify-center w-full">
@@ -203,7 +203,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
               )}
             </div>
           ) : (
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2.5 flex-1 justify-center">
               {[
                 { label: "Not Started", active: false },
                 { label: "Onboarding", active: company.understory_has_started_understory_pay_onboarding === "true" },

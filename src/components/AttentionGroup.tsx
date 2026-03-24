@@ -51,15 +51,13 @@ function CompanyRow({
     <div className="relative group/row">
       <button
         onClick={onClick}
-        className="w-full bg-[var(--light-grey)] rounded-[var(--border-radius)] p-3 text-left hover:bg-[var(--lichen)]/30 transition-all duration-200"
+        className="w-full bg-[var(--light-grey)] rounded-[var(--border-radius)] p-3 pr-10 text-left hover:bg-[var(--lichen)]/30 transition-all duration-200"
       >
         <div className="flex items-center justify-between">
           <span className="font-medium text-sm text-[var(--moss)]">{company.name}</span>
-          <div className="flex items-center gap-2">
-            {company.mrr && company.mrr !== "-" && (
-              <span className="text-xs font-medium text-[var(--moss)]">{company.mrr}</span>
-            )}
-          </div>
+          {company.mrr && company.mrr !== "-" && (
+            <span className="text-xs font-medium text-[var(--moss)]">{company.mrr}</span>
+          )}
         </div>
         <div className="flex items-center gap-2 mt-1">
           {signal === "overdue_invoices" && (
@@ -107,8 +105,8 @@ function CompanyRow({
         </div>
       </button>
 
-      {/* Snooze bell icon - shown on row hover */}
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 relative">
+      {/* Snooze bell icon - absolutely positioned inside the row */}
+      <div className="absolute right-2 top-1/2 -translate-y-1/2">
         <button
           onClick={onSnoozeIconClick}
           className="opacity-0 group-hover/row:opacity-100 transition-opacity duration-150 p-1.5 rounded-md hover:bg-[var(--beige-gray)] text-[var(--green-100)] hover:text-[var(--moss)]"

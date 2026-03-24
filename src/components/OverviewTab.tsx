@@ -24,8 +24,8 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
     if (!raw) return null;
     if (format === "owner") return owners[raw] || raw;
     if (format === "badge" && property === "dealstage") return stages[raw] || raw;
-    // Convert currency values to EUR
-    if (format === "currency" && currencyCode !== "EUR") {
+    // Convert deal currency values to EUR (company values are already EUR)
+    if (format === "currency" && source === deal && currencyCode !== "EUR") {
       const num = parseFloat(raw);
       if (!isNaN(num)) {
         const rate = TO_EUR[currencyCode.toUpperCase()] ?? 1;

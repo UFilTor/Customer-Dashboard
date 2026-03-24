@@ -44,16 +44,23 @@ export function MetricCards({ company, deal, previousCategory }: Props) {
         if (card.format === "revenue12m") {
           formatted = computeRevenueLastYear(company, deal);
         } else if (card.format === "currency") {
-          const currency = currencyCode.toUpperCase();
-          const rate = TO_EUR[currency] ?? 1;
           const rawNum = parseFloat(value || "0") || 0;
           if (rawNum === 0) {
             formatted = "-";
-          } else if (currency === "EUR") {
-            formatted = formatValue(value, card.format, currencyCode);
-          } else {
-            const eur = Math.round(rawNum * rate);
+          } else if (card.source === "company") {
+            // Company fields (booking volume, etc.) are already in EUR
+            const eur = Math.round(rawNum);
             formatted = `\u20ac${eur.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
+          } else {
+            // Deal fields need currency conversion
+            const currency = currencyCode.toUpperCase();
+            const rate = TO_EUR[currency] ?? 1;
+            if (currency === "EUR") {
+              formatted = formatValue(value, card.format, currencyCode);
+            } else {
+              const eur = Math.round(rawNum * rate);
+              formatted = `\u20ac${eur.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
+            }
           }
         } else if (card.format === "text" && card.property === "health_score") {
           if (value === null || value === undefined || value === "") {

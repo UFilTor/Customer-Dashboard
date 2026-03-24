@@ -96,14 +96,14 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
             { propertyName: "unpaid_invoice", operator: "EQ", value: "true" },
           ],
         })),
-        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee"],
+        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "outstanding_amount"],
         limit: 100,
       }),
     });
     if (!res.ok) return [];
     const data = await res.json();
 
-    interface DealInfo { id: string; dealname: string; mrr: string; currency: string; bookingFee: string }
+    interface DealInfo { id: string; dealname: string; mrr: string; currency: string; bookingFee: string; outstandingAmount: string }
     const deals: DealInfo[] = data.results?.map(
       (d: { id: string; properties: Record<string, string> }) => ({
         id: d.id,
@@ -111,6 +111,7 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
         mrr: d.properties.confirmed__contract_mrr || "",
         currency: d.properties.deal_currency_code || "EUR",
         bookingFee: d.properties.booking_fee || "",
+        outstandingAmount: d.properties.outstanding_amount || "",
       })
     ) || [];
 
@@ -128,10 +129,17 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
         const assocData = await assocRes.json();
         const companyId = assocData.results?.[0]?.id;
         if (!companyId || companyMap.has(companyId)) continue;
+        // For overdue invoices, show the outstanding amount converted to EUR
+        const outstandingNum = parseFloat(deal.outstandingAmount) || 0;
+        const rate = TO_EUR[(deal.currency || "EUR").toUpperCase()] ?? 1;
+        const outstandingEur = Math.round(outstandingNum * rate);
+
         companyMap.set(companyId, {
           id: companyId,
           name: "",
           detail: deal.dealname,
+          mrr: outstandingEur > 0 ? formatRevenue(outstandingEur) : "-",
+          currency: "EUR",
           _dealMrr: deal.mrr,
           _dealCurrency: deal.currency,
           _dealBookingFee: deal.bookingFee,
@@ -150,13 +158,17 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
         entry.name = props.name || "Unknown";
         entry.ownerId = props.hubspot_owner_id || "";
         entry.country = props.understory_company_country || "";
-        const revenue = computeGeneratedRevenue(
-          props.understory_booking_volume_12m,
-          entry._dealBookingFee,
-          entry._dealMrr,
-          entry._dealCurrency
-        );
-        entry.mrr = formatRevenue(revenue);
+        // Keep the outstanding amount already set for overdue invoices
+        // Only compute generated revenue if mrr wasn't already set
+        if (!entry.mrr || entry.mrr === "-") {
+          const revenue = computeGeneratedRevenue(
+            props.understory_booking_volume_12m,
+            entry._dealBookingFee,
+            entry._dealMrr,
+            entry._dealCurrency
+          );
+          entry.mrr = formatRevenue(revenue);
+        }
         entry.currency = "EUR";
       }
     }

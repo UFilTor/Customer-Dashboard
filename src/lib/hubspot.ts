@@ -241,21 +241,21 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
         let ids: string[] = assocData.results?.map((r: { id: string }) => r.id) || [];
         if (ids.length === 0) return [];
 
-        // Limit emails to most recent 10 associations to avoid flooding
-        if (type === "emails") ids = ids.slice(0, 10);
+        // For emails, limit batch to 100 IDs max (HubSpot batch limit)
+        const batchIds = ids.slice(0, 100);
 
         const batchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/${type}/batch/read`, {
           method: "POST",
           headers: headers(),
           body: JSON.stringify({
-            inputs: ids.map((id) => ({ id })),
+            inputs: batchIds.map((id) => ({ id })),
             properties: props,
           }),
         });
         if (!batchRes.ok) return [];
         const batchData = await batchRes.json();
 
-        return (batchData.results || [])
+        let engagements = (batchData.results || [])
           .filter((e: { properties: Record<string, string> }) => {
             const tsStr = e.properties.hs_timestamp;
             if (!tsStr) return false;
@@ -263,6 +263,16 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
             return !isNaN(ts) && ts >= sinceTimestamp;
           })
           .map((e: { properties: Record<string, string> }) => mapEngagement(type, e.properties));
+
+        // Limit emails to 10 most recent
+        if (type === "emails") {
+          engagements.sort((a: { timestamp: string }, b: { timestamp: string }) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          engagements = engagements.slice(0, 10);
+        }
+
+        return engagements;
       } catch {
         return [];
       }

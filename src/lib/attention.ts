@@ -119,23 +119,28 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
 
     const companyMap = new Map<string, AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string }>();
 
-    // Fetch all deal->company associations in parallel
-    const assocResults = await Promise.all(
-      deals.map(async (deal) => {
-        try {
-          const assocRes = await fetch(
-            `${HUBSPOT_API}/crm/v3/objects/deals/${deal.id}/associations/companies`,
-            { headers: hubspotHeaders() }
-          );
-          if (!assocRes.ok) return null;
-          const assocData = await assocRes.json();
-          const companyId = assocData.results?.[0]?.id;
-          return companyId ? { companyId, deal } : null;
-        } catch {
-          return null;
-        }
-      })
-    );
+    // Fetch deal->company associations in batches of 10 to avoid rate limits
+    const assocResults: ({ companyId: string; deal: DealInfo } | null)[] = [];
+    for (let i = 0; i < deals.length; i += 10) {
+      const batch = deals.slice(i, i + 10);
+      const batchResults = await Promise.all(
+        batch.map(async (deal) => {
+          try {
+            const assocRes = await fetch(
+              `${HUBSPOT_API}/crm/v3/objects/deals/${deal.id}/associations/companies`,
+              { headers: hubspotHeaders() }
+            );
+            if (!assocRes.ok) return null;
+            const assocData = await assocRes.json();
+            const companyId = assocData.results?.[0]?.id;
+            return companyId ? { companyId, deal } : null;
+          } catch {
+            return null;
+          }
+        })
+      );
+      assocResults.push(...batchResults);
+    }
 
     for (const result of assocResults) {
       if (!result || companyMap.has(result.companyId)) continue;
@@ -226,23 +231,28 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
 
     const companyMap = new Map<string, AttentionCompany & { _daysOverdue: number }>();
 
-    // Fetch all task->company associations in parallel
-    const taskAssocResults = await Promise.all(
-      tasks.map(async (task) => {
-        try {
-          const assocRes = await fetch(
-            `${HUBSPOT_API}/crm/v3/objects/tasks/${task.id}/associations/companies`,
-            { headers: hubspotHeaders() }
-          );
-          if (!assocRes.ok) return null;
-          const assocData = await assocRes.json();
-          const companyId = assocData.results?.[0]?.id;
-          return companyId ? { companyId, task } : null;
-        } catch {
-          return null;
-        }
-      })
-    );
+    // Fetch task->company associations in batches of 10 to avoid rate limits
+    const taskAssocResults: ({ companyId: string; task: TaskInfo } | null)[] = [];
+    for (let i = 0; i < tasks.length; i += 10) {
+      const batch = tasks.slice(i, i + 10);
+      const batchResults = await Promise.all(
+        batch.map(async (task) => {
+          try {
+            const assocRes = await fetch(
+              `${HUBSPOT_API}/crm/v3/objects/tasks/${task.id}/associations/companies`,
+              { headers: hubspotHeaders() }
+            );
+            if (!assocRes.ok) return null;
+            const assocData = await assocRes.json();
+            const companyId = assocData.results?.[0]?.id;
+            return companyId ? { companyId, task } : null;
+          } catch {
+            return null;
+          }
+        })
+      );
+      taskAssocResults.push(...batchResults);
+    }
 
     for (const result of taskAssocResults) {
       if (!result) continue;

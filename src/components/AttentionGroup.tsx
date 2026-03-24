@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { AttentionGroup as AttentionGroupType, AttentionCompany, AttentionSignal, CompanySearchResult } from "@/lib/types";
 import { sortAttentionCompanies, SortField } from "@/lib/sort-attention";
 import { formatGroupDuration } from "@/lib/timeline";
 import { snoozeCompany, unsnoozeCompany, getSnoozedCompanies, isCompanySnoozed } from "@/lib/snooze";
 import SnoozePopover from "./SnoozePopover";
+import CompanyTooltip from "./CompanyTooltip";
 
 interface Props {
   group: AttentionGroupType;
@@ -47,10 +48,26 @@ function CompanyRow({
   onSnooze: (until: string) => void;
   onSnoozeClose: () => void;
 }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const tooltipTimeout = useRef<NodeJS.Timeout | null>(null);
+
   return (
-    <div className="relative group/row">
+    <div
+      className="relative group/row"
+      onMouseEnter={() => {
+        tooltipTimeout.current = setTimeout(() => setShowTooltip(true), 300);
+      }}
+      onMouseLeave={() => {
+        if (tooltipTimeout.current) clearTimeout(tooltipTimeout.current);
+        setShowTooltip(false);
+      }}
+    >
       <button
-        onClick={onClick}
+        onClick={() => {
+          setShowTooltip(false);
+          if (tooltipTimeout.current) clearTimeout(tooltipTimeout.current);
+          onClick();
+        }}
         className="w-full border-b border-[#F0EEE8] p-3 pr-10 text-left hover:bg-[#FAFAF7] transition-all duration-150"
       >
         <div className="flex items-center justify-between">
@@ -123,6 +140,7 @@ function CompanyRow({
           onClose={onSnoozeClose}
         />
       )}
+      {showTooltip && <CompanyTooltip company={company} />}
     </div>
   );
 }

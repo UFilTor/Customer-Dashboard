@@ -1,6 +1,7 @@
 import { dashboardConfig } from "@/config/hubspot-fields";
 import { formatValue } from "@/lib/format";
-import HealthBadge from "./HealthBadge";
+
+const CATEGORY_ORDER = ["Healthy", "Monitor", "At Risk", "Critical Churn Risk"];
 
 interface Props {
   company: Record<string, string>;
@@ -48,9 +49,14 @@ export function MetricCards({ company, deal, previousCategory }: Props) {
               {card.label}
             </div>
             <div className={`text-xl font-bold ${textClass}`}>{formatted}</div>
-            {isHealthScore && formatted && formatted !== "-" && previousCategory && (
-              <div className="mt-2">
-                <HealthBadge category={formatted} previousCategory={previousCategory} />
+            {isHealthScore && formatted && formatted !== "-" && previousCategory && previousCategory !== formatted && (
+              <div className="mt-1.5 text-xs text-[var(--green-100)]">
+                {previousCategory && (
+                  <span>
+                    {CATEGORY_ORDER.indexOf(formatted) < CATEGORY_ORDER.indexOf(previousCategory) ? "↑" : "↓"}{" "}
+                    was {previousCategory}
+                  </span>
+                )}
               </div>
             )}
           </div>

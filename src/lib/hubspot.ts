@@ -268,8 +268,15 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
           })
           .map((e: { properties: Record<string, string> }) => mapEngagement(type, e.properties));
 
-        // Deduplicate emails by thread (keep most recent per thread, max 5 threads)
+        // For emails: filter out calendar responses, then deduplicate by thread
         if (type === "emails") {
+          // Remove calendar responses first
+          engagements = engagements.filter((e: { title: string }) => {
+            const subject = e.title || "";
+            return !["Accepted:", "Tentative:", "Declined:"].some((prefix) => subject.startsWith(prefix));
+          });
+
+          // Sort newest first, keep most recent per thread (max 5 threads)
           engagements.sort((a: { timestamp: string }, b: { timestamp: string }) =>
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           );
@@ -292,13 +299,9 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
   );
 
   const allEngagements = results.flat();
-  const filtered = allEngagements.filter((e) => {
-    if (e.type !== "email") return true;
-    const subject = e.title || "";
-    return !["Accepted:", "Tentative:", "Declined:"].some((prefix) => subject.startsWith(prefix));
-  });
+  // Calendar email filtering already done in the email fetch above
 
-  return filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return allEngagements.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
 function mapEngagement(type: string, props: Record<string, string>): Engagement {

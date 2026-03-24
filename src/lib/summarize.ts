@@ -127,8 +127,8 @@ ${activitySummary}`,
         type: parsed.suggestedAction.type,
       },
     };
-  } catch {
-    console.error("Failed to generate recap");
+  } catch (err) {
+    console.error("Failed to generate recap:", err instanceof Error ? err.message : err);
     return { summary: null, suggestedAction: null, error: true };
   }
 }

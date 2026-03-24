@@ -14,8 +14,9 @@ type FilterMode = "All" | "Region" | "Person";
 type RegionOption = "SE+" | "DK+" | "IT";
 type PersonOption = string; // owner ID
 
-const SE_PLUS_COUNTRIES = ["SE", "NO", "FI"];
-const IT_COUNTRIES = ["IT"];
+// Region mapping based on owner assignment
+const SE_PLUS_OWNERS = ["1939229547", "559364799"]; // Filip, Cecilia
+const DK_PLUS_OWNERS = ["44912650", "962517007"]; // Marc, Anders
 
 const PEOPLE: { id: string; name: string }[] = [
   { id: "962517007", name: "Anders" },
@@ -141,26 +142,30 @@ export function AttentionList({ onSelectCompany }: Props) {
         .filter((g) => g.companies.length > 0);
     }
 
-    // filterMode === "Region"
-    if (regionOption === "DK+") {
-      const excluded = [...SE_PLUS_COUNTRIES, ...IT_COUNTRIES];
+    // filterMode === "Region" - filter by owner assignment
+    if (regionOption === "SE+") {
       return data.groups
         .map((g) => ({
           ...g,
-          companies: g.companies.filter((c) =>
-            !excluded.includes((c.country || "").toUpperCase())
-          ),
+          companies: g.companies.filter((c) => SE_PLUS_OWNERS.includes(c.ownerId || "")),
         }))
         .filter((g) => g.companies.length > 0);
     }
 
-    const allowedCountries = regionOption === "SE+" ? SE_PLUS_COUNTRIES : IT_COUNTRIES;
+    if (regionOption === "DK+") {
+      return data.groups
+        .map((g) => ({
+          ...g,
+          companies: g.companies.filter((c) => DK_PLUS_OWNERS.includes(c.ownerId || "")),
+        }))
+        .filter((g) => g.companies.length > 0);
+    }
+
+    // IT - no filter for now, show nothing
     return data.groups
       .map((g) => ({
         ...g,
-        companies: g.companies.filter((c) =>
-          allowedCountries.includes((c.country || "").toUpperCase())
-        ),
+        companies: g.companies.filter(() => false),
       }))
       .filter((g) => g.companies.length > 0);
   })();

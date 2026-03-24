@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useSession } from "next-auth/react";
 import { SearchBar } from "@/components/SearchBar";
 import { CompanyHeader } from "@/components/CompanyHeader";
 import { MetricCards } from "@/components/MetricCards";
@@ -10,7 +9,6 @@ import { OverviewTab } from "@/components/OverviewTab";
 import { ActivityTab } from "@/components/ActivityTab";
 import { TasksTab } from "@/components/TasksTab";
 import { SkeletonCard, SkeletonBlock, SkeletonRecap } from "@/components/Skeleton";
-import AuthGate from "@/components/AuthGate";
 import { CompanySearchResult, CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
 import { AttentionList } from "@/components/AttentionList";
 import { addRecentCompany, removeRecentCompany } from "@/lib/recent-companies";
@@ -23,8 +21,6 @@ interface CompanyData extends CompanyDetail {
 }
 
 export default function Dashboard() {
-  const { data: session } = useSession();
-  const currentOwnerId = (session?.user as { hubspotOwnerId?: string } | undefined)?.hubspotOwnerId;
   const [companyData, setCompanyData] = useState<CompanyData | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -206,7 +202,7 @@ export default function Dashboard() {
   });
 
   return (
-    <AuthGate>
+    <>
       <div className="min-h-screen bg-white">
         {/* Top bar */}
         <nav className="bg-[var(--moss)] px-6 py-3 grid grid-cols-3 items-center">
@@ -239,7 +235,7 @@ export default function Dashboard() {
 
           {!companyData && !isLoading && (
             <div className="animate-fadeIn">
-              <AttentionList onSelectCompany={handleAttentionSelect} currentOwnerId={currentOwnerId} />
+              <AttentionList onSelectCompany={handleAttentionSelect} />
             </div>
           )}
 
@@ -323,6 +319,6 @@ export default function Dashboard() {
       </div>
 
       <ShortcutCheatSheet isOpen={showHelp} onClose={() => setShowHelp(false)} />
-    </AuthGate>
+    </>
   );
 }

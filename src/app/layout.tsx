@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import SessionWrapper from "@/components/SessionWrapper";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -20,8 +19,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col font-[var(--font-inter)] bg-[var(--beige-new)] text-[var(--moss)]">
-        <SessionWrapper>{children}</SessionWrapper>
+      <body className="min-h-full flex flex-col font-[var(--font-inter)] bg-white text-[var(--moss)]">
+        {children}
       </body>
     </html>
   );

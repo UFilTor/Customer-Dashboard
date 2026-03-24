@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AttentionGroup as AttentionGroupType, AttentionCompany, AttentionSignal, CompanySearchResult } from "@/lib/types";
 import { sortAttentionCompanies, SortField } from "@/lib/sort-attention";
+import { formatGroupDuration } from "@/lib/timeline";
 
 interface Props {
   group: AttentionGroupType;
@@ -68,6 +69,15 @@ function CompanyRow({ company, signal, onClick }: { company: AttentionCompany; s
             {company.daysSilent !== undefined ? `Silent for ${company.daysSilent} days` : company.detail}
           </span>
         )}
+        {(() => {
+          const duration = formatGroupDuration(company.enteredGroupAt);
+          if (!duration) return null;
+          return (
+            <span className="text-[11px] text-[var(--green-100)]/60 border-l border-[var(--beige-gray)] pl-2 ml-1">
+              {duration}
+            </span>
+          );
+        })()}
       </div>
     </button>
   );

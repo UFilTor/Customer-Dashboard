@@ -7,6 +7,8 @@ import { formatGroupDuration } from "@/lib/timeline";
 import { snoozeCompany, unsnoozeCompany, getSnoozedCompanies, isCompanySnoozed } from "@/lib/snooze";
 import SnoozePopover from "./SnoozePopover";
 import CompanyTooltip from "./CompanyTooltip";
+import { MetricChips } from "./MetricChips";
+import { getHealthLabel } from "@/lib/health-score";
 
 interface Props {
   group: AttentionGroupType;
@@ -72,9 +74,18 @@ function CompanyRow({
       >
         <div className="flex items-center justify-between">
           <span className="font-medium text-sm text-[var(--moss)]">{company.name}</span>
-          {company.mrr && company.mrr !== "-" && (
-            <span className="text-xs font-medium text-[var(--moss)]">{company.mrr}</span>
-          )}
+          <div className="flex items-center gap-2">
+            <MetricChips
+              healthScore={company.healthScore}
+              volume12m={company.volume12m}
+              volume3m={company.volume3m}
+              volume6m={company.volume6m}
+              payStatus={company.payStatus}
+            />
+            {company.mrr && company.mrr !== "-" && (
+              <span className="text-xs font-medium text-[var(--moss)]">{company.mrr}</span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2 mt-1">
           {(signal === "overdue_invoices" || signal === "open_invoices") && (
@@ -95,12 +106,9 @@ function CompanyRow({
           )}
           {signal === "health_score" && (
             <>
-              <span className={`text-xs font-medium ${company.detail === "Critical Churn Risk" ? "text-[var(--rust)]" : "text-orange-600"}`}>
-                {company.detail}
-              </span>
               {company.previousCategory && (
                 <span className="text-xs text-[var(--green-100)]">
-                  was {company.previousCategory}
+                  was {getHealthLabel(company.previousCategory)} ({Math.round(parseFloat(company.previousCategory))})
                 </span>
               )}
               {company.categoryChangedAt && (

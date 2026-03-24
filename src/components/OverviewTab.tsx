@@ -105,44 +105,44 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
     <div>
       <RecapCard recap={recap} companyId={companyId} />
 
-      {/* 4 insight cards in a row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3 items-start">
+      {/* 4 insight cards in a row - same height */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
 
-        {/* Card 1: Health Breakdown - compact list with mini circles */}
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
-          <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-1.5">Health</div>
-          <div className="space-y-1">
+        {/* Card 1: Health Breakdown - circles grid */}
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col">
+          <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Health</div>
+          <div className="grid grid-cols-4 gap-1 flex-1 content-center">
             {HEALTH_COMPONENTS.map(({ key, label }) => {
               const pct = Math.round(parseFloat(company[key] || "0") * 100);
               const color = pct >= 70 ? "#6EE7B7" : pct >= 40 ? "#FCD34D" : "#FCA5A5";
               const textColor = pct >= 70 ? "#065F46" : pct >= 40 ? "#92400E" : "#991B1B";
               return (
-                <div key={key} className="flex items-center gap-2">
-                  <div className="relative w-5 h-5 shrink-0">
-                    <svg viewBox="0 0 36 36" className="w-5 h-5">
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#EDEDEA" strokeWidth="3.5" />
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke={color} strokeWidth="3.5" strokeDasharray={`${pct} 100`} strokeLinecap="round" transform="rotate(-90 18 18)" />
+                <div key={key} className="text-center">
+                  <div className="relative w-9 h-9 mx-auto">
+                    <svg viewBox="0 0 36 36" className="w-9 h-9">
+                      <path d="M18 2.0845a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#EDEDEA" strokeWidth="3" />
+                      <path d="M18 2.0845a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={color} strokeWidth="3" strokeDasharray={`${pct}, 100`} />
                     </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold" style={{ color: textColor }}>{pct}</span>
                   </div>
-                  <span className="text-[9px] text-[var(--green-100)] flex-1 truncate">{label}</span>
-                  <span className="text-[10px] font-bold" style={{ color: textColor }}>{pct}%</span>
+                  <div className="text-[8px] text-[var(--green-100)] mt-0.5 truncate">{label}</div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Card 2: Volume Trend - 2x2 grid, 12M first */}
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
+        {/* Card 2: Volume Trend - 2x2 grid, bigger text */}
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] text-[var(--green-100)] uppercase tracking-wide">Volume</span>
             {growthPct !== null && (
-              <span className={`text-[9px] font-medium ${growthPct > 0 ? "text-[#065F46]" : "text-[var(--rust)]"}`}>
+              <span className={`text-xs font-semibold ${growthPct > 0 ? "text-[#065F46]" : "text-[var(--rust)]"}`}>
                 {growthPct > 0 ? "↑" : "↓"}{Math.abs(growthPct)}%
               </span>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 flex-1 content-center">
             {[
               { key: "understory_booking_volume_12m", label: "12M" },
               { key: "understory_booking_volume_6m", label: "6M" },
@@ -151,21 +151,21 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
             ].map(({ key, label }) => {
               const val = parseFloat(company[key] || "0");
               return (
-                <div key={key} className="flex justify-between items-baseline">
-                  <span className="text-[9px] text-[var(--green-100)]">{label}</span>
-                  <span className="text-xs font-bold text-[var(--moss)]">
+                <div key={key}>
+                  <div className="text-[10px] text-[var(--green-100)]">{label}</div>
+                  <div className="text-sm font-bold text-[var(--moss)]">
                     {val > 0 ? `€${Math.round(val).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}` : "-"}
-                  </span>
+                  </div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Card 3: Platform Activity - stacked */}
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
+        {/* Card 3: Platform Activity - bigger text, spaced */}
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Activity</div>
-          <div className="space-y-1.5">
+          <div className="flex flex-col gap-3 flex-1 justify-center">
             {[
               { key: "understory_backoffice_latest_visit", label: "Backoffice" },
               { key: "understory_storefront_latest_visit", label: "Storefront" },
@@ -177,33 +177,33 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
               const formatted = date && !isNaN(date.getTime()) ? formatRelativeDate(date) : "No data";
               return (
                 <div key={key} className="flex justify-between items-baseline">
-                  <span className="text-[9px] text-[var(--green-100)]">{label}</span>
-                  <span className={`text-xs font-medium ${isOld ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>{formatted}</span>
+                  <span className="text-xs text-[var(--green-100)]">{label}</span>
+                  <span className={`text-sm font-semibold ${isOld ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>{formatted}</span>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Card 4: Understory Pay - stacked stages */}
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
+        {/* Card 4: Understory Pay - bigger text, spaced */}
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Understory Pay</div>
           {company.understory_pay_unwilling === "true" ? (
-            <div>
-              <div className="text-xs font-medium text-[var(--rust)]">Unwilling</div>
+            <div className="flex-1 flex flex-col justify-center">
+              <div className="text-sm font-semibold text-[var(--rust)]">Unwilling</div>
               {company.understory_pay_unwilling_reason && (
-                <div className="text-[9px] text-[var(--green-100)] mt-1">{company.understory_pay_unwilling_reason}</div>
+                <div className="text-xs text-[var(--green-100)] mt-1">{company.understory_pay_unwilling_reason}</div>
               )}
             </div>
           ) : company.understory_pay_ineligible === "true" ? (
-            <div>
-              <div className="text-xs font-medium text-orange-600">Ineligible</div>
+            <div className="flex-1 flex flex-col justify-center">
+              <div className="text-sm font-semibold text-orange-600">Ineligible</div>
               {company.understory_pay_ineligible_reason && (
-                <div className="text-[9px] text-[var(--green-100)] mt-1">{company.understory_pay_ineligible_reason}</div>
+                <div className="text-xs text-[var(--green-100)] mt-1">{company.understory_pay_ineligible_reason}</div>
               )}
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="flex flex-col gap-2.5 flex-1 justify-center">
               {[
                 { label: "Not Started", active: false },
                 { label: "Onboarding", active: company.understory_has_started_understory_pay_onboarding === "true" },
@@ -215,8 +215,8 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
                 const reached = i <= currentIdx;
                 return (
                   <div key={stage.label} className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${reached ? "bg-[var(--moss)]" : "bg-[#EDEDEA]"}`} />
-                    <span className={`text-xs ${reached ? "text-[var(--moss)] font-medium" : "text-[var(--green-100)]"}`}>{stage.label}</span>
+                    <div className={`w-2.5 h-2.5 rounded-full ${reached ? "bg-[var(--moss)]" : "bg-[#EDEDEA]"}`} />
+                    <span className={`text-sm ${reached ? "text-[var(--moss)] font-semibold" : "text-[var(--green-100)]"}`}>{stage.label}</span>
                   </div>
                 );
               })}

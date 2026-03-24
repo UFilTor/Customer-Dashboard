@@ -170,6 +170,7 @@ const DEAL_PROPERTIES = [
   "pipeline", "deal_currency_code", "Storefront link",
   "share_of_transactions_via_understory_pay",
   "enable_understory_pay",
+  "wish_to_churn", "churn_reason", "churned_reason_elaborated", "churn_date", "customer_stage",
 ];
 
 export async function getCompanyDetail(companyId: string): Promise<CompanyDetail> {

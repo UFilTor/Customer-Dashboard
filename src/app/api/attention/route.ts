@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchInvoices, fetchOverdueTasks, fetchHealthScoreIssues, fetchGoneQuiet, fetchDecliningVolume } from "@/lib/attention";
+import { fetchInvoices, fetchOverdueTasks, fetchHealthScoreIssues, fetchGoneQuiet, fetchDecliningVolume, fetchChurnRisk } from "@/lib/attention";
 import { Cache } from "@/lib/cache";
 import { AttentionCompany, AttentionResponse } from "@/lib/types";
 
@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
     const healthScore = await fetchHealthScoreIssues();
     const goneQuiet = await fetchGoneQuiet();
     const decliningVolume = await fetchDecliningVolume();
+    const churnRisk = await fetchChurnRisk();
 
     const groups = [
       { signal: "overdue_invoices" as const, label: "Overdue Invoices", companies: invoices.overdue },
@@ -44,6 +45,7 @@ export async function GET(request: NextRequest) {
       { signal: "overdue_tasks" as const, label: "Overdue Tasks", companies: overdueTasks },
       { signal: "health_score" as const, label: "Health Score Issues", companies: healthScore },
       { signal: "declining_volume" as const, label: "Declining Volume", companies: decliningVolume },
+      { signal: "churn_risk" as const, label: "Churn Risk", companies: churnRisk },
       { signal: "gone_quiet" as const, label: "Gone Quiet", companies: goneQuiet },
     ].filter((g) => g.companies.length > 0);
 

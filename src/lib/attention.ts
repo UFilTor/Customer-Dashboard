@@ -529,3 +529,96 @@ export async function fetchDecliningVolume(): Promise<AttentionCompany[]> {
   }
 }
 
+export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
+  try {
+    const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
+      method: "POST",
+      headers: hubspotHeaders(),
+      body: JSON.stringify({
+        filterGroups: pipelineIds.map((pid) => ({
+          filters: [
+            { propertyName: "pipeline", operator: "EQ", value: pid },
+            { propertyName: "wish_to_churn", operator: "EQ", value: "true" },
+          ],
+        })),
+        properties: ["dealname", "churn_reason", "churned_reason_elaborated", "churn_date", "customer_stage", "deal_currency_code", "confirmed__contract_mrr", "booking_fee"],
+        limit: 100,
+      }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+
+    // Only show companies NOT yet churned (active churn risks)
+    const activeDeals = (data.results || []).filter(
+      (d: { properties: Record<string, string> }) => d.properties.customer_stage !== "Churned"
+    );
+
+    if (activeDeals.length === 0) return [];
+
+    const companyMap = new Map<string, AttentionCompany>();
+
+    // Fetch associations in batches of 5
+    const assocResults: ({ companyId: string; deal: { dealname: string; churnReason: string; churnDetail: string; stage: string } } | null)[] = [];
+    for (let i = 0; i < activeDeals.length; i += 5) {
+      const batch = activeDeals.slice(i, i + 5);
+      const batchResults = await Promise.all(
+        batch.map(async (deal: { id: string; properties: Record<string, string> }) => {
+          try {
+            const assocRes = await fetch(
+              `${HUBSPOT_API}/crm/v3/objects/deals/${deal.id}/associations/companies`,
+              { headers: hubspotHeaders() }
+            );
+            if (!assocRes.ok) return null;
+            const assocData = await assocRes.json();
+            const companyId = assocData.results?.[0]?.id;
+            return companyId ? {
+              companyId,
+              deal: {
+                dealname: deal.properties.dealname || "",
+                churnReason: deal.properties.churn_reason || "",
+                churnDetail: deal.properties.churned_reason_elaborated || "",
+                stage: deal.properties.customer_stage || "",
+              }
+            } : null;
+          } catch { return null; }
+        })
+      );
+      assocResults.push(...batchResults);
+    }
+
+    for (const result of assocResults) {
+      if (!result || companyMap.has(result.companyId)) continue;
+      const { companyId, deal } = result;
+      const reasonText = deal.churnReason
+        ? `${deal.churnReason}${deal.churnDetail ? ` - ${deal.churnDetail.slice(0, 80)}` : ""}`
+        : deal.stage || "Wants to churn";
+      companyMap.set(companyId, {
+        id: companyId,
+        name: "",
+        detail: reasonText,
+        ownerId: "",
+        currency: "EUR",
+      });
+    }
+
+    if (companyMap.size === 0) return [];
+
+    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_12m", "understory_company_country"]);
+    for (const [id, props] of Object.entries(companies)) {
+      const entry = companyMap.get(id);
+      if (entry) {
+        entry.name = props.name || "Unknown";
+        entry.ownerId = props.hubspot_owner_id || "";
+        entry.country = props.understory_company_country || "";
+        const volume = parseFloat(props.understory_booking_volume_12m || "0");
+        entry.mrr = volume > 0 ? formatRevenue(Math.round(volume)) : "-";
+      }
+    }
+
+    return Array.from(companyMap.values()).filter((c) => c.name);
+  } catch {
+    return [];
+  }
+}
+

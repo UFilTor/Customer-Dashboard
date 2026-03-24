@@ -111,7 +111,7 @@ export interface AttentionCompany {
   enteredGroupAt?: string;
 }
 
-export type AttentionSignal = "overdue_invoices" | "open_invoices" | "overdue_tasks" | "health_score" | "gone_quiet" | "declining_volume";
+export type AttentionSignal = "overdue_invoices" | "open_invoices" | "overdue_tasks" | "health_score" | "gone_quiet" | "declining_volume" | "churn_risk";
 
 export interface AttentionGroup {
   signal: AttentionSignal;

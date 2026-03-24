@@ -74,18 +74,14 @@ function CompanyRow({
       >
         <div className="flex items-center justify-between">
           <span className="font-medium text-sm text-[var(--moss)]">{company.name}</span>
-          <div className="flex items-center gap-2">
-            <MetricChips
-              healthScore={company.healthScore}
-              volume12m={company.volume12m}
-              volume3m={company.volume3m}
-              volume6m={company.volume6m}
-              payStatus={company.payStatus}
-            />
-            {company.mrr && company.mrr !== "-" && (
-              <span className="text-xs font-medium text-[var(--moss)]">{company.mrr}</span>
-            )}
-          </div>
+          <MetricChips
+            revenue={company.revenue}
+            healthScore={company.healthScore}
+            volume12m={company.volume12m}
+            volume3m={company.volume3m}
+            volume6m={company.volume6m}
+            payStatus={company.payStatus}
+          />
         </div>
         <div className="flex items-center gap-2 mt-1">
           {(signal === "overdue_invoices" || signal === "open_invoices") && (

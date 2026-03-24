@@ -2,6 +2,7 @@ import { getHealthLabel, getHealthColor } from "@/lib/health-score";
 import { abbreviateEur, computeVolumeTrend } from "@/lib/format";
 
 interface Props {
+  revenue?: number;
   healthScore?: string;
   volume12m?: number;
   volume3m?: number;
@@ -9,16 +10,25 @@ interface Props {
   payStatus?: string;
 }
 
-export function MetricChips({ healthScore, volume12m, volume3m, volume6m, payStatus }: Props) {
+export function MetricChips({ revenue, healthScore, volume12m, volume3m, volume6m, payStatus }: Props) {
   const trend = computeVolumeTrend(volume3m, volume6m);
 
   return (
     <div className="flex items-center gap-[5px] flex-wrap">
+      <RevenueChip value={revenue} />
       <HealthChip score={healthScore} />
       <VolumeChip value={volume12m} />
       {trend && <TrendChip trend={trend} />}
       <PayChip status={payStatus} />
     </div>
+  );
+}
+
+function RevenueChip({ value }: { value?: number }) {
+  return (
+    <span className="inline-flex items-center text-[10.5px] font-semibold px-[7px] py-[2px] rounded-md bg-[var(--moss)]/10 text-[var(--moss)] whitespace-nowrap">
+      {abbreviateEur(value)}
+    </span>
   );
 }
 

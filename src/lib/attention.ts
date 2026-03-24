@@ -93,13 +93,20 @@ function formatRevenue(revenueEur: number): string {
 function mapChipFields(
   companyProps: Record<string, string>,
   dealProps: Record<string, string> | null
-): Pick<AttentionCompany, "healthScore" | "volume12m" | "volume3m" | "volume6m" | "payStatus"> {
+): Pick<AttentionCompany, "healthScore" | "volume12m" | "volume3m" | "volume6m" | "payStatus" | "revenue"> {
+  const revenue = computeGeneratedRevenue(
+    companyProps.understory_booking_volume_12m,
+    dealProps?.booking_fee || dealProps?.confirmed_booking_fee,
+    dealProps?.confirmed__contract_mrr,
+    dealProps?.deal_currency_code
+  );
   return {
     healthScore: companyProps.health_score || undefined,
     volume12m: parseFloat(companyProps.understory_booking_volume_12m || "0") || undefined,
     volume3m: parseFloat(companyProps.understory_booking_volume_3m || "0") || undefined,
     volume6m: parseFloat(companyProps.understory_booking_volume_6m || "0") || undefined,
     payStatus: dealProps?.understory_pay_status__customer || undefined,
+    revenue: revenue || undefined,
   };
 }
 

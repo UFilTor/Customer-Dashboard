@@ -12,7 +12,7 @@
   --beige-new: #EAE8DD;
   --beige-gray: #D3D1C6;
   --lichen: #D5DFCA;
-  --green-100: #B9C2B2;
+  --green-100: #7A8A72;
   --dark-moss: #1D261F;
   --lilac: #D1BEE7;
   --sky-blue: #CFE8FF;
@@ -45,4 +45,5 @@ body {
 .tab-item-focused {
   background-color: #C8D4BA !important;
   box-shadow: inset 4px 0 0 var(--moss);
+  color: var(--moss) !important;
 }

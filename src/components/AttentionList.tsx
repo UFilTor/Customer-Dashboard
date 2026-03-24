@@ -18,19 +18,51 @@ const SE_PLUS_COUNTRIES = ["SE", "NO", "FI"];
 const IT_COUNTRIES = ["IT"];
 
 const PEOPLE: { id: string; name: string }[] = [
-  { id: "962517007", name: "Anders Hansen" },
-  { id: "559364799", name: "Cecilia Lexe" },
-  { id: "1939229547", name: "Filip Torstensson" },
-  { id: "44912650", name: "Marc Moller Nielsen" },
+  { id: "962517007", name: "Anders" },
+  { id: "559364799", name: "Cecilia" },
+  { id: "1939229547", name: "Filip" },
+  { id: "44912650", name: "Marc" },
 ];
+
+const FILTER_STORAGE_KEY = "dashboard-default-filter";
+
+interface SavedFilter {
+  filterMode: FilterMode;
+  regionOption: RegionOption;
+  personOption: PersonOption;
+}
+
+function loadDefaultFilter(): SavedFilter | null {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveDefaultFilter(filter: SavedFilter): void {
+  localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filter));
+}
 
 export function AttentionList({ onSelectCompany }: Props) {
   const [data, setData] = useState<AttentionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterMode, setFilterMode] = useState<FilterMode>("All");
-  const [regionOption, setRegionOption] = useState<RegionOption>("SE+");
-  const [personOption, setPersonOption] = useState<PersonOption>(PEOPLE[0]?.id || "");
+  const [filterMode, setFilterMode] = useState<FilterMode>(() => {
+    const saved = loadDefaultFilter();
+    return saved?.filterMode || "All";
+  });
+  const [regionOption, setRegionOption] = useState<RegionOption>(() => {
+    const saved = loadDefaultFilter();
+    return saved?.regionOption || "SE+";
+  });
+  const [personOption, setPersonOption] = useState<PersonOption>(() => {
+    const saved = loadDefaultFilter();
+    return saved?.personOption || PEOPLE[0]?.id || "";
+  });
+  const [savedIndicator, setSavedIndicator] = useState(false);
   const [sortField, setSortField] = useState<SortField>("mrr");
   const [snoozeVersion, setSnoozeVersion] = useState(0);
 
@@ -184,6 +216,17 @@ export function AttentionList({ onSelectCompany }: Props) {
                 ))}
               </select>
             )}
+            <button
+              onClick={() => {
+                saveDefaultFilter({ filterMode, regionOption, personOption });
+                setSavedIndicator(true);
+                setTimeout(() => setSavedIndicator(false), 2000);
+              }}
+              className="text-[10px] text-[var(--green-100)] hover:text-[var(--moss)] transition-colors"
+              title="Save current filter as your default"
+            >
+              {savedIndicator ? "Saved!" : "Save as default"}
+            </button>
           </div>
           <div className="flex items-center bg-[#F7F7F5] rounded-[10px] p-1">
             <span className="text-xs text-[#AAA] px-2">Sort:</span>

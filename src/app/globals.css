@@ -40,9 +40,8 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-.attention-item-focused,
+.attention-item-focused > button,
 .tab-item-focused {
-  outline: 2px solid var(--moss);
-  outline-offset: -2px;
-  border-radius: 8px;
+  background-color: var(--lichen) !important;
+  box-shadow: inset 3px 0 0 var(--moss);
 }

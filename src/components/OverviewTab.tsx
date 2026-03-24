@@ -106,26 +106,26 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
       <RecapCard recap={recap} companyId={companyId} />
 
       {/* 4 insight cards in a row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3 items-stretch">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3 items-start">
 
-        {/* Card 1: Health Breakdown - circles */}
+        {/* Card 1: Health Breakdown - compact list with mini circles */}
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">
-          <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Health</div>
-          <div className="grid grid-cols-4 gap-1">
+          <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-1.5">Health</div>
+          <div className="space-y-1">
             {HEALTH_COMPONENTS.map(({ key, label }) => {
               const pct = Math.round(parseFloat(company[key] || "0") * 100);
               const color = pct >= 70 ? "#6EE7B7" : pct >= 40 ? "#FCD34D" : "#FCA5A5";
               const textColor = pct >= 70 ? "#065F46" : pct >= 40 ? "#92400E" : "#991B1B";
               return (
-                <div key={key} className="text-center">
-                  <div className="relative w-8 h-8 mx-auto">
-                    <svg viewBox="0 0 36 36" className="w-8 h-8">
-                      <path d="M18 2.0845a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#EDEDEA" strokeWidth="3" />
-                      <path d="M18 2.0845a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={color} strokeWidth="3" strokeDasharray={`${pct}, 100`} />
+                <div key={key} className="flex items-center gap-2">
+                  <div className="relative w-5 h-5 shrink-0">
+                    <svg viewBox="0 0 36 36" className="w-5 h-5">
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#EDEDEA" strokeWidth="3.5" />
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke={color} strokeWidth="3.5" strokeDasharray={`${pct} 100`} strokeLinecap="round" transform="rotate(-90 18 18)" />
                     </svg>
-                    <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold" style={{ color: textColor }}>{pct}</span>
                   </div>
-                  <div className="text-[8px] text-[var(--green-100)] mt-0.5 truncate">{label}</div>
+                  <span className="text-[9px] text-[var(--green-100)] flex-1 truncate">{label}</span>
+                  <span className="text-[10px] font-bold" style={{ color: textColor }}>{pct}%</span>
                 </div>
               );
             })}

@@ -226,7 +226,7 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
     { type: "calls" as const, props: ["hs_call_title", "hs_call_body", "hs_body_preview", "hs_call_direction", "hs_timestamp", "hs_call_status"] },
     { type: "meetings" as const, props: ["hs_meeting_title", "hs_meeting_body", "hs_body_preview", "hs_timestamp", "hs_meeting_outcome"] },
     { type: "notes" as const, props: ["hs_note_body", "hs_timestamp", "hubspot_owner_id"] },
-    { type: "emails" as const, props: ["hs_email_subject", "hs_email_body", "hs_timestamp", "hs_email_from_email", "hs_email_to_email", "hs_email_direction"] },
+    { type: "emails" as const, props: ["hs_email_subject", "hs_email_body", "hs_email_text", "hs_timestamp", "hs_email_from_email", "hs_email_to_email", "hs_email_direction"] },
   ];
 
   const results = await Promise.all(
@@ -327,11 +327,12 @@ function mapEngagement(type: string, props: Record<string, string>): Engagement 
         owner: props.hubspot_owner_id,
       };
     case "emails":
+      const emailBody = props.hs_email_text || props.hs_email_body || "";
       return {
         type: "email",
         title: props.hs_email_subject || "Email",
-        body: props.hs_email_body || "",
-        bodyPreview: (props.hs_email_body || "").slice(0, 200),
+        body: emailBody,
+        bodyPreview: emailBody.replace(/<[^>]*>/g, "").trim().slice(0, 200),
         summary: "",
         timestamp: props.hs_timestamp || "",
         direction: props.hs_email_direction,

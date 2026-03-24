@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { AttentionGroup as AttentionGroupType, AttentionCompany, AttentionSignal, CompanySearchResult } from "@/lib/types";
 import { sortAttentionCompanies, SortField } from "@/lib/sort-attention";
 import { formatGroupDuration } from "@/lib/timeline";
 import { snoozeCompany, unsnoozeCompany, getSnoozedCompanies, isCompanySnoozed } from "@/lib/snooze";
 import SnoozePopover from "./SnoozePopover";
-import CompanyTooltip from "./CompanyTooltip";
 import { MetricChips } from "./MetricChips";
 import { getHealthLabel } from "@/lib/health-score";
 
@@ -50,24 +49,12 @@ function CompanyRow({
   onSnooze: (until: string) => void;
   onSnoozeClose: () => void;
 }) {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const tooltipTimeout = useRef<NodeJS.Timeout | null>(null);
-
   return (
     <div
       className="relative group/row"
-      onMouseEnter={() => {
-        tooltipTimeout.current = setTimeout(() => setShowTooltip(true), 300);
-      }}
-      onMouseLeave={() => {
-        if (tooltipTimeout.current) clearTimeout(tooltipTimeout.current);
-        setShowTooltip(false);
-      }}
     >
       <button
         onClick={() => {
-          setShowTooltip(false);
-          if (tooltipTimeout.current) clearTimeout(tooltipTimeout.current);
           onClick();
         }}
         className="w-full border-b border-[#F0EEE8] p-3 pr-10 text-left hover:bg-[#FAFAF7] transition-all duration-150"
@@ -155,7 +142,6 @@ function CompanyRow({
           onClose={onSnoozeClose}
         />
       )}
-      {showTooltip && <CompanyTooltip company={company} />}
     </div>
   );
 }

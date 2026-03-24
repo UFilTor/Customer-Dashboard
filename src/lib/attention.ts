@@ -477,3 +477,55 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
   }
 }
 
+export async function fetchDecliningVolume(): Promise<AttentionCompany[]> {
+  try {
+    // Search for companies with booking volume data
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/search`, {
+      method: "POST",
+      headers: hubspotHeaders(),
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [{
+            propertyName: "understory_booking_volume_6m",
+            operator: "GT",
+            value: "0",
+          }],
+        }],
+        properties: ["name", "hubspot_owner_id", "understory_booking_volume_3m", "understory_booking_volume_6m", "understory_booking_volume_12m", "understory_company_country"],
+        limit: 100,
+      }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+
+    const companies: AttentionCompany[] = [];
+    for (const c of data.results || []) {
+      const m3 = parseFloat(c.properties.understory_booking_volume_3m || "0");
+      const m6 = parseFloat(c.properties.understory_booking_volume_6m || "0");
+      if (m6 === 0) continue;
+
+      // Previous 3 months = 6m total - current 3m
+      const previous3m = m6 - m3;
+      if (previous3m <= 0) continue;
+
+      // Flag if current 3m is less than 50% of previous 3m
+      if (m3 < previous3m * 0.5) {
+        const declinePct = Math.round(((previous3m - m3) / previous3m) * 100);
+        companies.push({
+          id: c.id,
+          name: c.properties.name || "Unknown",
+          detail: `Volume down ${declinePct}% vs previous 3 months`,
+          ownerId: c.properties.hubspot_owner_id || "",
+          country: c.properties.understory_company_country || "",
+          mrr: `\u20ac${Math.round(parseFloat(c.properties.understory_booking_volume_12m || "0")).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`,
+          currency: "EUR",
+        });
+      }
+    }
+
+    return companies;
+  } catch {
+    return [];
+  }
+}
+

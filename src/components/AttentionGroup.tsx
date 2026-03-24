@@ -115,6 +115,9 @@ function CompanyRow({
               {company.daysSilent !== undefined ? `Silent for ${company.daysSilent} days` : company.detail}
             </span>
           )}
+          {signal === "declining_volume" && (
+            <span className="text-xs text-[var(--rust)]">{company.detail}</span>
+          )}
           {(() => {
             const duration = formatGroupDuration(company.enteredGroupAt);
             if (!duration) return null;

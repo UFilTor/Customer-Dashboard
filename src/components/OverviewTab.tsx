@@ -173,6 +173,45 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
         {renderPayStatus(company, deal)}
       </div>
 
+      {/* Booking Volume Trend */}
+      {company.understory_booking_volume_12m && (
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 mb-4">
+          <h3 className="font-semibold text-[var(--moss)] mb-3">Booking Volume Trend</h3>
+          <div className="flex items-end gap-4">
+            {[
+              { key: "understory_booking_volume_1m", label: "1M" },
+              { key: "understory_booking_volume_3m", label: "3M" },
+              { key: "understory_booking_volume_6m", label: "6M" },
+              { key: "understory_booking_volume_12m", label: "12M" },
+            ].map(({ key, label }) => {
+              const val = parseFloat(company[key] || "0");
+              const formatted = val > 0 ? `€${Math.round(val).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}` : "-";
+              return (
+                <div key={key} className="text-center flex-1">
+                  <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-1">{label}</div>
+                  <div className="text-sm font-bold text-[var(--moss)]">{formatted}</div>
+                </div>
+              );
+            })}
+          </div>
+          {(() => {
+            const m3 = parseFloat(company.understory_booking_volume_3m || "0");
+            const m6 = parseFloat(company.understory_booking_volume_6m || "0");
+            if (m6 === 0 || m3 === 0) return null;
+            // Compare 3m pace vs previous 3m pace
+            const previous3m = m6 - m3;
+            if (previous3m <= 0) return null;
+            const growthPct = Math.round(((m3 - previous3m) / previous3m) * 100);
+            const isGrowing = growthPct > 0;
+            return (
+              <div className={`text-xs mt-2 ${isGrowing ? "text-[#065F46]" : "text-[var(--rust)]"}`}>
+                {isGrowing ? "↑" : "↓"} {Math.abs(growthPct)}% vs previous 3 months
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
           <h3 className="font-semibold text-[var(--moss)] mb-3">Company Info</h3>

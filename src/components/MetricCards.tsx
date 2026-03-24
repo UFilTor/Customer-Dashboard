@@ -3,6 +3,22 @@ import { formatValue } from "@/lib/format";
 
 const CATEGORY_ORDER = ["Healthy", "Monitor", "At Risk", "Critical Churn Risk"];
 
+const TO_EUR: Record<string, number> = {
+  EUR: 1, USD: 0.92, GBP: 1.16, SEK: 0.087, NOK: 0.086, DKK: 0.134,
+};
+
+function computeRevenue12m(company: Record<string, string>, deal: Record<string, string> | null): string {
+  const volume = parseFloat(company.understory_booking_volume_last_12_months || "0") || 0;
+  const fee = parseFloat(deal?.booking_fee || "0") || 0;
+  const mrr = parseFloat(deal?.confirmed__contract_mrr || "0") || 0;
+  const currency = (deal?.deal_currency_code || "EUR").toUpperCase();
+  const revenueLocal = (volume * fee / 100) + (mrr * 12);
+  const rate = TO_EUR[currency] ?? 1;
+  const revenueEur = Math.round(revenueLocal * rate);
+  if (revenueEur === 0) return "-";
+  return `\u20ac${revenueEur.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
+}
+
 interface Props {
   company: Record<string, string>;
   deal: Record<string, string> | null;
@@ -10,7 +26,6 @@ interface Props {
 }
 
 export function MetricCards({ company, deal, previousCategory }: Props) {
-  const count = dashboardConfig.metricCards.length;
   const currencyCode = deal?.deal_currency_code || "EUR";
 
   return (
@@ -18,7 +33,9 @@ export function MetricCards({ company, deal, previousCategory }: Props) {
       {dashboardConfig.metricCards.map((card) => {
         const source = card.source === "deal" ? deal : company;
         const value = source?.[card.property] ?? null;
-        const formatted = formatValue(value, card.format, card.format === "currency" ? currencyCode : undefined);
+        const formatted = card.format === "revenue12m"
+          ? computeRevenue12m(company, deal)
+          : formatValue(value, card.format, card.format === "currency" ? currencyCode : undefined);
         const isInvoice = card.format === "invoiceStatus";
 
         let bgClass = "border border-[#EDEDEA]";

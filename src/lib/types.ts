@@ -7,7 +7,8 @@ export type FormatType =
   | "percentage"
   | "badge"
   | "owner"
-  | "invoiceStatus";
+  | "invoiceStatus"
+  | "revenue12m";
 
 export interface FieldConfig {
   label: string;

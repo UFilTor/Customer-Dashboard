@@ -2,7 +2,7 @@ import { DashboardConfig } from "@/lib/types";
 
 export const dashboardConfig: DashboardConfig = {
   metricCards: [
-    { label: "MRR", property: "confirmed__contract_mrr", source: "deal", format: "currency" },
+    { label: "Revenue 12M", property: "confirmed__contract_mrr", source: "deal", format: "revenue12m" },
     { label: "Last 12M Volume", property: "understory_booking_volume_last_12_months", source: "company", format: "currency" },
     { label: "Understory Pay", property: "understory_pay_status__customer", source: "deal", format: "text" },
     { label: "Invoice", property: "Tags", source: "deal", format: "invoiceStatus" },

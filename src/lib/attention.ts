@@ -44,7 +44,7 @@ async function fetchDealForCompany(companyId: string): Promise<Record<string, st
       headers: hubspotHeaders(),
       body: JSON.stringify({
         inputs: dealIds.map((id) => ({ id })),
-        properties: ["confirmed__contract_mrr", "deal_currency_code", "pipeline"],
+        properties: ["confirmed__contract_mrr", "deal_currency_code", "pipeline", "booking_fee"],
       }),
     });
     if (!batchRes.ok) return null;
@@ -59,25 +59,28 @@ async function fetchDealForCompany(companyId: string): Promise<Record<string, st
   }
 }
 
-function getCurrencySymbol(code: string): string {
-  const symbols: Record<string, string> = {
-    EUR: "\u20ac",
-    DKK: "DKK ",
-    SEK: "SEK ",
-    NOK: "NOK ",
-    USD: "$",
-    GBP: "\u00a3",
-  };
-  return symbols[code?.toUpperCase()] || (code ? `${code} ` : "\u20ac");
+const TO_EUR: Record<string, number> = {
+  EUR: 1, USD: 0.92, GBP: 1.16, SEK: 0.087, NOK: 0.086, DKK: 0.134,
+};
+
+function computeGeneratedRevenue(
+  bookingVolume12m: string | undefined,
+  bookingFee: string | undefined,
+  contractMrr: string | undefined,
+  currency: string | undefined
+): number {
+  const volume = parseFloat(bookingVolume12m || "0") || 0;
+  const fee = parseFloat(bookingFee || "0") || 0;
+  const mrr = parseFloat(contractMrr || "0") || 0;
+  const revenueLocal = (volume * fee / 100) + (mrr * 12);
+  const rate = TO_EUR[(currency || "EUR").toUpperCase()] ?? 1;
+  return Math.round(revenueLocal * rate);
 }
 
-function formatMrr(mrr: string | undefined, currency: string | undefined): string {
-  if (!mrr) return "-";
-  const num = parseFloat(mrr);
-  if (isNaN(num)) return "-";
-  const symbol = getCurrencySymbol(currency || "EUR");
-  const formatted = Math.round(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `${symbol}${formatted}/mo`;
+function formatRevenue(revenueEur: number): string {
+  if (revenueEur === 0) return "-";
+  const formatted = Math.round(revenueEur).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return `\u20ac${formatted}`;
 }
 
 export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
@@ -93,20 +96,21 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
             { propertyName: "Tags", operator: "CONTAINS_TOKEN", value: "Overdue" },
           ],
         }],
-        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code"],
+        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee"],
         limit: 100,
       }),
     });
     if (!res.ok) return [];
     const data = await res.json();
 
-    interface DealInfo { id: string; dealname: string; mrr: string; currency: string }
+    interface DealInfo { id: string; dealname: string; mrr: string; currency: string; bookingFee: string }
     const deals: DealInfo[] = data.results?.map(
       (d: { id: string; properties: Record<string, string> }) => ({
         id: d.id,
         dealname: d.properties.dealname || "Unknown deal",
         mrr: d.properties.confirmed__contract_mrr || "",
         currency: d.properties.deal_currency_code || "EUR",
+        bookingFee: d.properties.booking_fee || "",
       })
     ) || [];
 
@@ -128,9 +132,10 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
           id: companyId,
           name: "",
           detail: deal.dealname,
-          mrr: formatMrr(deal.mrr, deal.currency),
-          currency: deal.currency,
-        });
+          _dealMrr: deal.mrr,
+          _dealCurrency: deal.currency,
+          _dealBookingFee: deal.bookingFee,
+        } as AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string });
       } catch {
         continue;
       }
@@ -138,12 +143,20 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
 
     if (companyMap.size === 0) return [];
 
-    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()));
+    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_last_12_months"]);
     for (const [id, props] of Object.entries(companies)) {
-      const entry = companyMap.get(id);
+      const entry = companyMap.get(id) as (AttentionCompany & { _dealMrr?: string; _dealCurrency?: string; _dealBookingFee?: string }) | undefined;
       if (entry) {
         entry.name = props.name || "Unknown";
         entry.ownerId = props.hubspot_owner_id || "";
+        const revenue = computeGeneratedRevenue(
+          props.understory_booking_volume_last_12_months,
+          entry._dealBookingFee,
+          entry._dealMrr,
+          entry._dealCurrency
+        );
+        entry.mrr = formatRevenue(revenue);
+        entry.currency = "EUR";
       }
     }
 
@@ -221,23 +234,26 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
 
     if (companyMap.size === 0) return [];
 
-    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()));
-    for (const [id, props] of Object.entries(companies)) {
+    const companyProps = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_last_12_months"]);
+    for (const [id, props] of Object.entries(companyProps)) {
       const entry = companyMap.get(id);
       if (entry) {
         entry.name = props.name || "Unknown";
         entry.ownerId = props.hubspot_owner_id || "";
+        (entry as AttentionCompany & { _bookingVolume?: string })._bookingVolume = props.understory_booking_volume_last_12_months || "";
       }
     }
 
-    // Fetch MRR for each company from their lifecycle deal
+    // Fetch deal data and compute Generated Revenue for each company
     const results = Array.from(companyMap.values()).filter((c) => c.name);
     await Promise.all(
       results.map(async (company) => {
         const deal = await fetchDealForCompany(company.id);
         if (deal) {
-          company.mrr = formatMrr(deal.confirmed__contract_mrr, deal.deal_currency_code);
-          company.currency = deal.deal_currency_code || "EUR";
+          const bookingVolume = (company as AttentionCompany & { _bookingVolume?: string })._bookingVolume;
+          const revenue = computeGeneratedRevenue(bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code);
+          company.mrr = formatRevenue(revenue);
+          company.currency = "EUR";
         }
       })
     );
@@ -270,19 +286,20 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
             }],
           },
         ],
-        properties: ["name", "Health Score Category", "hubspot_owner_id"],
+        properties: ["name", "Health Score Category", "hubspot_owner_id", "understory_booking_volume_last_12_months"],
         limit: 100,
       }),
     });
     if (!res.ok) return [];
     const data = await res.json();
 
-    const companies: AttentionCompany[] = (data.results || []).map(
+    const companies: (AttentionCompany & { _bookingVolume?: string })[] = (data.results || []).map(
       (c: { id: string; properties: Record<string, string> }) => ({
         id: c.id,
         name: c.properties.name || "Unknown",
         detail: c.properties["Health Score Category"] || "Unknown",
         ownerId: c.properties.hubspot_owner_id || "",
+        _bookingVolume: c.properties.understory_booking_volume_last_12_months || "",
       })
     );
 
@@ -307,11 +324,12 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
           }
         } catch { /* continue without history */ }
 
-        // Get MRR from lifecycle deal
+        // Get Generated Revenue from lifecycle deal
         const deal = await fetchDealForCompany(company.id);
         if (deal) {
-          company.mrr = formatMrr(deal.confirmed__contract_mrr, deal.deal_currency_code);
-          company.currency = deal.deal_currency_code || "EUR";
+          const revenue = computeGeneratedRevenue(company._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code);
+          company.mrr = formatRevenue(revenue);
+          company.currency = "EUR";
         }
       })
     );
@@ -339,14 +357,14 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
             value: thresholdStr,
           }],
         }],
-        properties: ["name", "notes_last_contacted", "hubspot_owner_id"],
+        properties: ["name", "notes_last_contacted", "hubspot_owner_id", "understory_booking_volume_last_12_months"],
         limit: 100,
       }),
     });
     if (!res.ok) return [];
     const data = await res.json();
 
-    const companies: AttentionCompany[] = (data.results || []).map(
+    const companies: (AttentionCompany & { _bookingVolume?: string })[] = (data.results || []).map(
       (c: { id: string; properties: Record<string, string> }) => {
         const lastDate = new Date(c.properties.notes_last_contacted);
         const daysAgo = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -356,34 +374,31 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
           detail: `Last contacted ${daysAgo} days ago`,
           daysSilent: daysAgo,
           ownerId: c.properties.hubspot_owner_id || "",
+          _bookingVolume: c.properties.understory_booking_volume_last_12_months || "",
         };
       }
     );
 
-    // Fetch MRR for each company from lifecycle deal
+    // Fetch deal data and compute Generated Revenue for each company
     await Promise.all(
       companies.map(async (company) => {
         const deal = await fetchDealForCompany(company.id);
         if (deal) {
-          company.mrr = formatMrr(deal.confirmed__contract_mrr, deal.deal_currency_code);
-          company.currency = deal.deal_currency_code || "EUR";
+          const revenue = computeGeneratedRevenue(company._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code);
+          company.mrr = formatRevenue(revenue);
+          company.currency = "EUR";
         }
       })
     );
 
-    // Sort by MRR descending (higher value customers first)
+    // Sort by Generated Revenue descending (higher value customers first)
     return companies.sort((a, b) => {
-      const mrrA = parseMrrValue(a.mrr);
-      const mrrB = parseMrrValue(b.mrr);
-      return mrrB - mrrA;
+      const revenueA = parseFloat((a.mrr || "").replace(/[^\d]/g, "")) || 0;
+      const revenueB = parseFloat((b.mrr || "").replace(/[^\d]/g, "")) || 0;
+      return revenueB - revenueA;
     });
   } catch {
     return [];
   }
 }
 
-function parseMrrValue(mrr: string | undefined): number {
-  if (!mrr || mrr === "-") return 0;
-  const num = parseFloat(mrr.replace(/[^\d.]/g, ""));
-  return isNaN(num) ? 0 : num;
-}

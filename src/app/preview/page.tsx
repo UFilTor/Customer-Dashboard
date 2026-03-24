@@ -137,47 +137,47 @@ const MOCK_DATA: CompanyData = {
   },
 };
 
-// overdue_invoices: company 101 has high MRR (daysOverdue 3), company 102 has low MRR (daysOverdue 14)
-// Sorting by MRR desc: 101, 102. Sorting by daysOverdue desc: 102, 101 — different order.
+// overdue_invoices: company 101 has high revenue (daysOverdue 3), company 102 has low revenue (daysOverdue 14)
+// Sorting by revenue desc: 101, 102. Sorting by daysOverdue desc: 102, 101 — different order.
 //
-// overdue_tasks: company 103 has high MRR (SEK 3 800) but low daysOverdue (2)
-//               company 104 has mid MRR (SEK 2 200) and mid daysOverdue (8)
-//               company 105 has low MRR (EUR 950) but high daysOverdue (15)
-// Sort by MRR desc: 103, 104, 105. Sort by daysOverdue desc: 105, 104, 103 — opposite order.
+// overdue_tasks: company 103 has high revenue (€5 000) but low daysOverdue (2)
+//               company 104 has mid revenue (€3 500) and mid daysOverdue (8)
+//               company 105 has low revenue (€15 000) but high daysOverdue (15)
+// Sort by revenue desc: 105, 103, 104. Sort by daysOverdue desc: 105, 104, 103 — different order.
 const MOCK_ATTENTION: AttentionResponse = {
   groups: [
     {
       signal: "overdue_invoices",
       label: "Overdue Invoices",
       companies: [
-        { id: "101", name: "Nordic Kayak Tours", detail: "Nordic Kayak - Pro", ownerId: "1", mrr: "\u20ac1 800/mo", currency: "EUR", daysOverdue: 3, enteredGroupAt: undefined },
-        { id: "102", name: "Copenhagen Food Walks", detail: "Food Walks - Starter", ownerId: "2", mrr: "DKK 4 500/mo", currency: "DKK", daysOverdue: 14, enteredGroupAt: undefined },
+        { id: "101", name: "Nordic Kayak Tours", detail: "Nordic Kayak - Pro", ownerId: "1", mrr: "\u20ac25 000", currency: "EUR", daysOverdue: 3, enteredGroupAt: undefined },
+        { id: "102", name: "Copenhagen Food Walks", detail: "Food Walks - Starter", ownerId: "2", mrr: "\u20ac8 000", currency: "EUR", daysOverdue: 14, enteredGroupAt: undefined },
       ],
     },
     {
       signal: "overdue_tasks",
       label: "Overdue Tasks",
       companies: [
-        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials", ownerId: "1", daysOverdue: 2, mrr: "SEK 3 800/mo", currency: "SEK", enteredGroupAt: daysAgoISO(2) },
-        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review", ownerId: "2", daysOverdue: 8, mrr: "SEK 2 200/mo", currency: "SEK", enteredGroupAt: daysAgoISO(8) },
-        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup", ownerId: "1", daysOverdue: 15, mrr: "\u20ac950/mo", currency: "EUR", enteredGroupAt: daysAgoISO(15) },
+        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials", ownerId: "1", daysOverdue: 2, mrr: "\u20ac5 000", currency: "EUR", enteredGroupAt: daysAgoISO(2) },
+        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review", ownerId: "2", daysOverdue: 8, mrr: "\u20ac3 500", currency: "EUR", enteredGroupAt: daysAgoISO(8) },
+        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup", ownerId: "1", daysOverdue: 15, mrr: "\u20ac15 000", currency: "EUR", enteredGroupAt: daysAgoISO(15) },
       ],
     },
     {
       signal: "health_score",
       label: "Health Score Issues",
       companies: [
-        { id: "106", name: "Bergen Outdoor Co", detail: "Critical Churn Risk", ownerId: "1", mrr: "NOK 8 500/mo", currency: "NOK", previousCategory: "At Risk", categoryChangedAt: "2026-03-18T10:00:00.000Z", enteredGroupAt: "2026-03-18T10:00:00.000Z" },
-        { id: "107", name: "Helsinki Tasting Club", detail: "At Risk", ownerId: "2", mrr: "\u20ac2 100/mo", currency: "EUR", previousCategory: "Monitor", categoryChangedAt: "2026-03-10T14:00:00.000Z", enteredGroupAt: "2026-03-10T14:00:00.000Z" },
+        { id: "106", name: "Bergen Outdoor Co", detail: "Critical Churn Risk", ownerId: "1", mrr: "\u20ac10 000", currency: "EUR", previousCategory: "At Risk", categoryChangedAt: "2026-03-18T10:00:00.000Z", enteredGroupAt: "2026-03-18T10:00:00.000Z" },
+        { id: "107", name: "Helsinki Tasting Club", detail: "At Risk", ownerId: "2", mrr: "\u20ac30 000", currency: "EUR", previousCategory: "Monitor", categoryChangedAt: "2026-03-10T14:00:00.000Z", enteredGroupAt: "2026-03-10T14:00:00.000Z" },
       ],
     },
     {
       signal: "gone_quiet",
       label: "Gone Quiet",
       companies: [
-        { id: "108", name: "Oslo Creative Labs", detail: "Last contacted 62 days ago", ownerId: "2", daysSilent: 62, mrr: "NOK 12 000/mo", currency: "NOK", enteredGroupAt: daysAgoISO(62) },
-        { id: "109", name: "Aarhus Adventure Park", detail: "Last contacted 51 days ago", ownerId: "1", daysSilent: 51, mrr: "DKK 7 200/mo", currency: "DKK", enteredGroupAt: daysAgoISO(51) },
-        { id: "110", name: "Tampere Escape Rooms", detail: "Last contacted 48 days ago", ownerId: "1", daysSilent: 48, mrr: "\u20ac600/mo", currency: "EUR", enteredGroupAt: daysAgoISO(48) },
+        { id: "108", name: "Oslo Creative Labs", detail: "Last contacted 62 days ago", ownerId: "2", daysSilent: 62, mrr: "\u20ac15 000", currency: "EUR", enteredGroupAt: daysAgoISO(62) },
+        { id: "109", name: "Aarhus Adventure Park", detail: "Last contacted 51 days ago", ownerId: "1", daysSilent: 51, mrr: "\u20ac12 000", currency: "EUR", enteredGroupAt: daysAgoISO(51) },
+        { id: "110", name: "Tampere Escape Rooms", detail: "Last contacted 48 days ago", ownerId: "1", daysSilent: 48, mrr: "\u20ac9 000", currency: "EUR", enteredGroupAt: daysAgoISO(48) },
       ],
     },
   ],
@@ -351,7 +351,7 @@ export default function Preview() {
                       : "text-[var(--green-100)] hover:text-[var(--moss)]"
                   }`}
                 >
-                  MRR
+                  Revenue
                 </button>
                 <button
                   onClick={() => setSortField("daysOverdue")}

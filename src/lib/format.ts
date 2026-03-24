@@ -44,6 +44,7 @@ export function formatValue(
     case "badge":
     case "owner":
     case "invoiceStatus":
+    case "revenue12m":
       return value;
     default:
       return value;

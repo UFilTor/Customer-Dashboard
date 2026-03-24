@@ -13,7 +13,7 @@ const shortcuts = [
   { label: "Focus search", keys: `${modLabel} + K` },
   { label: "Go back", keys: "Esc" },
   { label: "Navigate items", keys: "Arrow Up / Down" },
-  { label: "Open / Toggle expand", keys: "Enter" },
+  { label: "Open / Toggle expand", keys: "Enter / Space" },
   { label: "Jump to group", keys: "1 - 4" },
   { label: "Switch tab", keys: "Arrow Left / Right" },
   { label: "Toggle sort", keys: "S" },

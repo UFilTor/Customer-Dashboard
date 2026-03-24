@@ -61,8 +61,9 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
         return;
       }
 
-      // Enter to open
-      if (e.key === "Enter") {
+      // Enter or Space to open/toggle
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
         actions.onSelect();
         return;
       }

@@ -142,7 +142,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
               </span>
             )}
           </div>
-          <div className="flex flex-col gap-2.5 flex-1 justify-center w-full">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 flex-1 content-center w-full">
             {[
               { key: "understory_booking_volume_12m", label: "12M" },
               { key: "understory_booking_volume_6m", label: "6M" },
@@ -151,11 +151,11 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
             ].map(({ key, label }) => {
               const val = parseFloat(company[key] || "0");
               return (
-                <div key={key} className="flex items-center gap-2">
-                  <span className="text-sm text-[var(--green-100)] w-8">{label}</span>
-                  <span className="text-sm font-semibold text-[var(--moss)]">
+                <div key={key} className="text-center">
+                  <div className="text-[10px] text-[var(--green-100)]">{label}</div>
+                  <div className="text-sm font-semibold text-[var(--moss)]">
                     {val > 0 ? `€${Math.round(val).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}` : "-"}
-                  </span>
+                  </div>
                 </div>
               );
             })}
@@ -176,10 +176,10 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
               const isOld = date ? (Date.now() - date.getTime()) > 30 * 86400000 : true;
               const formatted = date && !isNaN(date.getTime()) ? formatRelativeDate(date) : "No data";
               return (
-                <div key={key} className="flex items-center gap-2">
-                  <div className={`w-2.5 h-2.5 rounded-full ${isOld ? "bg-[var(--rust)]" : "bg-[#6EE7B7]"}`} />
-                  <span className="text-sm text-[var(--green-100)] flex-1">{label}</span>
-                  <span className={`text-sm font-semibold ${isOld ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>{formatted}</span>
+                <div key={key} className="flex items-center gap-1.5">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${isOld ? "bg-[var(--rust)]" : "bg-[#6EE7B7]"}`} />
+                  <span className="text-sm text-[var(--green-100)]">{label}</span>
+                  <span className={`text-sm font-semibold ml-auto ${isOld ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>{formatted}</span>
                 </div>
               );
             })}
@@ -190,14 +190,14 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Understory Pay</div>
           {company.understory_pay_unwilling === "true" ? (
-            <div className="flex-1 flex flex-col justify-center">
+            <div className="flex-1 flex flex-col justify-center w-full">
               <div className="text-sm font-semibold text-[var(--rust)]">Unwilling</div>
               {company.understory_pay_unwilling_reason && (
                 <div className="text-xs text-[var(--green-100)] mt-1">{company.understory_pay_unwilling_reason}</div>
               )}
             </div>
           ) : company.understory_pay_ineligible === "true" ? (
-            <div className="flex-1 flex flex-col justify-center">
+            <div className="flex-1 flex flex-col justify-center w-full">
               <div className="text-sm font-semibold text-orange-600">Ineligible</div>
               {company.understory_pay_ineligible_reason && (
                 <div className="text-xs text-[var(--green-100)] mt-1">{company.understory_pay_ineligible_reason}</div>

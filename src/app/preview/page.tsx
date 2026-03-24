@@ -32,7 +32,7 @@ const MOCK_DATA: CompanyData = {
     understory_total_number_of_transactions: "847",
     understory_booking_volume_all_time: "412000",
     understory_booking_volume_last_12_months: "186000",
-    "Health Score Category": "Good",
+    "Health Score Category": "Monitor",
   },
   deal: {
     dealname: "Acme Adventures - Pro",
@@ -148,34 +148,34 @@ const MOCK_ATTENTION: AttentionResponse = {
       signal: "overdue_invoices",
       label: "Overdue Invoices",
       companies: [
-        { id: "101", name: "Nordic Kayak Tours", detail: "Nordic Kayak - Pro", ownerId: "1", mrr: "\u20ac1 800/mo", currency: "EUR", daysOverdue: 3 },
-        { id: "102", name: "Copenhagen Food Walks", detail: "Food Walks - Starter", ownerId: "2", mrr: "DKK 4 500/mo", currency: "DKK", daysOverdue: 14 },
+        { id: "101", name: "Nordic Kayak Tours", detail: "Nordic Kayak - Pro", ownerId: "1", mrr: "\u20ac1 800/mo", currency: "EUR", daysOverdue: 3, enteredGroupAt: undefined },
+        { id: "102", name: "Copenhagen Food Walks", detail: "Food Walks - Starter", ownerId: "2", mrr: "DKK 4 500/mo", currency: "DKK", daysOverdue: 14, enteredGroupAt: undefined },
       ],
     },
     {
       signal: "overdue_tasks",
       label: "Overdue Tasks",
       companies: [
-        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials", ownerId: "1", daysOverdue: 2, mrr: "SEK 3 800/mo", currency: "SEK" },
-        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review", ownerId: "2", daysOverdue: 8, mrr: "SEK 2 200/mo", currency: "SEK" },
-        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup", ownerId: "1", daysOverdue: 15, mrr: "\u20ac950/mo", currency: "EUR" },
+        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials", ownerId: "1", daysOverdue: 2, mrr: "SEK 3 800/mo", currency: "SEK", enteredGroupAt: new Date(Date.now() - 2 * 86400000).toISOString() },
+        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review", ownerId: "2", daysOverdue: 8, mrr: "SEK 2 200/mo", currency: "SEK", enteredGroupAt: new Date(Date.now() - 8 * 86400000).toISOString() },
+        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup", ownerId: "1", daysOverdue: 15, mrr: "\u20ac950/mo", currency: "EUR", enteredGroupAt: new Date(Date.now() - 15 * 86400000).toISOString() },
       ],
     },
     {
       signal: "health_score",
       label: "Health Score Issues",
       companies: [
-        { id: "106", name: "Bergen Outdoor Co", detail: "Critical Churn Risk", ownerId: "1", mrr: "NOK 8 500/mo", currency: "NOK", previousCategory: "At Risk", categoryChangedAt: "2026-03-18T10:00:00.000Z" },
-        { id: "107", name: "Helsinki Tasting Club", detail: "At Risk", ownerId: "2", mrr: "\u20ac2 100/mo", currency: "EUR", previousCategory: "Monitor", categoryChangedAt: "2026-03-10T14:00:00.000Z" },
+        { id: "106", name: "Bergen Outdoor Co", detail: "Critical Churn Risk", ownerId: "1", mrr: "NOK 8 500/mo", currency: "NOK", previousCategory: "At Risk", categoryChangedAt: "2026-03-18T10:00:00.000Z", enteredGroupAt: "2026-03-18T10:00:00.000Z" },
+        { id: "107", name: "Helsinki Tasting Club", detail: "At Risk", ownerId: "2", mrr: "\u20ac2 100/mo", currency: "EUR", previousCategory: "Monitor", categoryChangedAt: "2026-03-10T14:00:00.000Z", enteredGroupAt: "2026-03-10T14:00:00.000Z" },
       ],
     },
     {
       signal: "gone_quiet",
       label: "Gone Quiet",
       companies: [
-        { id: "108", name: "Oslo Creative Labs", detail: "Last contacted 62 days ago", ownerId: "2", daysSilent: 62, mrr: "NOK 12 000/mo", currency: "NOK" },
-        { id: "109", name: "Aarhus Adventure Park", detail: "Last contacted 51 days ago", ownerId: "1", daysSilent: 51, mrr: "DKK 7 200/mo", currency: "DKK" },
-        { id: "110", name: "Tampere Escape Rooms", detail: "Last contacted 48 days ago", ownerId: "1", daysSilent: 48, mrr: "\u20ac600/mo", currency: "EUR" },
+        { id: "108", name: "Oslo Creative Labs", detail: "Last contacted 62 days ago", ownerId: "2", daysSilent: 62, mrr: "NOK 12 000/mo", currency: "NOK", enteredGroupAt: new Date(Date.now() - 62 * 86400000).toISOString() },
+        { id: "109", name: "Aarhus Adventure Park", detail: "Last contacted 51 days ago", ownerId: "1", daysSilent: 51, mrr: "DKK 7 200/mo", currency: "DKK", enteredGroupAt: new Date(Date.now() - 51 * 86400000).toISOString() },
+        { id: "110", name: "Tampere Escape Rooms", detail: "Last contacted 48 days ago", ownerId: "1", daysSilent: 48, mrr: "\u20ac600/mo", currency: "EUR", enteredGroupAt: new Date(Date.now() - 48 * 86400000).toISOString() },
       ],
     },
   ],
@@ -423,6 +423,7 @@ export default function Preview() {
               company={MOCK_DATA.company}
               deal={MOCK_DATA.deal}
               owners={MOCK_DATA.owners}
+              previousCategory="At Risk"
             />
             <MetricCards
               company={MOCK_DATA.company}

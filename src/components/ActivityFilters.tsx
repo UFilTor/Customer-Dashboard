@@ -15,7 +15,7 @@ interface Props {
   onFilterChange: (filters: { types: string[] | null; daysBack: number }) => void;
 }
 
-export default function ActivityFilters({ onFilterChange }: Props) {
+export default function useActivityFilters({ onFilterChange }: Props) {
   const [activeTypes, setActiveTypes] = useState<string[] | null>(null); // null = all
   const [daysBack, setDaysBack] = useState(90);
 
@@ -51,8 +51,8 @@ export default function ActivityFilters({ onFilterChange }: Props) {
   const pillActive = `${pillBase} bg-[var(--moss)] text-white border border-[var(--moss)]`;
   const pillInactive = `${pillBase} border border-[#E5E5E0] text-[#999] hover:border-[#CCC]`;
 
-  return (
-    <div className="flex justify-between items-center flex-wrap gap-2 mb-4">
+  return {
+    typePills: (
       <div className="flex gap-1.5 flex-wrap">
         <button
           className={activeTypes === null ? pillActive : pillInactive}
@@ -72,6 +72,8 @@ export default function ActivityFilters({ onFilterChange }: Props) {
           </button>
         ))}
       </div>
+    ),
+    datePills: (
       <div className="flex gap-1.5">
         {DATE_PRESETS.map((days) => (
           <button
@@ -83,6 +85,6 @@ export default function ActivityFilters({ onFilterChange }: Props) {
           </button>
         ))}
       </div>
-    </div>
-  );
+    ),
+  };
 }

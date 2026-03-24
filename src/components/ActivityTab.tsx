@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Engagement, OwnerMap } from "@/lib/types";
-import ActivityFilters from "./ActivityFilters";
+import useActivityFilters from "./ActivityFilters";
 import { filterEngagements, ActivityFilterState } from "@/lib/filter-activities";
 
 interface Props {
@@ -92,6 +92,7 @@ export function ActivityTab({ engagements, owners }: Props) {
   const [filters, setFilters] = useState<ActivityFilterState>({ types: null, daysBack: 90 });
   const [searchQuery, setSearchQuery] = useState("");
 
+  const { typePills, datePills } = useActivityFilters({ onFilterChange: setFilters });
   const filteredEngagements = filterEngagements(engagements, filters);
 
   const keywordFiltered = searchQuery.trim()
@@ -112,32 +113,35 @@ export function ActivityTab({ engagements, owners }: Props) {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-2 flex-wrap">
-        <div className="relative flex items-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="absolute left-2.5 text-[var(--green-100)] pointer-events-none"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search activities..."
-            className="text-sm border border-[#E5E5E0] rounded-lg pl-8 pr-3 py-1 w-48 outline-none focus:border-[var(--moss)]"
-          />
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex items-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="absolute left-2.5 text-[var(--green-100)] pointer-events-none"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search activities..."
+              className="text-sm border border-[#E5E5E0] rounded-2xl pl-8 pr-3 py-1 w-44 outline-none focus:border-[var(--moss)]"
+            />
+          </div>
+          {typePills}
         </div>
-        <ActivityFilters onFilterChange={setFilters} />
+        {datePills}
       </div>
       <p className="text-xs text-[var(--green-100)] mb-3">
         Showing {keywordFiltered.length} {keywordFiltered.length === 1 ? "activity" : "activities"}

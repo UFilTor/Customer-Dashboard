@@ -11,10 +11,14 @@ export default function CompanyTooltip({ company }: Props) {
   const duration = formatGroupDuration(company.enteredGroupAt);
 
   const fields = [
-    { label: "Revenue", value: company.mrr || "-" },
-    { label: "Health", value: company.detail?.includes("Risk") || company.detail?.includes("Critical") ? company.detail : undefined },
-    { label: "In group", value: duration },
-  ].filter((f) => f.value);
+    { label: "Revenue", value: company.mrr && company.mrr !== "-" ? company.mrr : undefined },
+    { label: "Owner", value: company.ownerId ? `Owner ${company.ownerId}` : undefined },
+    { label: "Detail", value: company.detail || undefined },
+    { label: "In group", value: duration || undefined },
+    company.daysOverdue !== undefined ? { label: "Overdue", value: `${company.daysOverdue} days` } : null,
+    company.daysSilent !== undefined ? { label: "Silent", value: `${company.daysSilent} days` } : null,
+    company.previousCategory ? { label: "Was", value: company.previousCategory } : null,
+  ].filter((f): f is { label: string; value: string } => f !== null && f.value !== undefined);
 
   return (
     <div className="absolute left-0 top-full mt-1 bg-white border border-[#EDEDEA] rounded-lg shadow-lg p-3 z-50 w-64 animate-fadeIn">

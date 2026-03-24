@@ -268,12 +268,20 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
           })
           .map((e: { properties: Record<string, string> }) => mapEngagement(type, e.properties));
 
-        // Limit emails to 10 most recent
+        // Deduplicate emails by thread (keep most recent per thread, max 5 threads)
         if (type === "emails") {
           engagements.sort((a: { timestamp: string }, b: { timestamp: string }) =>
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           );
-          engagements = engagements.slice(0, 10);
+          const threadMap = new Map<string, typeof engagements[0]>();
+          for (const e of engagements) {
+            const threadKey = (e.title || "").replace(/^(Re:\s*|Fwd:\s*)+/i, "").trim().toLowerCase();
+            if (!threadMap.has(threadKey)) {
+              threadMap.set(threadKey, e);
+            }
+            if (threadMap.size >= 5) break;
+          }
+          engagements = Array.from(threadMap.values());
         }
 
         return engagements;

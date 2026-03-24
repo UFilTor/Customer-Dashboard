@@ -21,7 +21,7 @@ export const dashboardConfig: DashboardConfig = {
         { label: "Deal name", property: "dealname", format: "text" },
         { label: "Stage", property: "dealstage", format: "badge" },
         { label: "Monthly Fee", property: "confirmed__contract_mrr", format: "currency" },
-        { label: "Booking fee", property: "booking_fee", format: "percentage" },
+        { label: "Booking fee", property: "confirmed_booking_fee", format: "percentage" },
         { label: "Understory Pay", property: "understory_pay_status__customer", format: "text" },
         { label: "Invoice status", property: "unpaid_invoice", format: "invoiceStatus" },
       ],

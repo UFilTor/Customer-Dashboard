@@ -3,6 +3,75 @@ import { FieldRenderer } from "./FieldRenderer";
 import { RecapCard } from "./RecapCard";
 import { OwnerMap, StageMap, Recap } from "@/lib/types";
 
+function formatRelativeDate(date: Date): string {
+  const days = Math.floor((Date.now() - date.getTime()) / 86400000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 30) return `${days} days ago`;
+  if (days < 365) return `${Math.floor(days / 30)} months ago`;
+  return date.toISOString().split("T")[0];
+}
+
+function renderPayStatus(company: Record<string, string>, deal: Record<string, string> | null) {
+  const stages = [
+    { label: "Not Started", active: false },
+    { label: "Onboarding", active: company.understory_has_started_understory_pay_onboarding === "true" },
+    { label: "Verification", active: !!company.understory_pay_verification_status },
+    { label: "Live", active: company.understory_pay_live === "true" },
+  ];
+
+  if (company.understory_pay_unwilling === "true") {
+    return (
+      <div>
+        <div className="text-sm font-medium text-[var(--rust)]">Unwilling</div>
+        {company.understory_pay_unwilling_reason && (
+          <div className="text-xs text-[var(--green-100)] mt-1">Reason: {company.understory_pay_unwilling_reason}</div>
+        )}
+      </div>
+    );
+  }
+
+  if (company.understory_pay_ineligible === "true") {
+    return (
+      <div>
+        <div className="text-sm font-medium text-orange-600">Ineligible</div>
+        {company.understory_pay_ineligible_reason && (
+          <div className="text-xs text-[var(--green-100)] mt-1">Reason: {company.understory_pay_ineligible_reason}</div>
+        )}
+      </div>
+    );
+  }
+
+  let currentStageIndex = 0;
+  for (let i = stages.length - 1; i >= 0; i--) {
+    if (stages[i].active) { currentStageIndex = i; break; }
+  }
+
+  const shareOfTx = deal?.share_of_transactions_via_understory_pay;
+
+  return (
+    <div>
+      <div className="flex items-center gap-1 mb-2">
+        {stages.map((stage, i) => (
+          <div key={stage.label} className="flex items-center gap-1">
+            <div className={`w-2 h-2 rounded-full ${i <= currentStageIndex ? "bg-[var(--moss)]" : "bg-[#EDEDEA]"}`} />
+            <span className={`text-xs ${i <= currentStageIndex ? "text-[var(--moss)] font-medium" : "text-[var(--green-100)]"}`}>
+              {stage.label}
+            </span>
+            {i < stages.length - 1 && <div className={`w-4 h-px ${i < currentStageIndex ? "bg-[var(--moss)]" : "bg-[#EDEDEA]"}`} />}
+          </div>
+        ))}
+      </div>
+      {company.understory_pay_live === "true" && company.understory_pay_live_date && (
+        <div className="text-xs text-[var(--green-100)]">Live since {new Date(company.understory_pay_live_date).toLocaleDateString("sv-SE")}</div>
+      )}
+      {shareOfTx && (
+        <div className="text-xs text-[var(--green-100)]">Share of transactions via Pay: {Math.round(parseFloat(shareOfTx) * 100)}%</div>
+      )}
+    </div>
+  );
+}
+
 const HEALTH_COMPONENTS = [
   { key: "understory_health_score_actual_acv", label: "Business Volume" },
   { key: "understory_health_score_customer_storefront_visits", label: "Storefront" },
@@ -72,6 +141,37 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
           </div>
         </div>
       )}
+
+      {/* Platform Engagement */}
+      <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 mb-4">
+        <h3 className="font-semibold text-[var(--moss)] mb-3">Platform Engagement</h3>
+        <div className="grid grid-cols-3 gap-4">
+          {[
+            { key: "understory_backoffice_latest_visit", label: "Last Backoffice Login" },
+            { key: "understory_storefront_latest_visit", label: "Last Storefront Visit" },
+            { key: "understory_widget_latest_visit", label: "Last Widget Visit" },
+          ].map(({ key, label }) => {
+            const value = company[key];
+            const date = value ? new Date(value) : null;
+            const isOld = date ? (Date.now() - date.getTime()) > 30 * 86400000 : true;
+            const formatted = date && !isNaN(date.getTime()) ? formatRelativeDate(date) : "No data";
+            return (
+              <div key={key}>
+                <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-1">{label}</div>
+                <div className={`text-sm font-medium ${isOld ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>
+                  {formatted}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Understory Pay Status */}
+      <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 mb-4">
+        <h3 className="font-semibold text-[var(--moss)] mb-3">Understory Pay</h3>
+        {renderPayStatus(company, deal)}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">

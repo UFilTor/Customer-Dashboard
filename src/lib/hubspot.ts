@@ -147,12 +147,25 @@ const COMPANY_PROPERTIES = [
   "understory_health_score_login_last_month",
   "understory_health_score_transactions_diff",
   "understory_health_score_upcoming_events",
+  "understory_backoffice_latest_visit",
+  "understory_storefront_latest_visit",
+  "understory_widget_latest_visit",
+  "understory_has_started_understory_pay_onboarding",
+  "understory_pay_verification_status",
+  "understory_pay_live",
+  "understory_pay_live_date",
+  "understory_pay_unwilling",
+  "understory_pay_unwilling_reason",
+  "understory_pay_ineligible",
+  "understory_pay_ineligible_reason",
 ];
 
 const DEAL_PROPERTIES = [
   "dealname", "dealstage", "confirmed__contract_mrr",
   "booking_fee", "confirmed_booking_fee", "understory_pay_status__customer", "unpaid_invoice",
   "pipeline", "deal_currency_code", "Storefront link",
+  "share_of_transactions_via_understory_pay",
+  "enable_understory_pay",
 ];
 
 export async function getCompanyDetail(companyId: string): Promise<CompanyDetail> {

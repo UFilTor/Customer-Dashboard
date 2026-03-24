@@ -18,7 +18,6 @@ const SE_PLUS_COUNTRIES = ["SE", "NO", "FI"];
 const IT_COUNTRIES = ["IT"];
 
 const PEOPLE: { id: string; name: string }[] = [
-  { id: "986203720", name: "Anders Fibiger" },
   { id: "962517007", name: "Anders Hansen" },
   { id: "559364799", name: "Cecilia Lexe" },
   { id: "1939229547", name: "Filip Torstensson" },

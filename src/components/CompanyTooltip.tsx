@@ -3,16 +3,24 @@
 import type { AttentionCompany } from "@/lib/types";
 import { formatGroupDuration } from "@/lib/timeline";
 
+const OWNER_NAMES: Record<string, string> = {
+  "962517007": "Anders Hansen",
+  "559364799": "Cecilia Lexe",
+  "1939229547": "Filip Torstensson",
+  "44912650": "Marc Moller Nielsen",
+};
+
 interface Props {
   company: AttentionCompany;
 }
 
 export default function CompanyTooltip({ company }: Props) {
   const duration = formatGroupDuration(company.enteredGroupAt);
+  const ownerName = company.ownerId ? (OWNER_NAMES[company.ownerId] || company.ownerId) : undefined;
 
   const fields = [
     { label: "Revenue", value: company.mrr && company.mrr !== "-" ? company.mrr : undefined },
-    { label: "Owner", value: company.ownerId ? `Owner ${company.ownerId}` : undefined },
+    { label: "Owner", value: ownerName },
     { label: "Detail", value: company.detail || undefined },
     { label: "In group", value: duration || undefined },
     company.daysOverdue !== undefined ? { label: "Overdue", value: `${company.daysOverdue} days` } : null,

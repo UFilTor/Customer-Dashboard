@@ -50,7 +50,8 @@ export function SearchBar({ onSelect, ref }: Props) {
         const data = await res.json();
         setResults(data);
         setIsOpen(data.length > 0);
-        setHighlightIndex(-1);
+        // Auto-select first result so Enter opens it immediately
+        setHighlightIndex(0);
       } catch {
         setResults([]);
       } finally {

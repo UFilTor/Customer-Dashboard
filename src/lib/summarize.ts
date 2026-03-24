@@ -8,15 +8,21 @@ function stripHtml(html: string): string {
 }
 
 export async function summarizeEngagements(engagements: Engagement[]): Promise<Engagement[]> {
-  const toSummarize = engagements.filter((e) => {
-    const text = stripHtml(e.body);
-    return text.length > 50;
-  });
+  const toSummarize = engagements
+    .filter((e) => {
+      const text = stripHtml(e.body);
+      return text.length > 50;
+    })
+    .slice(0, 10); // Only summarize the 10 most recent to avoid rate limits
 
   if (toSummarize.length === 0) return engagements;
 
-  const summaries = await Promise.all(
-    toSummarize.map(async (e) => {
+  // Process in batches of 3 to avoid rate limits
+  const summaries: string[] = [];
+  for (let i = 0; i < toSummarize.length; i += 3) {
+    const batch = toSummarize.slice(i, i + 3);
+    const batchResults = await Promise.all(
+      batch.map(async (e) => {
       try {
         const text = stripHtml(e.body);
         const response = await client.messages.create({
@@ -35,7 +41,9 @@ export async function summarizeEngagements(engagements: Engagement[]): Promise<E
         return "";
       }
     })
-  );
+    );
+    summaries.push(...batchResults);
+  }
 
   const summaryMap = new Map<Engagement, string>();
   toSummarize.forEach((e, i) => summaryMap.set(e, summaries[i]));
@@ -58,7 +66,7 @@ export async function generateRecap(
   const activitySummary = engagements
     .slice(0, 10)
     .map((e) => {
-      const date = new Date(parseInt(e.timestamp) || e.timestamp);
+      const date = new Date(e.timestamp);
       const dateStr = isNaN(date.getTime()) ? "Unknown date" : date.toLocaleDateString("sv-SE");
       const ownerName = e.owner ? (owners[e.owner] || e.owner) : "";
       return `[${e.type.toUpperCase()}] ${dateStr} - ${e.title}${ownerName ? ` (${ownerName})` : ""}\nSummary: ${e.summary || stripHtml(e.body).slice(0, 200)}`;

@@ -15,7 +15,7 @@ export function TasksTab({ tasks, owners }: Props) {
       {tasks.map((task, index) => (
         <div
           key={`${task.subject}-${task.dueDate}-${index}`}
-          className="border-b border-[#F0EEE8] py-3.5 px-1 flex items-center justify-between"
+          className="border-b border-[#F0EEE8] py-3.5 pl-4 border-l-[3px] border-l-transparent flex items-center justify-between"
           data-tab-item
         >
           <div>

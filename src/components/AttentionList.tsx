@@ -8,31 +8,32 @@ import { isCompanySnoozed } from "@/lib/snooze";
 
 interface Props {
   onSelectCompany: (company: CompanySearchResult, meta?: { previousCategory?: string }) => void;
-  currentOwnerId?: string;
 }
 
-type RegionFilter = "All" | "SE+" | "DK+" | "Italy" | "Me";
+type FilterMode = "All" | "Region" | "Person";
+type RegionOption = "SE+" | "DK+" | "IT";
+type PersonOption = string; // owner ID
 
-// SE+ = Sweden, Norway, Finland. IT = Italy. DK+ = everything else
-const SE_PLUS = ["SE", "NO", "FI"];
+const SE_PLUS_COUNTRIES = ["SE", "NO", "FI"];
 const IT_COUNTRIES = ["IT"];
-const REGION_COUNTRY_MAP: Record<RegionFilter, string[]> = {
-  All: [],
-  "SE+": SE_PLUS,
-  "DK+": [], // "everything else" - handled specially in filter logic
-  Italy: IT_COUNTRIES,
-  Me: [],
-};
 
-export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
+const PEOPLE: { id: string; name: string }[] = [
+  { id: "986203720", name: "Anders Fibiger" },
+  { id: "962517007", name: "Anders Hansen" },
+  { id: "559364799", name: "Cecilia Lexe" },
+  { id: "1939229547", name: "Filip Torstensson" },
+  { id: "44912650", name: "Marc Moller Nielsen" },
+];
+
+export function AttentionList({ onSelectCompany }: Props) {
   const [data, setData] = useState<AttentionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [regionFilter, setRegionFilter] = useState<RegionFilter>("All");
+  const [filterMode, setFilterMode] = useState<FilterMode>("All");
+  const [regionOption, setRegionOption] = useState<RegionOption>("SE+");
+  const [personOption, setPersonOption] = useState<PersonOption>(PEOPLE[0]?.id || "");
   const [sortField, setSortField] = useState<SortField>("mrr");
   const [snoozeVersion, setSnoozeVersion] = useState(0);
-
-  const hardcodedOwnerId = process.env.NEXT_PUBLIC_HUBSPOT_OWNER_ID || "";
 
   async function fetchAttention(refresh = false) {
     setIsLoading(true);
@@ -97,20 +98,21 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
   void snoozeVersion;
 
   const ownerFilteredGroups = (() => {
-    if (regionFilter === "All") return data.groups;
-    if (regionFilter === "Me") {
-      const ownerId = currentOwnerId || hardcodedOwnerId;
-      if (!ownerId) return data.groups;
+    if (filterMode === "All") return data.groups;
+
+    if (filterMode === "Person") {
+      if (!personOption) return data.groups;
       return data.groups
         .map((g) => ({
           ...g,
-          companies: g.companies.filter((c) => c.ownerId === ownerId),
+          companies: g.companies.filter((c) => c.ownerId === personOption),
         }))
         .filter((g) => g.companies.length > 0);
     }
-    if (regionFilter === "DK+") {
-      // DK+ = everything NOT in SE+ or Italy
-      const excluded = [...SE_PLUS, ...IT_COUNTRIES];
+
+    // filterMode === "Region"
+    if (regionOption === "DK+") {
+      const excluded = [...SE_PLUS_COUNTRIES, ...IT_COUNTRIES];
       return data.groups
         .map((g) => ({
           ...g,
@@ -120,7 +122,8 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
         }))
         .filter((g) => g.companies.length > 0);
     }
-    const allowedCountries = REGION_COUNTRY_MAP[regionFilter];
+
+    const allowedCountries = regionOption === "SE+" ? SE_PLUS_COUNTRIES : IT_COUNTRIES;
     return data.groups
       .map((g) => ({
         ...g,
@@ -150,17 +153,39 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <select
-            value={regionFilter}
-            onChange={(e) => setRegionFilter(e.target.value as RegionFilter)}
-            className="text-xs font-medium border border-[#E5E5E0] rounded-lg px-3 py-1.5 bg-white text-[var(--moss)] outline-none focus:border-[var(--moss)] cursor-pointer"
-          >
-            <option value="All">All regions</option>
-            <option value="SE+">SE+ (Sweden & Norway)</option>
-            <option value="DK+">DK+ (Rest of world)</option>
-            <option value="Italy">Italy</option>
-            <option value="Me">My accounts</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={filterMode}
+              onChange={(e) => setFilterMode(e.target.value as FilterMode)}
+              className="text-xs font-medium border border-[#E5E5E0] rounded-lg px-3 py-1.5 bg-white text-[var(--moss)] outline-none focus:border-[var(--moss)] cursor-pointer"
+            >
+              <option value="All">All</option>
+              <option value="Region">Region</option>
+              <option value="Person">Person</option>
+            </select>
+            {filterMode === "Region" && (
+              <select
+                value={regionOption}
+                onChange={(e) => setRegionOption(e.target.value as RegionOption)}
+                className="text-xs font-medium border border-[#E5E5E0] rounded-lg px-3 py-1.5 bg-white text-[var(--moss)] outline-none focus:border-[var(--moss)] cursor-pointer"
+              >
+                <option value="DK+">DK+ (Rest of world)</option>
+                <option value="IT">Italy</option>
+                <option value="SE+">SE+ (Sweden, Norway, Finland)</option>
+              </select>
+            )}
+            {filterMode === "Person" && (
+              <select
+                value={personOption}
+                onChange={(e) => setPersonOption(e.target.value)}
+                className="text-xs font-medium border border-[#E5E5E0] rounded-lg px-3 py-1.5 bg-white text-[var(--moss)] outline-none focus:border-[var(--moss)] cursor-pointer"
+              >
+                {PEOPLE.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
           <div className="flex items-center bg-[#F7F7F5] rounded-[10px] p-1">
             <span className="text-xs text-[#AAA] px-2">Sort:</span>
             <button

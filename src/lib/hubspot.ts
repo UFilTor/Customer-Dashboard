@@ -241,21 +241,25 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
         let ids: string[] = assocData.results?.map((r: { id: string }) => r.id) || [];
         if (ids.length === 0) return [];
 
-        // For emails, limit batch to 100 IDs max (HubSpot batch limit)
-        const batchIds = ids.slice(0, 100);
+        // Batch read in chunks of 100 (HubSpot limit per batch)
+        const allResults: { properties: Record<string, string> }[] = [];
+        for (let i = 0; i < ids.length; i += 100) {
+          const chunk = ids.slice(i, i + 100);
+          const batchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/${type}/batch/read`, {
+            method: "POST",
+            headers: headers(),
+            body: JSON.stringify({
+              inputs: chunk.map((id) => ({ id })),
+              properties: props,
+            }),
+          });
+          if (batchRes.ok) {
+            const batchData = await batchRes.json();
+            allResults.push(...(batchData.results || []));
+          }
+        }
 
-        const batchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/${type}/batch/read`, {
-          method: "POST",
-          headers: headers(),
-          body: JSON.stringify({
-            inputs: batchIds.map((id) => ({ id })),
-            properties: props,
-          }),
-        });
-        if (!batchRes.ok) return [];
-        const batchData = await batchRes.json();
-
-        let engagements = (batchData.results || [])
+        let engagements = allResults
           .filter((e: { properties: Record<string, string> }) => {
             const tsStr = e.properties.hs_timestamp;
             if (!tsStr) return false;

@@ -56,7 +56,19 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
         </div>
 
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
-          <h3 className="font-semibold text-[var(--moss)] mb-3">Lifecycle Deal</h3>
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="font-semibold text-[var(--moss)]">Lifecycle Deal</h3>
+            {deal?.hs_object_id && (
+              <a
+                href={`https://app.hubspot.com/contacts/${process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID}/deal/${deal.hs_object_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-[var(--moss)] underline hover:text-[var(--green-100)] transition-all duration-200"
+              >
+                Open deal in HubSpot
+              </a>
+            )}
+          </div>
           {deal ? (
             <div className="space-y-0">
               {dashboardConfig.tabs.overview.dealInfo.map((field) => (

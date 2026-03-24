@@ -51,10 +51,6 @@ export function formatValue(
       if (isNaN(date.getTime())) return value;
       return date.toISOString().split("T")[0];
     }
-    case "invoiceStatus":
-      if (value === "true") return "Overdue";
-      if (value === "false" || value === "-") return "Up to date";
-      return value;
     case "text":
     case "link":
     case "badge":

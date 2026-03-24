@@ -1,6 +1,13 @@
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { AttentionCompany } from "./types";
 
+const CHIP_COMPANY_PROPS = [
+  "health_score",
+  "understory_booking_volume_12m",
+  "understory_booking_volume_3m",
+  "understory_booking_volume_6m",
+];
+
 async function fetchCompanyBatch(
   companyIds: string[],
   extraProps: string[] = []
@@ -44,7 +51,7 @@ async function fetchDealForCompany(companyId: string): Promise<Record<string, st
       headers: hubspotHeaders(),
       body: JSON.stringify({
         inputs: dealIds.map((id) => ({ id })),
-        properties: ["confirmed__contract_mrr", "deal_currency_code", "pipeline", "booking_fee"],
+        properties: ["confirmed__contract_mrr", "deal_currency_code", "pipeline", "booking_fee", "understory_pay_status__customer"],
       }),
     });
     if (!batchRes.ok) return null;
@@ -83,6 +90,19 @@ function formatRevenue(revenueEur: number): string {
   return `\u20ac${formatted}`;
 }
 
+function mapChipFields(
+  companyProps: Record<string, string>,
+  dealProps: Record<string, string> | null
+): Pick<AttentionCompany, "healthScore" | "volume12m" | "volume3m" | "volume6m" | "payStatus"> {
+  return {
+    healthScore: companyProps.health_score || undefined,
+    volume12m: parseFloat(companyProps.understory_booking_volume_12m || "0") || undefined,
+    volume3m: parseFloat(companyProps.understory_booking_volume_3m || "0") || undefined,
+    volume6m: parseFloat(companyProps.understory_booking_volume_6m || "0") || undefined,
+    payStatus: dealProps?.understory_pay_status__customer || undefined,
+  };
+}
+
 export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; open: AttentionCompany[] }> {
   try {
     const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -96,7 +116,7 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
             { propertyName: "number_of_open_invoices", operator: "GT", value: "0" },
           ],
         })),
-        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "outstanding_amount", "invoice_due_date", "number_of_open_invoices"],
+        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "outstanding_amount", "invoice_due_date", "number_of_open_invoices", "understory_pay_status__customer"],
         limit: 100,
       }),
     });
@@ -104,7 +124,7 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
     if (!res.ok) return emptyResult;
     const data = await res.json();
 
-    interface DealInfo { id: string; dealname: string; mrr: string; currency: string; bookingFee: string; outstandingAmount: string; invoiceDueDate: string; openInvoices: number }
+    interface DealInfo { id: string; dealname: string; mrr: string; currency: string; bookingFee: string; outstandingAmount: string; invoiceDueDate: string; openInvoices: number; payStatus: string }
     const deals: DealInfo[] = data.results?.map(
       (d: { id: string; properties: Record<string, string> }) => ({
         id: d.id,
@@ -115,12 +135,13 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
         outstandingAmount: d.properties.outstanding_amount || "",
         invoiceDueDate: d.properties.invoice_due_date || "",
         openInvoices: parseInt(d.properties.number_of_open_invoices || "0") || 0,
+        payStatus: d.properties.understory_pay_status__customer || "",
       })
     ) || [];
 
     if (deals.length === 0) return emptyResult;
 
-    const companyMap = new Map<string, AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string }>();
+    const companyMap = new Map<string, AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string; _payStatus: string }>();
 
     // Fetch deal->company associations in batches of 10 to avoid rate limits
     const assocResults: ({ companyId: string; deal: DealInfo } | null)[] = [];
@@ -167,15 +188,16 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
         _dealMrr: deal.mrr,
         _dealCurrency: deal.currency,
         _dealBookingFee: deal.bookingFee,
+        _payStatus: deal.payStatus,
         _isOverdue: isOverdue,
-      } as AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string; _isOverdue: boolean });
+      } as AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string; _payStatus: string; _isOverdue: boolean });
     }
 
     if (companyMap.size === 0) return emptyResult;
 
-    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_12m", "understory_company_country"]);
+    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_company_country", ...CHIP_COMPANY_PROPS]);
     for (const [id, props] of Object.entries(companies)) {
-      const entry = companyMap.get(id) as (AttentionCompany & { _dealMrr?: string; _dealCurrency?: string; _dealBookingFee?: string }) | undefined;
+      const entry = companyMap.get(id) as (AttentionCompany & { _dealMrr?: string; _dealCurrency?: string; _dealBookingFee?: string; _payStatus?: string }) | undefined;
       if (entry) {
         entry.name = props.name || "Unknown";
         entry.ownerId = props.hubspot_owner_id || "";
@@ -192,6 +214,9 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
           entry.mrr = formatRevenue(revenue);
         }
         entry.currency = "EUR";
+        const chipFields = mapChipFields(props, null);
+        Object.assign(entry, chipFields);
+        entry.payStatus = entry._payStatus || undefined;
       }
     }
 
@@ -285,7 +310,7 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
 
     if (companyMap.size === 0) return [];
 
-    const companyProps = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_12m", "understory_company_country"]);
+    const companyProps = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_company_country", ...CHIP_COMPANY_PROPS]);
     for (const [id, props] of Object.entries(companyProps)) {
       const entry = companyMap.get(id);
       if (entry) {
@@ -293,6 +318,7 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
         entry.ownerId = props.hubspot_owner_id || "";
         entry.country = props.understory_company_country || "";
         (entry as AttentionCompany & { _bookingVolume?: string })._bookingVolume = props.understory_booking_volume_12m || "";
+        Object.assign(entry, mapChipFields(props, null));
       }
     }
 
@@ -306,6 +332,7 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
           const revenue = computeGeneratedRevenue(bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code);
           company.mrr = formatRevenue(revenue);
           company.currency = "EUR";
+          company.payStatus = deal.understory_pay_status__customer || undefined;
         }
       })
     );
@@ -331,7 +358,7 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
             }],
           },
         ],
-        properties: ["name", "health_score", "hubspot_owner_id", "understory_booking_volume_12m", "understory_company_country", "notes_last_contacted"],
+        properties: ["name", "health_score", "hubspot_owner_id", "understory_booking_volume_12m", "understory_booking_volume_3m", "understory_booking_volume_6m", "understory_company_country", "notes_last_contacted"],
         limit: 100,
       }),
     });
@@ -349,6 +376,7 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
         country: c.properties.understory_company_country || "",
         _bookingVolume: c.properties.understory_booking_volume_12m || "",
         _notesLastContacted: c.properties.notes_last_contacted || "",
+        ...mapChipFields(c.properties, null),
       })
     );
 
@@ -403,6 +431,7 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
           const revenue = computeGeneratedRevenue(company._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code);
           company.mrr = formatRevenue(revenue);
           company.currency = "EUR";
+          company.payStatus = deal.understory_pay_status__customer || undefined;
         }
       })
     );
@@ -431,7 +460,7 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
             value: thresholdStr,
           }],
         }],
-        properties: ["name", "notes_last_contacted", "hubspot_owner_id", "understory_booking_volume_12m", "understory_company_country"],
+        properties: ["name", "notes_last_contacted", "hubspot_owner_id", "understory_booking_volume_12m", "understory_booking_volume_3m", "understory_booking_volume_6m", "health_score", "understory_company_country"],
         limit: 100,
       }),
     });
@@ -450,6 +479,7 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
           ownerId: c.properties.hubspot_owner_id || "",
           country: c.properties.understory_company_country || "",
           _bookingVolume: c.properties.understory_booking_volume_12m || "",
+          ...mapChipFields(c.properties, null),
         };
       }
     );
@@ -462,6 +492,7 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
           const revenue = computeGeneratedRevenue(company._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code);
           company.mrr = formatRevenue(revenue);
           company.currency = "EUR";
+          company.payStatus = deal.understory_pay_status__customer || undefined;
         }
       })
     );
@@ -491,7 +522,7 @@ export async function fetchDecliningVolume(): Promise<AttentionCompany[]> {
             value: "0",
           }],
         }],
-        properties: ["name", "hubspot_owner_id", "understory_booking_volume_3m", "understory_booking_volume_6m", "understory_booking_volume_12m", "understory_company_country"],
+        properties: ["name", "hubspot_owner_id", "health_score", "understory_booking_volume_3m", "understory_booking_volume_6m", "understory_booking_volume_12m", "understory_company_country"],
         limit: 100,
       }),
     });
@@ -519,6 +550,7 @@ export async function fetchDecliningVolume(): Promise<AttentionCompany[]> {
           country: c.properties.understory_company_country || "",
           mrr: `\u20ac${Math.round(parseFloat(c.properties.understory_booking_volume_12m || "0")).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`,
           currency: "EUR",
+          ...mapChipFields(c.properties, null),
         });
       }
     }
@@ -542,7 +574,7 @@ export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
             { propertyName: "wish_to_churn", operator: "EQ", value: "true" },
           ],
         })),
-        properties: ["dealname", "churn_reason", "churned_reason_elaborated", "churn_date", "customer_stage", "deal_currency_code", "confirmed__contract_mrr", "booking_fee"],
+        properties: ["dealname", "churn_reason", "churned_reason_elaborated", "churn_date", "customer_stage", "deal_currency_code", "confirmed__contract_mrr", "booking_fee", "understory_pay_status__customer"],
         limit: 100,
       }),
     });
@@ -559,7 +591,7 @@ export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
     const companyMap = new Map<string, AttentionCompany>();
 
     // Fetch associations in batches of 5
-    const assocResults: ({ companyId: string; deal: { dealname: string; churnReason: string; churnDetail: string; stage: string } } | null)[] = [];
+    const assocResults: ({ companyId: string; deal: { dealname: string; churnReason: string; churnDetail: string; stage: string; payStatus: string } } | null)[] = [];
     for (let i = 0; i < activeDeals.length; i += 5) {
       const batch = activeDeals.slice(i, i + 5);
       const batchResults = await Promise.all(
@@ -579,6 +611,7 @@ export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
                 churnReason: deal.properties.churn_reason || "",
                 churnDetail: deal.properties.churned_reason_elaborated || "",
                 stage: deal.properties.customer_stage || "",
+                payStatus: deal.properties.understory_pay_status__customer || "",
               }
             } : null;
           } catch { return null; }
@@ -599,12 +632,13 @@ export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
         detail: reasonText,
         ownerId: "",
         currency: "EUR",
+        payStatus: deal.payStatus || undefined,
       });
     }
 
     if (companyMap.size === 0) return [];
 
-    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_12m", "understory_company_country"]);
+    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_company_country", ...CHIP_COMPANY_PROPS]);
     for (const [id, props] of Object.entries(companies)) {
       const entry = companyMap.get(id);
       if (entry) {
@@ -613,6 +647,12 @@ export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
         entry.country = props.understory_company_country || "";
         const volume = parseFloat(props.understory_booking_volume_12m || "0");
         entry.mrr = volume > 0 ? formatRevenue(Math.round(volume)) : "-";
+        const chipFields = mapChipFields(props, null);
+        Object.assign(entry, chipFields);
+        // payStatus was set from the deal during association loop; preserve it
+        if (!entry.payStatus) {
+          entry.payStatus = chipFields.payStatus;
+        }
       }
     }
 

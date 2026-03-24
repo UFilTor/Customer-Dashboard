@@ -109,6 +109,11 @@ export interface AttentionCompany {
   categoryChangedAt?: string;
   daysSilent?: number;
   enteredGroupAt?: string;
+  healthScore?: string;
+  volume12m?: number;
+  volume3m?: number;
+  volume6m?: number;
+  payStatus?: string;
 }
 
 export type AttentionSignal = "overdue_invoices" | "open_invoices" | "overdue_tasks" | "health_score" | "gone_quiet" | "declining_volume" | "churn_risk";

@@ -61,3 +61,32 @@ export function formatValue(
       return value;
   }
 }
+
+export function abbreviateEur(value: number | undefined): string {
+  if (!value) return "-";
+  if (value < 1000) return `€${Math.round(value)}`;
+  if (value < 999500) return `€${Math.round(value / 1000)}k`;
+  const m = value / 1000000;
+  const formatted = m % 1 === 0 ? `${m}` : m.toFixed(1);
+  return `€${formatted}M`;
+}
+
+export interface VolumeTrend {
+  direction: "up" | "down" | "flat";
+  percent: number;
+}
+
+export function computeVolumeTrend(
+  volume3m: number | undefined,
+  volume6m: number | undefined
+): VolumeTrend | null {
+  if (volume3m === undefined || volume6m === undefined) return null;
+  const previous3m = volume6m - volume3m;
+  if (previous3m <= 0) return null;
+  const change = Math.round(((volume3m - previous3m) / previous3m) * 100);
+  if (change === 0) return { direction: "flat", percent: 0 };
+  return {
+    direction: change > 0 ? "up" : "down",
+    percent: Math.abs(change),
+  };
+}

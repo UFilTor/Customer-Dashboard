@@ -7,7 +7,7 @@ function scoreToLabel(score: number): string {
   if (score >= 80) return "Healthy";
   if (score >= 60) return "Monitor";
   if (score >= 40) return "At Risk";
-  return "Critical";
+  return "Critical Churn Risk";
 }
 
 export function getHealthTrend(

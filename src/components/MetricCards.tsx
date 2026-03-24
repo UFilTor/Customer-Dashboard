@@ -1,20 +1,16 @@
 import { dashboardConfig } from "@/config/hubspot-fields";
 import { formatValue } from "@/lib/format";
+import { getHealthLabel } from "@/lib/health-score";
 
 const TO_EUR: Record<string, number> = {
   EUR: 1, USD: 0.92, GBP: 1.16, SEK: 0.087, NOK: 0.086, DKK: 0.134,
 };
 
-function computeRevenue12m(company: Record<string, string>, deal: Record<string, string> | null): string {
-  const volume = parseFloat(company.understory_booking_volume_12m || "0") || 0;
-  const fee = parseFloat(deal?.booking_fee || "0") || 0;
-  const mrr = parseFloat(deal?.confirmed__contract_mrr || "0") || 0;
-  const currency = (deal?.deal_currency_code || "EUR").toUpperCase();
-  const revenueLocal = (volume * fee) + (mrr * 12);
-  const rate = TO_EUR[currency] ?? 1;
-  const revenueEur = Math.round(revenueLocal * rate);
-  if (revenueEur === 0) return "-";
-  return `\u20ac${revenueEur.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
+function computeRevenuePlatformFee(company: Record<string, string>): string {
+  const cents = parseFloat(company.understory_total_platform_fee_cents_received || "0") || 0;
+  if (cents === 0) return "-";
+  const eur = Math.round(cents / 100);
+  return `\u20ac${eur.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
 }
 
 interface Props {
@@ -31,9 +27,33 @@ export function MetricCards({ company, deal }: Props) {
       {dashboardConfig.metricCards.map((card) => {
         const source = card.source === "deal" ? deal : company;
         const value = source?.[card.property] ?? null;
-        const formatted = card.format === "revenue12m"
-          ? computeRevenue12m(company, deal)
-          : formatValue(value, card.format, card.format === "currency" ? currencyCode : undefined);
+
+        let formatted: string;
+        if (card.format === "revenue12m") {
+          formatted = computeRevenuePlatformFee(company);
+        } else if (card.format === "currency") {
+          const currency = currencyCode.toUpperCase();
+          const rate = TO_EUR[currency] ?? 1;
+          const rawNum = parseFloat(value || "0") || 0;
+          if (rawNum === 0) {
+            formatted = "-";
+          } else if (currency === "EUR") {
+            formatted = formatValue(value, card.format, currencyCode);
+          } else {
+            const eur = Math.round(rawNum * rate);
+            formatted = `\u20ac${eur.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
+          }
+        } else if (card.format === "text" && card.property === "health_score") {
+          if (value === null || value === undefined || value === "") {
+            formatted = "-";
+          } else {
+            const label = getHealthLabel(value);
+            formatted = `${label} (${Math.round(parseFloat(value))})`;
+          }
+        } else {
+          formatted = formatValue(value, card.format, undefined);
+        }
+
         const isInvoice = card.format === "invoiceStatus";
 
         let bgClass = "border border-[#EDEDEA]";
@@ -50,9 +70,10 @@ export function MetricCards({ company, deal }: Props) {
             textClass = "text-orange-800";
             labelClass = "text-orange-600";
           } else {
-            bgClass = "bg-[var(--lichen)]/40";
-            textClass = "text-[var(--moss)]";
-            labelClass = "text-[var(--green-100)]";
+            // "Up to date" or any non-overdue state: green
+            bgClass = "bg-[#D1FAE5]";
+            textClass = "text-[#065F46]";
+            labelClass = "text-[#065F46]/70";
           }
         }
 

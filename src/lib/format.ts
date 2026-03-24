@@ -46,7 +46,7 @@ export function formatValue(
     }
     case "invoiceStatus":
       if (value === "true") return "Overdue";
-      if (value === "false") return "Paid";
+      if (value === "false" || value === "-") return "Up to date";
       return value;
     case "text":
     case "link":

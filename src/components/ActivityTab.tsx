@@ -89,7 +89,7 @@ function ActivityCard({ engagement, owners }: { engagement: Engagement; owners: 
 }
 
 export function ActivityTab({ engagements, owners }: Props) {
-  const [filters, setFilters] = useState<ActivityFilterState>({ types: null, daysBack: 90 });
+  const [filters, setFilters] = useState<ActivityFilterState>({ types: null, daysBack: 365 });
   const [searchQuery, setSearchQuery] = useState("");
 
   const { typePills, datePills } = useActivityFilters({ onFilterChange: setFilters });
@@ -108,7 +108,7 @@ export function ActivityTab({ engagements, owners }: Props) {
     : filteredEngagements;
 
   if (engagements.length === 0) {
-    return <p className="text-[var(--green-100)] text-sm py-4">No activity in the last 90 days</p>;
+    return <p className="text-[var(--green-100)] text-sm py-4">No activity in the last 365 days</p>;
   }
 
   return (

@@ -143,12 +143,13 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
 
     if (companyMap.size === 0) return [];
 
-    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_12m"]);
+    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_12m", "understory_company_country"]);
     for (const [id, props] of Object.entries(companies)) {
       const entry = companyMap.get(id) as (AttentionCompany & { _dealMrr?: string; _dealCurrency?: string; _dealBookingFee?: string }) | undefined;
       if (entry) {
         entry.name = props.name || "Unknown";
         entry.ownerId = props.hubspot_owner_id || "";
+        entry.country = props.understory_company_country || "";
         const revenue = computeGeneratedRevenue(
           props.understory_booking_volume_12m,
           entry._dealBookingFee,
@@ -234,12 +235,13 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
 
     if (companyMap.size === 0) return [];
 
-    const companyProps = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_12m"]);
+    const companyProps = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_12m", "understory_company_country"]);
     for (const [id, props] of Object.entries(companyProps)) {
       const entry = companyMap.get(id);
       if (entry) {
         entry.name = props.name || "Unknown";
         entry.ownerId = props.hubspot_owner_id || "";
+        entry.country = props.understory_company_country || "";
         (entry as AttentionCompany & { _bookingVolume?: string })._bookingVolume = props.understory_booking_volume_12m || "";
       }
     }
@@ -279,7 +281,7 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
             }],
           },
         ],
-        properties: ["name", "health_score", "hubspot_owner_id", "understory_booking_volume_12m"],
+        properties: ["name", "health_score", "hubspot_owner_id", "understory_booking_volume_12m", "understory_company_country"],
         limit: 100,
       }),
     });
@@ -292,6 +294,7 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
         name: c.properties.name || "Unknown",
         detail: c.properties["health_score"] || "Unknown",
         ownerId: c.properties.hubspot_owner_id || "",
+        country: c.properties.understory_company_country || "",
         _bookingVolume: c.properties.understory_booking_volume_12m || "",
       })
     );
@@ -350,7 +353,7 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
             value: thresholdStr,
           }],
         }],
-        properties: ["name", "notes_last_contacted", "hubspot_owner_id", "understory_booking_volume_12m"],
+        properties: ["name", "notes_last_contacted", "hubspot_owner_id", "understory_booking_volume_12m", "understory_company_country"],
         limit: 100,
       }),
     });
@@ -367,6 +370,7 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
           detail: `Last contacted ${daysAgo} days ago`,
           daysSilent: daysAgo,
           ownerId: c.properties.hubspot_owner_id || "",
+          country: c.properties.understory_company_country || "",
           _bookingVolume: c.properties.understory_booking_volume_12m || "",
         };
       }

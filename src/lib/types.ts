@@ -103,6 +103,7 @@ export interface AttentionCompany {
   ownerId?: string;
   mrr?: string;
   currency?: string;
+  country?: string;
   daysOverdue?: number;
   previousCategory?: string;
   categoryChangedAt?: string;

@@ -9,7 +9,7 @@ const TYPE_LABELS: Record<string, string> = {
   note: "Notes",
   email: "Emails",
 };
-const DATE_PRESETS = [7, 30, 60, 90] as const;
+const DATE_PRESETS = [7, 30, 60, 90, 180, 365] as const;
 
 interface Props {
   onFilterChange: (filters: { types: string[] | null; daysBack: number }) => void;
@@ -17,7 +17,7 @@ interface Props {
 
 export default function useActivityFilters({ onFilterChange }: Props) {
   const [activeTypes, setActiveTypes] = useState<string[] | null>(null); // null = all
-  const [daysBack, setDaysBack] = useState(90);
+  const [daysBack, setDaysBack] = useState(365);
 
   function handleTypeClick(type: string) {
     let next: string[] | null;

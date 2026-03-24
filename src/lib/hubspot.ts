@@ -138,6 +138,7 @@ const COMPANY_PROPERTIES = [
   "understory_total_number_of_transactions",
   "understory_booking_volume_all_time",
   "understory_booking_volume_12m",
+  "understory_total_platform_fee_cents_received",
   "health_score",
 ];
 
@@ -218,7 +219,7 @@ async function fetchLifecycleDeal(companyId: string): Promise<{ properties: Reco
 
 async function fetchEngagements(companyId: string): Promise<Engagement[]> {
   const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 365);
   const sinceTimestamp = ninetyDaysAgo.getTime();
 
   const types = [

@@ -11,13 +11,25 @@ interface Props {
   currentOwnerId?: string;
 }
 
+type RegionFilter = "All" | "SE+" | "DK+" | "Italy" | "Me";
+
+const REGION_COUNTRY_MAP: Record<RegionFilter, string[]> = {
+  All: [],
+  "SE+": ["SE", "NO"],
+  "DK+": ["DK"],
+  Italy: ["IT"],
+  Me: [],
+};
+
 export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
   const [data, setData] = useState<AttentionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showMine, setShowMine] = useState(true);
+  const [regionFilter, setRegionFilter] = useState<RegionFilter>("All");
   const [sortField, setSortField] = useState<SortField>("mrr");
   const [snoozeVersion, setSnoozeVersion] = useState(0);
+
+  const hardcodedOwnerId = process.env.NEXT_PUBLIC_HUBSPOT_OWNER_ID || "";
 
   async function fetchAttention(refresh = false) {
     setIsLoading(true);
@@ -81,15 +93,28 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
   // snoozeVersion is read here to make the computed values reactive when snooze state changes
   void snoozeVersion;
 
-  const shouldFilter = showMine && currentOwnerId;
-  const ownerFilteredGroups = shouldFilter
-    ? data.groups
+  const ownerFilteredGroups = (() => {
+    if (regionFilter === "All") return data.groups;
+    if (regionFilter === "Me") {
+      const ownerId = currentOwnerId || hardcodedOwnerId;
+      if (!ownerId) return data.groups;
+      return data.groups
         .map((g) => ({
           ...g,
-          companies: g.companies.filter((c) => c.ownerId === currentOwnerId),
+          companies: g.companies.filter((c) => c.ownerId === ownerId),
         }))
-        .filter((g) => g.companies.length > 0)
-    : data.groups;
+        .filter((g) => g.companies.length > 0);
+    }
+    const allowedCountries = REGION_COUNTRY_MAP[regionFilter];
+    return data.groups
+      .map((g) => ({
+        ...g,
+        companies: g.companies.filter((c) =>
+          allowedCountries.includes((c.country || "").toUpperCase())
+        ),
+      }))
+      .filter((g) => g.companies.length > 0);
+  })();
 
   // Compute active (non-snoozed) counts for summary tiles
   const filteredGroups = ownerFilteredGroups.map((g) => ({
@@ -109,31 +134,22 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
             {formatUpdatedAt(data.updatedAt)}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {currentOwnerId && (
-            <div className="flex items-center bg-[#F7F7F5] rounded-[10px] p-1">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center bg-[#F7F7F5] rounded-[10px] p-1">
+            {(["All", "SE+", "DK+", "Italy", "Me"] as RegionFilter[]).map((r) => (
               <button
-                onClick={() => setShowMine(true)}
+                key={r}
+                onClick={() => setRegionFilter(r)}
                 className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
-                  showMine
+                  regionFilter === r
                     ? "bg-[var(--moss)] text-white"
                     : "text-[#999] hover:text-[var(--moss)]"
                 }`}
               >
-                My accounts
+                {r}
               </button>
-              <button
-                onClick={() => setShowMine(false)}
-                className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
-                  !showMine
-                    ? "bg-[var(--moss)] text-white"
-                    : "text-[#999] hover:text-[var(--moss)]"
-                }`}
-              >
-                All accounts
-              </button>
-            </div>
-          )}
+            ))}
+          </div>
           <div className="flex items-center bg-[#F7F7F5] rounded-[10px] p-1">
             <span className="text-xs text-[#AAA] px-2">Sort:</span>
             <button

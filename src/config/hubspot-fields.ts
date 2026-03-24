@@ -3,10 +3,10 @@ import { DashboardConfig } from "@/lib/types";
 export const dashboardConfig: DashboardConfig = {
   metricCards: [
     { label: "Revenue 12M", property: "confirmed__contract_mrr", source: "deal", format: "revenue12m" },
-    { label: "Last 12M Volume", property: "understory_booking_volume_last_12_months", source: "company", format: "currency" },
+    { label: "Last 12M Volume", property: "understory_booking_volume_12m", source: "company", format: "currency" },
     { label: "Understory Pay", property: "understory_pay_status__customer", source: "deal", format: "text" },
-    { label: "Invoice", property: "Tags", source: "deal", format: "invoiceStatus" },
-    { label: "Health Score", property: "Health Score Category", source: "company", format: "text" },
+    { label: "Invoice", property: "unpaid_invoice", source: "deal", format: "invoiceStatus" },
+    { label: "Health Score", property: "health_score", source: "company", format: "text" },
   ],
   tabs: {
     overview: {
@@ -23,7 +23,7 @@ export const dashboardConfig: DashboardConfig = {
         { label: "MRR", property: "confirmed__contract_mrr", format: "currency" },
         { label: "Booking fee", property: "booking_fee", format: "percentage" },
         { label: "Understory Pay", property: "understory_pay_status__customer", format: "text" },
-        { label: "Invoice status", property: "Tags", format: "invoiceStatus" },
+        { label: "Invoice status", property: "unpaid_invoice", format: "invoiceStatus" },
       ],
     },
     activity: {

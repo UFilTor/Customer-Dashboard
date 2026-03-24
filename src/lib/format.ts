@@ -32,18 +32,26 @@ export function formatValue(
       return `${getCurrencyPrefix(currencyCode)}${formatNumber(value)}`;
     case "number":
       return formatNumber(value);
-    case "percentage":
+    case "percentage": {
+      const num = parseFloat(value);
+      if (!isNaN(num) && Math.abs(num) < 1) {
+        return `${(num * 100).toFixed(2).replace(/\.?0+$/, "")}%`;
+      }
       return `${value}%`;
+    }
     case "date": {
       const date = new Date(value);
       if (isNaN(date.getTime())) return value;
       return date.toISOString().split("T")[0];
     }
+    case "invoiceStatus":
+      if (value === "true") return "Overdue";
+      if (value === "false") return "Paid";
+      return value;
     case "text":
     case "link":
     case "badge":
     case "owner":
-    case "invoiceStatus":
     case "revenue12m":
       return value;
     default:

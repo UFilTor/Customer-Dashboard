@@ -15,7 +15,7 @@ function computeSearchRevenue(
   const fee = parseFloat(bookingFee || "0") || 0;
   const mrr = parseFloat(contractMrr || "0") || 0;
   if (volume === 0 && mrr === 0) return undefined;
-  const revenueLocal = (volume * fee / 100) + (mrr * 12);
+  const revenueLocal = (volume * fee) + (mrr * 12);
   const rate = SEARCH_TO_EUR[(currency || "EUR").toUpperCase()] ?? 1;
   const eur = Math.round(revenueLocal * rate);
   if (eur === 0) return undefined;
@@ -29,7 +29,7 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
       headers: headers(),
       body: JSON.stringify({
         query: query,
-        properties: ["name", "domain", "Health Score Category", "understory_booking_volume_last_12_months"],
+        properties: ["name", "domain", "health_score", "understory_booking_volume_12m"],
         limit: 5,
       }),
     });
@@ -41,8 +41,8 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
     // Enrich each result with deal data for revenue
     const enriched = await Promise.all(
       base.map(async (r) => {
-        const healthScore = r.properties["Health Score Category"] || undefined;
-        const bookingVolume = r.properties["understory_booking_volume_last_12_months"] || "0";
+        const healthScore = r.properties["health_score"] || undefined;
+        const bookingVolume = r.properties["understory_booking_volume_12m"] || "0";
 
         let revenue: string | undefined;
         try {
@@ -137,13 +137,13 @@ const COMPANY_PROPERTIES = [
   "name", "domain", "hubspot_owner_id", "notes_last_contacted",
   "understory_total_number_of_transactions",
   "understory_booking_volume_all_time",
-  "understory_booking_volume_last_12_months",
-  "Health Score Category",
+  "understory_booking_volume_12m",
+  "health_score",
 ];
 
 const DEAL_PROPERTIES = [
   "dealname", "dealstage", "confirmed__contract_mrr",
-  "booking_fee", "understory_pay_status__customer", "Tags",
+  "booking_fee", "understory_pay_status__customer", "unpaid_invoice",
   "pipeline", "deal_currency_code", "Storefront link",
 ];
 

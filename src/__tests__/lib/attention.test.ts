@@ -52,8 +52,8 @@ describe("fetchHealthScoreIssues", () => {
       ok: true,
       json: async () => ({
         results: [
-          { id: "c1", properties: { name: "Acme Co", "Health Score Category": "At Risk", hubspot_owner_id: "1" } },
-          { id: "c2", properties: { name: "Beta Inc", "Health Score Category": "Critical Churn Risk", hubspot_owner_id: "2" } },
+          { id: "c1", properties: { name: "Acme Co", health_score: "42", hubspot_owner_id: "1" } },
+          { id: "c2", properties: { name: "Beta Inc", health_score: "28", hubspot_owner_id: "2" } },
         ],
       }),
     });
@@ -62,8 +62,8 @@ describe("fetchHealthScoreIssues", () => {
 
     const result = await fetchHealthScoreIssues();
     expect(result.length).toBe(2);
-    expect(result[0]).toMatchObject({ id: "c1", name: "Acme Co", detail: "At Risk" });
-    expect(result[1]).toMatchObject({ id: "c2", name: "Beta Inc", detail: "Critical Churn Risk" });
+    expect(result[0]).toMatchObject({ id: "c1", name: "Acme Co", detail: "42" });
+    expect(result[1]).toMatchObject({ id: "c2", name: "Beta Inc", detail: "28" });
   });
 
   it("returns empty array on API error", async () => {

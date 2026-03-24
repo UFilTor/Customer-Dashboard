@@ -72,7 +72,7 @@ function computeGeneratedRevenue(
   const volume = parseFloat(bookingVolume12m || "0") || 0;
   const fee = parseFloat(bookingFee || "0") || 0;
   const mrr = parseFloat(contractMrr || "0") || 0;
-  const revenueLocal = (volume * fee / 100) + (mrr * 12);
+  const revenueLocal = (volume * fee) + (mrr * 12);
   const rate = TO_EUR[(currency || "EUR").toUpperCase()] ?? 1;
   return Math.round(revenueLocal * rate);
 }
@@ -93,7 +93,7 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
         filterGroups: pipelineIds.map((pid) => ({
           filters: [
             { propertyName: "pipeline", operator: "EQ", value: pid },
-            { propertyName: "Tags", operator: "CONTAINS_TOKEN", value: "Overdue" },
+            { propertyName: "unpaid_invoice", operator: "EQ", value: "true" },
           ],
         })),
         properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee"],
@@ -143,14 +143,14 @@ export async function fetchOverdueInvoices(): Promise<AttentionCompany[]> {
 
     if (companyMap.size === 0) return [];
 
-    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_last_12_months"]);
+    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_12m"]);
     for (const [id, props] of Object.entries(companies)) {
       const entry = companyMap.get(id) as (AttentionCompany & { _dealMrr?: string; _dealCurrency?: string; _dealBookingFee?: string }) | undefined;
       if (entry) {
         entry.name = props.name || "Unknown";
         entry.ownerId = props.hubspot_owner_id || "";
         const revenue = computeGeneratedRevenue(
-          props.understory_booking_volume_last_12_months,
+          props.understory_booking_volume_12m,
           entry._dealBookingFee,
           entry._dealMrr,
           entry._dealCurrency
@@ -234,13 +234,13 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
 
     if (companyMap.size === 0) return [];
 
-    const companyProps = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_last_12_months"]);
+    const companyProps = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_booking_volume_12m"]);
     for (const [id, props] of Object.entries(companyProps)) {
       const entry = companyMap.get(id);
       if (entry) {
         entry.name = props.name || "Unknown";
         entry.ownerId = props.hubspot_owner_id || "";
-        (entry as AttentionCompany & { _bookingVolume?: string })._bookingVolume = props.understory_booking_volume_last_12_months || "";
+        (entry as AttentionCompany & { _bookingVolume?: string })._bookingVolume = props.understory_booking_volume_12m || "";
       }
     }
 
@@ -273,20 +273,13 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
         filterGroups: [
           {
             filters: [{
-              propertyName: "Health Score Category",
-              operator: "EQ",
-              value: "At Risk",
-            }],
-          },
-          {
-            filters: [{
-              propertyName: "Health Score Category",
-              operator: "EQ",
-              value: "Critical Churn Risk",
+              propertyName: "health_score",
+              operator: "LT",
+              value: "60",
             }],
           },
         ],
-        properties: ["name", "Health Score Category", "hubspot_owner_id", "understory_booking_volume_last_12_months"],
+        properties: ["name", "health_score", "hubspot_owner_id", "understory_booking_volume_12m"],
         limit: 100,
       }),
     });
@@ -297,9 +290,9 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
       (c: { id: string; properties: Record<string, string> }) => ({
         id: c.id,
         name: c.properties.name || "Unknown",
-        detail: c.properties["Health Score Category"] || "Unknown",
+        detail: c.properties["health_score"] || "Unknown",
         ownerId: c.properties.hubspot_owner_id || "",
-        _bookingVolume: c.properties.understory_booking_volume_last_12_months || "",
+        _bookingVolume: c.properties.understory_booking_volume_12m || "",
       })
     );
 
@@ -309,12 +302,12 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
         try {
           // Get health score property history
           const histRes = await fetch(
-            `${HUBSPOT_API}/crm/v3/objects/companies/${company.id}?propertiesWithHistory=Health Score Category`,
+            `${HUBSPOT_API}/crm/v3/objects/companies/${company.id}?propertiesWithHistory=health_score`,
             { headers: hubspotHeaders() }
           );
           if (histRes.ok) {
             const histData = await histRes.json();
-            const history = histData.propertiesWithHistory?.["Health Score Category"];
+            const history = histData.propertiesWithHistory?.["health_score"];
             if (history && history.length >= 2) {
               company.previousCategory = history[1].value;
               company.categoryChangedAt = history[0].timestamp;
@@ -357,7 +350,7 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
             value: thresholdStr,
           }],
         }],
-        properties: ["name", "notes_last_contacted", "hubspot_owner_id", "understory_booking_volume_last_12_months"],
+        properties: ["name", "notes_last_contacted", "hubspot_owner_id", "understory_booking_volume_12m"],
         limit: 100,
       }),
     });
@@ -374,7 +367,7 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
           detail: `Last contacted ${daysAgo} days ago`,
           daysSilent: daysAgo,
           ownerId: c.properties.hubspot_owner_id || "",
-          _bookingVolume: c.properties.understory_booking_volume_last_12_months || "",
+          _bookingVolume: c.properties.understory_booking_volume_12m || "",
         };
       }
     );

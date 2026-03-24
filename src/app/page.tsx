@@ -84,7 +84,7 @@ export default function Dashboard() {
         id: company.id,
         name: company.name,
         revenue: company.revenue,
-        healthScore: company.healthScore ?? data.company?.["Health Score Category"],
+        healthScore: company.healthScore ?? data.company?.["health_score"],
       });
     } catch {
       setError("Could not load data. Please try again.");

@@ -40,8 +40,9 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-.attention-item-focused > button,
+.attention-item-focused button:first-child,
+.attention-item-focused > div > button:first-child,
 .tab-item-focused {
-  background-color: var(--lichen) !important;
-  box-shadow: inset 3px 0 0 var(--moss);
+  background-color: #C8D4BA !important;
+  box-shadow: inset 4px 0 0 var(--moss);
 }

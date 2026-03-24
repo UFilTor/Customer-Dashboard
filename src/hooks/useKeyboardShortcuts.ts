@@ -11,7 +11,8 @@ export interface ShortcutActions {
   onNavigate: (direction: "up" | "down") => void;  // Arrow keys
   onSelect: () => void;         // Enter
   onJumpToGroup: (index: number) => void;  // 1-4
-  onSwitchTab: (direction: "prev" | "next") => void;  // [ / ]
+  onSwitchTab: (direction: "prev" | "next") => void;  // Left / Right
+  onToggleSort: () => void;     // s
   onToggleHelp: () => void;     // ?
 }
 
@@ -82,6 +83,12 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
       if (e.key === "ArrowRight") {
         e.preventDefault();
         actions.onSwitchTab("next");
+        return;
+      }
+
+      // s for sort toggle
+      if (e.key === "s") {
+        actions.onToggleSort();
         return;
       }
 

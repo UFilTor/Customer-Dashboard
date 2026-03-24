@@ -303,6 +303,10 @@ export default function Preview() {
       tabButtons[nextIndex]?.click();
       setFocusedTabItemIndex(-1);
     },
+    onToggleSort: () => {
+      if (showData) return;
+      setSortField((prev) => prev === "mrr" ? "daysOverdue" : "mrr");
+    },
     onToggleHelp: () => setShowHelp((prev) => !prev),
   });
 

@@ -133,6 +133,7 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
           <div className="flex items-center bg-[var(--light-grey)] rounded-[var(--border-radius)] p-1">
             <span className="text-xs text-gray-400 px-2">Sort:</span>
             <button
+              data-sort="mrr"
               onClick={() => setSortField("mrr")}
               className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
                 sortField === "mrr"
@@ -143,6 +144,7 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
               MRR
             </button>
             <button
+              data-sort="urgency"
               onClick={() => setSortField("daysOverdue")}
               className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
                 sortField !== "mrr"

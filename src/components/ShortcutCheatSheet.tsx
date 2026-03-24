@@ -16,6 +16,7 @@ const shortcuts = [
   { label: "Open / Toggle expand", keys: "Enter" },
   { label: "Jump to group", keys: "1 - 4" },
   { label: "Switch tab", keys: "Arrow Left / Right" },
+  { label: "Toggle sort", keys: "S" },
   { label: "Show this help", keys: "?" },
 ];
 

@@ -197,7 +197,7 @@ export function AttentionGroup({ group, onSelectCompany, sortField = "mrr", onSn
         </span>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {sortedActive.slice(0, displayCount).map((company) => (
           <div
             key={company.id}
@@ -251,7 +251,7 @@ export function AttentionGroup({ group, onSelectCompany, sortField = "mrr", onSn
           </button>
 
           {showSnoozed && (
-            <div className="space-y-2 mt-2">
+            <div className="space-y-1 mt-2">
               {snoozedCompanies.map((company) => {
                 const snoozeUntil = getSnoozeUntil(company.id);
                 return (

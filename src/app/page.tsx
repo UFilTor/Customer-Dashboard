@@ -185,6 +185,18 @@ export default function Dashboard() {
       tabButtons[nextIndex]?.click();
       setFocusedTabItemIndex(-1);
     },
+    onToggleSort: () => {
+      if (companyData) return;
+      const mrr = document.querySelector<HTMLButtonElement>("[data-sort='mrr']");
+      const urgency = document.querySelector<HTMLButtonElement>("[data-sort='urgency']");
+      if (!mrr || !urgency) return;
+      // Toggle: if MRR is active (has white text class), switch to urgency, else switch to MRR
+      if (mrr.className.includes("text-white")) {
+        urgency.click();
+      } else {
+        mrr.click();
+      }
+    },
     onToggleHelp: () => setShowHelp((prev) => !prev),
   });
 

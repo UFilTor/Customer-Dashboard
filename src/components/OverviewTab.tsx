@@ -165,7 +165,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
         {/* Card 3: Platform Activity */}
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Activity</div>
-          <div className="flex flex-col gap-1 flex-1 justify-center items-center">
+          <div className="flex flex-col gap-2 flex-1 justify-center w-full">
             {[
               { key: "understory_backoffice_latest_visit", label: "Backoffice" },
               { key: "understory_storefront_latest_visit", label: "Storefront" },
@@ -173,12 +173,15 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
             ].map(({ key, label }) => {
               const value = company[key];
               const date = value ? new Date(value) : null;
-              const isOld = date ? (Date.now() - date.getTime()) > 30 * 86400000 : true;
+              const days = date ? Math.floor((Date.now() - date.getTime()) / 86400000) : 999;
+              const dotColor = days <= 7 ? "bg-[#6EE7B7]" : days <= 30 ? "bg-[#FCD34D]" : "bg-[#FCA5A5]";
               const formatted = date && !isNaN(date.getTime()) ? formatRelativeDate(date) : "No data";
+              const textColor = days <= 30 ? "text-[var(--moss)]" : "text-[var(--rust)]";
               return (
-                <div key={key} className="text-center">
-                  <div className="text-[10px] text-[var(--green-100)]">{label}</div>
-                  <div className={`text-sm font-semibold ${isOld ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>{formatted}</div>
+                <div key={key} className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                  <span className="text-xs text-[var(--green-100)]">{label}</span>
+                  <span className={`text-sm font-semibold ml-auto ${textColor}`}>{formatted}</span>
                 </div>
               );
             })}

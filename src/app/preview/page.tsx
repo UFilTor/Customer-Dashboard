@@ -195,7 +195,7 @@ export default function Preview() {
 
   function handleLoadMock(company?: CompanySearchResult) {
     if (company) {
-      addRecentCompany({ id: company.id, name: company.name });
+      addRecentCompany({ id: company.id, name: company.name, revenue: "€3 072", healthScore: "Monitor" });
     }
     setShowLoading(true);
     setShowData(false);

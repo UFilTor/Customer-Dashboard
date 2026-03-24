@@ -84,7 +84,12 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to load company data");
       const data = await res.json();
       setCompanyData(data);
-      addRecentCompany({ id: company.id, name: company.name });
+      addRecentCompany({
+        id: company.id,
+        name: company.name,
+        revenue: company.revenue,
+        healthScore: company.healthScore ?? data.company?.["Health Score Category"],
+      });
     } catch {
       setError("Could not load data. Please try again.");
       removeRecentCompany(company.id);

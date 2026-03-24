@@ -4,6 +4,8 @@ const MAX_RECENTS = 5;
 export interface RecentCompany {
   id: string;
   name: string;
+  revenue?: string;
+  healthScore?: string;
 }
 
 export function getRecentCompanies(): RecentCompany[] {
@@ -20,10 +22,10 @@ export function getRecentCompanies(): RecentCompany[] {
 
 export function addRecentCompany(company: RecentCompany): void {
   const current = getRecentCompanies().filter((c) => c.id !== company.id);
-  const updated = [{ id: company.id, name: company.name }, ...current].slice(
-    0,
-    MAX_RECENTS
-  );
+  const entry: RecentCompany = { id: company.id, name: company.name };
+  if (company.revenue) entry.revenue = company.revenue;
+  if (company.healthScore) entry.healthScore = company.healthScore;
+  const updated = [entry, ...current].slice(0, MAX_RECENTS);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 }
 

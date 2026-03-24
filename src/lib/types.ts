@@ -43,6 +43,8 @@ export interface CompanySearchResult {
   id: string;
   name: string;
   domain: string;
+  revenue?: string;
+  healthScore?: string;
 }
 
 export interface CompanyDetail {

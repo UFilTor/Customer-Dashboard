@@ -193,7 +193,14 @@ export function SearchBar({ onSelect, ref }: Props) {
                   }`}
                 >
                   <span className="text-[var(--green-100)]/50 text-sm leading-none">&#x1F552;</span>
-                  <span className="font-medium text-[var(--moss)]">{company.name}</span>
+                  <div>
+                    <span className="font-medium text-[var(--moss)]">{company.name}</span>
+                    {(company.revenue || company.healthScore) && (
+                      <div className="text-xs text-[var(--green-100)]">
+                        {[company.revenue, company.healthScore].filter(Boolean).join(" · ")}
+                      </div>
+                    )}
+                  </div>
                 </button>
               ))}
               {query.length >= 2 && results.length > 0 && (
@@ -229,9 +236,13 @@ export function SearchBar({ onSelect, ref }: Props) {
                     }`}
                   >
                     <div className="font-medium text-[var(--moss)]">{company.name}</div>
-                    {company.domain && (
+                    {(company.revenue || company.healthScore) ? (
+                      <div className="text-xs text-[var(--green-100)]">
+                        {[company.revenue, company.healthScore].filter(Boolean).join(" · ")}
+                      </div>
+                    ) : company.domain ? (
                       <div className="text-xs text-[var(--green-100)]">{company.domain}</div>
-                    )}
+                    ) : null}
                   </button>
                 );
               })}

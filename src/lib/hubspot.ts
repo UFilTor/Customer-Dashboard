@@ -1,6 +1,27 @@
 import { CompanySearchResult, CompanyDetail, Engagement, TaskItem, OwnerMap, StageMap } from "./types";
 import { HUBSPOT_API, hubspotHeaders as headers } from "./hubspot-api";
 
+const SEARCH_TO_EUR: Record<string, number> = {
+  EUR: 1, USD: 0.92, GBP: 1.16, SEK: 0.087, NOK: 0.086, DKK: 0.134,
+};
+
+function computeSearchRevenue(
+  bookingVolume12m: string | undefined,
+  bookingFee: string | undefined,
+  contractMrr: string | undefined,
+  currency: string | undefined
+): string | undefined {
+  const volume = parseFloat(bookingVolume12m || "0") || 0;
+  const fee = parseFloat(bookingFee || "0") || 0;
+  const mrr = parseFloat(contractMrr || "0") || 0;
+  if (volume === 0 && mrr === 0) return undefined;
+  const revenueLocal = (volume * fee / 100) + (mrr * 12);
+  const rate = SEARCH_TO_EUR[(currency || "EUR").toUpperCase()] ?? 1;
+  const eur = Math.round(revenueLocal * rate);
+  if (eur === 0) return undefined;
+  return `\u20ac${eur.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
+}
+
 export async function searchCompanies(query: string): Promise<CompanySearchResult[]> {
   try {
     const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/search`, {
@@ -8,17 +29,73 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
       headers: headers(),
       body: JSON.stringify({
         query: query,
-        properties: ["name", "domain"],
+        properties: ["name", "domain", "Health Score Category", "understory_booking_volume_last_12_months"],
         limit: 5,
       }),
     });
     if (!res.ok) return [];
     const data = await res.json();
-    return data.results.map((r: { id: string; properties: { name: string; domain: string } }) => ({
-      id: r.id,
-      name: r.properties.name,
-      domain: r.properties.domain || "",
-    }));
+
+    const base: Array<{ id: string; properties: Record<string, string> }> = data.results || [];
+
+    // Enrich each result with deal data for revenue
+    const enriched = await Promise.all(
+      base.map(async (r) => {
+        const healthScore = r.properties["Health Score Category"] || undefined;
+        const bookingVolume = r.properties["understory_booking_volume_last_12_months"] || "0";
+
+        let revenue: string | undefined;
+        try {
+          const assocRes = await fetch(
+            `${HUBSPOT_API}/crm/v3/objects/companies/${r.id}/associations/deals`,
+            { headers: headers() }
+          );
+          if (assocRes.ok) {
+            const assocData = await assocRes.json();
+            const dealIds: string[] = assocData.results?.map((d: { id: string }) => d.id) || [];
+            if (dealIds.length > 0) {
+              const batchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/batch/read`, {
+                method: "POST",
+                headers: headers(),
+                body: JSON.stringify({
+                  inputs: dealIds.map((id) => ({ id })),
+                  properties: ["confirmed__contract_mrr", "deal_currency_code", "booking_fee", "pipeline"],
+                }),
+              });
+              if (batchRes.ok) {
+                const batchData = await batchRes.json();
+                const lifecyclePipelineId = process.env.HUBSPOT_LIFECYCLE_PIPELINE_ID;
+                const lifecycleDeal = batchData.results?.find(
+                  (d: { properties: Record<string, string> }) =>
+                    d.properties.pipeline === lifecyclePipelineId
+                );
+                if (lifecycleDeal) {
+                  revenue = computeSearchRevenue(
+                    bookingVolume,
+                    lifecycleDeal.properties.booking_fee,
+                    lifecycleDeal.properties.confirmed__contract_mrr,
+                    lifecycleDeal.properties.deal_currency_code
+                  );
+                }
+              }
+            }
+          }
+        } catch {
+          // Revenue enrichment is best-effort; skip on error
+        }
+
+        const result: CompanySearchResult = {
+          id: r.id,
+          name: r.properties.name,
+          domain: r.properties.domain || "",
+        };
+        if (revenue) result.revenue = revenue;
+        if (healthScore) result.healthScore = healthScore;
+        return result;
+      })
+    );
+
+    return enriched;
   } catch {
     return [];
   }

@@ -6,7 +6,7 @@ import { sortAttentionCompanies, SortField } from "@/lib/sort-attention";
 
 interface Props {
   group: AttentionGroupType;
-  onSelectCompany: (company: CompanySearchResult) => void;
+  onSelectCompany: (company: CompanySearchResult, meta?: { previousCategory?: string }) => void;
   sortField?: SortField;
 }
 
@@ -119,7 +119,7 @@ export function AttentionGroup({ group, onSelectCompany, sortField = "mrr" }: Pr
             <CompanyRow
               company={company}
               signal={group.signal}
-              onClick={() => onSelectCompany({ id: company.id, name: company.name, domain: "" })}
+              onClick={() => onSelectCompany({ id: company.id, name: company.name, domain: "" }, { previousCategory: company.previousCategory })}
             />
           </div>
         ))}

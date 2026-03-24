@@ -6,7 +6,7 @@ import { AttentionResponse, CompanySearchResult } from "@/lib/types";
 import type { SortField } from "@/lib/sort-attention";
 
 interface Props {
-  onSelectCompany: (company: CompanySearchResult) => void;
+  onSelectCompany: (company: CompanySearchResult, meta?: { previousCategory?: string }) => void;
   currentOwnerId?: string;
 }
 

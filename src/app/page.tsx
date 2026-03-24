@@ -35,6 +35,7 @@ export default function Dashboard() {
   const [focusedTabItemIndex, setFocusedTabItemIndex] = useState(-1);
   const scrollPositionRef = useRef<number>(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const attentionMetaRef = useRef<{ previousCategory?: string } | null>(null);
 
   // Sync focused attention item highlight
   useEffect(() => {
@@ -69,6 +70,7 @@ export default function Dashboard() {
     setError(null);
     const pos = scrollPositionRef.current;
     setNavigationSource(null);
+    attentionMetaRef.current = null;
     requestAnimationFrame(() => window.scrollTo(0, pos));
   }
 
@@ -91,14 +93,16 @@ export default function Dashboard() {
     }
   }
 
-  function handleAttentionSelect(company: CompanySearchResult) {
+  function handleAttentionSelect(company: CompanySearchResult, meta?: { previousCategory?: string }) {
     scrollPositionRef.current = window.scrollY;
     setNavigationSource("attention");
+    attentionMetaRef.current = meta || null;
     fetchCompany(company);
   }
 
   function handleSearchSelect(company: CompanySearchResult) {
     setNavigationSource("search");
+    attentionMetaRef.current = null;
     fetchCompany(company);
   }
 
@@ -250,6 +254,7 @@ export default function Dashboard() {
                 owners={companyData.owners}
                 showBack={navigationSource === "attention"}
                 onBack={handleBack}
+                previousCategory={attentionMetaRef.current?.previousCategory}
               />
               <MetricCards
                 company={companyData.company}

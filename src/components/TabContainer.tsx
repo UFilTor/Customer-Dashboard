@@ -17,7 +17,7 @@ export function TabContainer({ tabs }: Props) {
 
   return (
     <div>
-      <div className="flex border-b border-[#EDEDEA] mb-4">
+      <div className="flex justify-center border-b border-[#EDEDEA] mb-4">
         {tabs.map((tab) => (
           <button
             key={tab.id}

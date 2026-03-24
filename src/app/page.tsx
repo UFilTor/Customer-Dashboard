@@ -301,16 +301,6 @@ export default function Dashboard() {
                       />
                     ),
                   },
-                  {
-                    id: "tasks",
-                    label: "Tasks",
-                    content: (
-                      <TasksTab
-                        tasks={companyData.tasks}
-                        owners={companyData.owners}
-                      />
-                    ),
-                  },
                 ]}
               />
             </div>

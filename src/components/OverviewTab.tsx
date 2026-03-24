@@ -106,7 +106,7 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
       <RecapCard recap={recap} companyId={companyId} />
 
       {/* 4 insight cards in a row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3 items-stretch">
 
         {/* Card 1: Health Breakdown - circles */}
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3">

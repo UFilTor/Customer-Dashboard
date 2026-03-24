@@ -99,7 +99,7 @@ export function MetricCards({ company, deal, previousCategory }: Props) {
         }
 
         return (
-          <div key={card.property} className={`${bgClass} rounded-[var(--border-radius)] p-3`}>
+          <div key={card.property} className={`${bgClass} rounded-[var(--border-radius)] p-3 text-center`}>
             <div className={`${labelClass} text-xs uppercase tracking-wide mb-1`}>
               {card.label}
             </div>

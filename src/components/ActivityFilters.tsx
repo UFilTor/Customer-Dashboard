@@ -48,8 +48,8 @@ export default function ActivityFilters({ onFilterChange }: Props) {
   }
 
   const pillBase = "px-3 py-1 rounded-2xl text-xs font-medium cursor-pointer transition-colors";
-  const pillActive = `${pillBase} bg-[var(--moss)] text-white`;
-  const pillInactive = `${pillBase} border border-gray-300 text-gray-500 hover:border-gray-400`;
+  const pillActive = `${pillBase} bg-[var(--moss)] text-white border border-[var(--moss)]`;
+  const pillInactive = `${pillBase} border border-[#E5E5E0] text-[#999] hover:border-[#CCC]`;
 
   return (
     <div className="flex justify-between items-center flex-wrap gap-2 mb-4">

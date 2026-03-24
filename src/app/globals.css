@@ -21,7 +21,7 @@
   --focus-blue: #4D65FF;
   --border-radius: 0.75rem;
 
-  --background: var(--beige-new);
+  --background: #FFFFFF;
   --foreground: var(--moss);
 }
 
@@ -43,7 +43,7 @@ body {
 .attention-item-focused button:first-child,
 .attention-item-focused > div > button:first-child,
 .tab-item-focused {
-  background-color: #C8D4BA !important;
-  box-shadow: inset 4px 0 0 var(--moss);
+  background-color: #EEF3E8 !important;
+  box-shadow: inset 3px 0 0 var(--moss);
   color: var(--moss) !important;
 }

@@ -18,7 +18,7 @@ export function MetricCards({ company, deal }: Props) {
         const formatted = formatValue(value, card.format, card.format === "currency" ? currencyCode : undefined);
         const isInvoice = card.format === "invoiceStatus";
 
-        let bgClass = "bg-[var(--light-grey)]";
+        let bgClass = "bg-[#F9F9F7]";
         let textClass = "text-[var(--moss)]";
         let labelClass = "text-[var(--green-100)]";
 

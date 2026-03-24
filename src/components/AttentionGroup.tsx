@@ -51,7 +51,7 @@ function CompanyRow({
     <div className="relative group/row">
       <button
         onClick={onClick}
-        className="w-full bg-[var(--light-grey)] rounded-[var(--border-radius)] p-3 pr-10 text-left hover:bg-[var(--lichen)]/30 transition-all duration-200"
+        className="w-full border-b border-[#F0EEE8] p-3 pr-10 text-left hover:bg-[#FAFAF7] transition-all duration-150"
       >
         <div className="flex items-center justify-between">
           <span className="font-medium text-sm text-[var(--moss)]">{company.name}</span>
@@ -108,7 +108,7 @@ function CompanyRow({
       {/* Snooze bell icon - absolutely positioned inside the row */}
       <button
         onClick={onSnoozeIconClick}
-        className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/row:opacity-100 transition-opacity duration-150 p-1.5 rounded-md hover:bg-[var(--beige-gray)] text-[var(--green-100)] hover:text-[var(--moss)]"
+        className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/row:opacity-100 transition-opacity duration-150 p-1.5 rounded-md hover:bg-[#F0EEE8] text-[#BBB] hover:text-[var(--moss)]"
         title="Snooze"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -182,20 +182,20 @@ export function AttentionGroup({ group, onSelectCompany, sortField = "mrr", onSn
 
   return (
     <div className="mb-4" data-attention-group={group.signal}>
-      <div className="flex items-center gap-2 mb-3">
-        <h3 className="font-semibold text-[var(--moss)]">{group.label}</h3>
+      <div className="flex items-center gap-2 pb-2 border-b border-[#EDEDEA] mb-0">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[#999]">{group.label}</h3>
         <span
-          className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
             isUrgent
               ? "bg-[var(--rust)] text-white"
-              : "bg-[var(--beige)] text-[var(--moss)]"
+              : "bg-[var(--moss)] text-white"
           }`}
         >
           {activeCompanies.length}
         </span>
       </div>
 
-      <div className="space-y-1" style={{ overflow: "visible" }}>
+      <div style={{ overflow: "visible" }}>
         {sortedActive.slice(0, displayCount).map((company) => (
           <div
             key={company.id}
@@ -249,13 +249,13 @@ export function AttentionGroup({ group, onSelectCompany, sortField = "mrr", onSn
           </button>
 
           {showSnoozed && (
-            <div className="space-y-1 mt-2">
+            <div className="mt-2">
               {snoozedCompanies.map((company) => {
                 const snoozeUntil = getSnoozeUntil(company.id);
                 return (
                   <div
                     key={company.id}
-                    className="opacity-50 bg-[var(--light-grey)] rounded-[var(--border-radius)] p-3 flex items-center justify-between"
+                    className="opacity-50 border-b border-[#F0EEE8] p-3 flex items-center justify-between"
                   >
                     <div>
                       <span className="font-medium text-sm text-[var(--moss)]">{company.name}</span>

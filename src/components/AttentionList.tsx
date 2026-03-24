@@ -107,13 +107,13 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
         </div>
         <div className="flex items-center gap-3">
           {currentOwnerId && (
-            <div className="flex items-center bg-[var(--light-grey)] rounded-[var(--border-radius)] p-1">
+            <div className="flex items-center bg-[#F7F7F5] rounded-[10px] p-1">
               <button
                 onClick={() => setShowMine(true)}
                 className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
                   showMine
                     ? "bg-[var(--moss)] text-white"
-                    : "text-[var(--green-100)] hover:text-[var(--moss)]"
+                    : "text-[#999] hover:text-[var(--moss)]"
                 }`}
               >
                 My accounts
@@ -123,15 +123,15 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
                 className={`px-3 py-1 rounded-[8px] text-xs font-medium transition-all duration-200 ${
                   !showMine
                     ? "bg-[var(--moss)] text-white"
-                    : "text-[var(--green-100)] hover:text-[var(--moss)]"
+                    : "text-[#999] hover:text-[var(--moss)]"
                 }`}
               >
                 All accounts
               </button>
             </div>
           )}
-          <div className="flex items-center bg-[var(--light-grey)] rounded-[var(--border-radius)] p-1">
-            <span className="text-xs text-gray-400 px-2">Sort:</span>
+          <div className="flex items-center bg-[#F7F7F5] rounded-[10px] p-1">
+            <span className="text-xs text-[#AAA] px-2">Sort:</span>
             <button
               data-sort="mrr"
               onClick={() => setSortField("mrr")}
@@ -169,15 +169,15 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
       </div>
 
       <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: `repeat(${signalCounts.length + 1}, minmax(0, 1fr))` }}>
-        <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
-          <div className="text-[var(--green-100)] text-xs uppercase tracking-wide mb-1">Total</div>
+        <div className="bg-[#F9F9F7] rounded-[var(--border-radius)] p-4">
+          <div className="text-[#999] text-xs uppercase tracking-wide mb-1">Total</div>
           <div className="text-xl font-bold text-[var(--moss)]">{totalCompanies}</div>
         </div>
         {signalCounts.map((s) => {
           const isUrgent = s.signal === "overdue_invoices" || s.signal === "overdue_tasks";
           return (
-            <div key={s.signal} className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
-              <div className="text-[var(--green-100)] text-xs uppercase tracking-wide mb-1">{s.label}</div>
+            <div key={s.signal} className="bg-[#F9F9F7] rounded-[var(--border-radius)] p-4">
+              <div className="text-[#999] text-xs uppercase tracking-wide mb-1">{s.label}</div>
               <div className={`text-xl font-bold ${isUrgent && s.count > 0 ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>
                 {s.count}
               </div>

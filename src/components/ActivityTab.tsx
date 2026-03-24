@@ -11,10 +11,10 @@ interface Props {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  call: "bg-[var(--sky-blue)]/40 text-[var(--moss)]",
-  meeting: "bg-[var(--lilac)]/40 text-[var(--moss)]",
-  note: "bg-[var(--beige)] text-[var(--moss)]",
-  email: "bg-[var(--lichen)]/60 text-[var(--moss)]",
+  call: "bg-[#CFE8FF] text-[#1E40AF]",
+  meeting: "bg-[#D1BEE7] text-[#581C87]",
+  note: "bg-[#F0ECE0] text-[#78716C]",
+  email: "bg-[#D5DFCA] text-[#022C12]",
 };
 
 function ActivityCard({ engagement, owners }: { engagement: Engagement; owners: OwnerMap }) {
@@ -24,7 +24,7 @@ function ActivityCard({ engagement, owners }: { engagement: Engagement; owners: 
   const hasBody = bodyText.length > 0;
 
   return (
-    <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4" data-tab-item>
+    <div className="border-b border-[#F0EEE8] py-3.5" data-tab-item>
       <div className="flex items-start gap-3">
         <span
           className={`inline-block px-2 py-1 rounded-[8px] text-xs font-medium capitalize shrink-0 ${
@@ -108,7 +108,7 @@ export function ActivityTab({ engagements, owners }: Props) {
           No activities match the current filters
         </p>
       ) : (
-        <div className="space-y-3">
+        <div>
           {filteredEngagements.map((engagement, index) => (
             <ActivityCard
               key={`${engagement.type}-${engagement.timestamp}-${index}`}

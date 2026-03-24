@@ -202,7 +202,7 @@ export default function Dashboard() {
 
   return (
     <AuthGate>
-      <div className="min-h-screen bg-[var(--beige-new)]">
+      <div className="min-h-screen bg-white">
         {/* Top bar */}
         <nav className="bg-[var(--moss)] px-6 py-3 grid grid-cols-3 items-center">
           <button

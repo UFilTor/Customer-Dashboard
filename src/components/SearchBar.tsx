@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { CompanySearchResult } from "@/lib/types";
 import { getRecentCompanies, RecentCompany } from "@/lib/recent-companies";
+import { getHealthLabel } from "@/lib/health-score";
 
 interface Props {
   onSelect: (company: CompanySearchResult) => void;
@@ -197,9 +198,9 @@ export function SearchBar({ onSelect, ref }: Props) {
                   <span className="text-[var(--green-100)]/50 text-sm leading-none">&#x1F552;</span>
                   <div>
                     <span className="font-medium text-[var(--moss)]">{company.name}</span>
-                    {(company.revenue || company.healthScore) && (
+                    {(company.revenue || company.healthScore || company.domain) && (
                       <div className="text-xs text-[var(--green-100)]">
-                        {[company.revenue, company.healthScore].filter(Boolean).join(" · ")}
+                        {[company.revenue, company.healthScore ? getHealthLabel(company.healthScore) : undefined, company.domain].filter(Boolean).join(" · ")}
                       </div>
                     )}
                   </div>
@@ -238,12 +239,10 @@ export function SearchBar({ onSelect, ref }: Props) {
                     }`}
                   >
                     <div className="font-medium text-[var(--moss)]">{company.name}</div>
-                    {(company.revenue || company.healthScore) ? (
+                    {(company.revenue || company.healthScore || company.domain) ? (
                       <div className="text-xs text-[var(--green-100)]">
-                        {[company.revenue, company.healthScore].filter(Boolean).join(" · ")}
+                        {[company.revenue, company.healthScore ? getHealthLabel(company.healthScore) : undefined, company.domain].filter(Boolean).join(" · ")}
                       </div>
-                    ) : company.domain ? (
-                      <div className="text-xs text-[var(--green-100)]">{company.domain}</div>
                     ) : null}
                   </button>
                 );

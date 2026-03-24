@@ -9,15 +9,21 @@ function computeSearchRevenue(
   bookingVolume12m: string | undefined,
   bookingFee: string | undefined,
   contractMrr: string | undefined,
-  currency: string | undefined
+  currency: string | undefined,
+  createdate: string | undefined
 ): string | undefined {
   const volume = parseFloat(bookingVolume12m || "0") || 0;
   const fee = parseFloat(bookingFee || "0") || 0;
   const mrr = parseFloat(contractMrr || "0") || 0;
   if (volume === 0 && mrr === 0) return undefined;
-  const revenueLocal = (volume * fee) + (mrr * 12);
-  const rate = SEARCH_TO_EUR[(currency || "EUR").toUpperCase()] ?? 1;
-  const eur = Math.round(revenueLocal * rate);
+  const mrrRate = SEARCH_TO_EUR[(currency || "EUR").toUpperCase()] ?? 1;
+  const createTime = createdate ? new Date(createdate).getTime() : 0;
+  const monthsAsCustomer = createTime > 0
+    ? Math.min(12, Math.floor((Date.now() - createTime) / (30.44 * 24 * 60 * 60 * 1000)))
+    : 12;
+  const bookingFeeRevenue = volume * fee;
+  const mrrRevenue = mrr * monthsAsCustomer * mrrRate;
+  const eur = Math.round(bookingFeeRevenue + mrrRevenue);
   if (eur === 0) return undefined;
   return `\u20ac${eur.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
 }
@@ -29,7 +35,7 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
       headers: headers(),
       body: JSON.stringify({
         query: query,
-        properties: ["name", "domain", "health_score", "understory_booking_volume_12m"],
+        properties: ["name", "domain", "health_score", "understory_booking_volume_12m", "createdate"],
         limit: 5,
       }),
     });
@@ -59,7 +65,7 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
                 headers: headers(),
                 body: JSON.stringify({
                   inputs: dealIds.map((id) => ({ id })),
-                  properties: ["confirmed__contract_mrr", "deal_currency_code", "booking_fee", "pipeline"],
+                  properties: ["confirmed__contract_mrr", "deal_currency_code", "booking_fee", "confirmed_booking_fee", "pipeline"],
                 }),
               });
               if (batchRes.ok) {
@@ -72,9 +78,10 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
                 if (lifecycleDeal) {
                   revenue = computeSearchRevenue(
                     bookingVolume,
-                    lifecycleDeal.properties.booking_fee,
+                    lifecycleDeal.properties.booking_fee || lifecycleDeal.properties.confirmed_booking_fee,
                     lifecycleDeal.properties.confirmed__contract_mrr,
-                    lifecycleDeal.properties.deal_currency_code
+                    lifecycleDeal.properties.deal_currency_code,
+                    r.properties["createdate"]
                   );
                 }
               }

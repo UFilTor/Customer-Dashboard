@@ -11,7 +11,7 @@ import { TasksTab } from "@/components/TasksTab";
 import { SkeletonCard, SkeletonBlock, SkeletonRecap } from "@/components/Skeleton";
 import { CompanySearchResult, CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
 import { AttentionList } from "@/components/AttentionList";
-import { addRecentCompany, removeRecentCompany } from "@/lib/recent-companies";
+import { addRecentCompany, removeRecentCompany, computeRevenueFromDetail } from "@/lib/recent-companies";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
 
@@ -83,8 +83,9 @@ export default function Dashboard() {
       addRecentCompany({
         id: company.id,
         name: company.name,
-        revenue: company.revenue,
-        healthScore: company.healthScore ?? data.company?.["health_score"],
+        revenue: computeRevenueFromDetail(data.company, data.deal),
+        healthScore: data.company?.["health_score"] || company.healthScore,
+        domain: data.company?.["domain"] || company.domain,
       });
     } catch {
       setError("Could not load data. Please try again.");

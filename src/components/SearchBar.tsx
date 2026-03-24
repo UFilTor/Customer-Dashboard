@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { CompanySearchResult } from "@/lib/types";
-import { getRecentCompanies, RecentCompany } from "@/lib/recent-companies";
+import { getRecentCompanies, clearRecentCompanies, RecentCompany } from "@/lib/recent-companies";
 import { getHealthLabel } from "@/lib/health-score";
 
 interface Props {
@@ -208,6 +208,18 @@ export function SearchBar({ onSelect, ref }: Props) {
               ))}
               {query.length >= 2 && results.length > 0 && (
                 <div className="border-t border-[var(--beige-gray)] mx-2 my-1" />
+              )}
+              {query.length < 2 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    clearRecentCompanies();
+                    setRecents([]);
+                  }}
+                  className="w-full text-center px-4 py-2 text-xs text-[var(--green-100)]/50 hover:text-[var(--green-100)] border-t border-[var(--beige-gray)]/50 transition-colors"
+                >
+                  Clear recents
+                </button>
               )}
             </>
           )}

@@ -58,3 +58,7 @@ export function removeRecentCompany(id: string): void {
   const updated = getRecentCompanies().filter((c) => c.id !== id);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 }
+
+export function clearRecentCompanies(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}

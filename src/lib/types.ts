@@ -104,6 +104,7 @@ export interface AttentionCompany {
   previousCategory?: string;
   categoryChangedAt?: string;
   daysSilent?: number;
+  enteredGroupAt?: string;
 }
 
 export type AttentionSignal = "overdue_invoices" | "overdue_tasks" | "health_score" | "gone_quiet";

@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchOverdueInvoices, fetchOverdueTasks, fetchHealthScoreIssues, fetchGoneQuiet } from "@/lib/attention";
 import { Cache } from "@/lib/cache";
-import { AttentionResponse } from "@/lib/types";
+import { AttentionCompany, AttentionResponse } from "@/lib/types";
+
+function computeEnteredGroupAt(company: AttentionCompany, signal: string): string | undefined {
+  const now = Date.now();
+  if (signal === "overdue_tasks" && company.daysOverdue !== undefined) {
+    return new Date(now - company.daysOverdue * 86400000).toISOString();
+  }
+  if (signal === "overdue_invoices" && company.daysOverdue !== undefined) {
+    return new Date(now - company.daysOverdue * 86400000).toISOString();
+  }
+  if (signal === "health_score" && company.categoryChangedAt) {
+    return company.categoryChangedAt;
+  }
+  if (signal === "gone_quiet" && company.daysSilent !== undefined) {
+    return new Date(now - company.daysSilent * 86400000).toISOString();
+  }
+  return undefined;
+}
 
 const attentionCache = new Cache<AttentionResponse>(15 * 60 * 1000);
 
@@ -21,13 +38,23 @@ export async function GET(request: NextRequest) {
       fetchGoneQuiet(),
     ]);
 
+    const groups = [
+      { signal: "overdue_invoices" as const, label: "Overdue Invoices", companies: overdueInvoices },
+      { signal: "overdue_tasks" as const, label: "Overdue Tasks", companies: overdueTasks },
+      { signal: "health_score" as const, label: "Health Score Issues", companies: healthScore },
+      { signal: "gone_quiet" as const, label: "Gone Quiet", companies: goneQuiet },
+    ].filter((g) => g.companies.length > 0);
+
+    const enrichedGroups = groups.map((group) => ({
+      ...group,
+      companies: group.companies.map((company) => ({
+        ...company,
+        enteredGroupAt: computeEnteredGroupAt(company, group.signal),
+      })),
+    }));
+
     const response: AttentionResponse = {
-      groups: [
-        { signal: "overdue_invoices" as const, label: "Overdue Invoices", companies: overdueInvoices },
-        { signal: "overdue_tasks" as const, label: "Overdue Tasks", companies: overdueTasks },
-        { signal: "health_score" as const, label: "Health Score Issues", companies: healthScore },
-        { signal: "gone_quiet" as const, label: "Gone Quiet", companies: goneQuiet },
-      ].filter((g) => g.companies.length > 0),
+      groups: enrichedGroups,
       updatedAt: new Date().toISOString(),
     };
 

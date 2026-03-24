@@ -134,10 +134,10 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
 
         {/* Card 2: Volume Trend */}
         <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
-          <div className="relative mb-2 w-full text-center">
+          <div className="flex items-center justify-between mb-2 w-full">
             <span className="text-[10px] text-[var(--green-100)] uppercase tracking-wide">Volume</span>
             {growthPct !== null && (
-              <span className={`absolute right-0 top-0 text-xs font-semibold ${growthPct > 0 ? "text-[#065F46]" : "text-[var(--rust)]"}`}>
+              <span className={`text-[10px] font-semibold ${growthPct > 0 ? "text-[#065F46]" : "text-[var(--rust)]"}`}>
                 {growthPct > 0 ? "↑" : "↓"}{Math.abs(growthPct)}%
               </span>
             )}
@@ -163,9 +163,9 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
         </div>
 
         {/* Card 3: Platform Activity */}
-        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col items-center">
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-3 flex flex-col">
           <div className="text-[10px] text-[var(--green-100)] uppercase tracking-wide mb-2">Activity</div>
-          <div className="flex flex-col gap-2.5 flex-1 justify-center w-full">
+          <div className="flex flex-col gap-1 flex-1 justify-center items-center">
             {[
               { key: "understory_backoffice_latest_visit", label: "Backoffice" },
               { key: "understory_storefront_latest_visit", label: "Storefront" },
@@ -176,10 +176,9 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
               const isOld = date ? (Date.now() - date.getTime()) > 30 * 86400000 : true;
               const formatted = date && !isNaN(date.getTime()) ? formatRelativeDate(date) : "No data";
               return (
-                <div key={key} className="flex items-center">
-                  <div className={`w-2 h-2 rounded-full shrink-0 mr-1.5 ${isOld ? "bg-[var(--rust)]" : "bg-[#6EE7B7]"}`} />
-                  <span className="text-sm text-[var(--green-100)]">{label}</span>
-                  <span className={`text-sm font-semibold ml-1 ${isOld ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>{formatted}</span>
+                <div key={key} className="text-center">
+                  <div className="text-[10px] text-[var(--green-100)]">{label}</div>
+                  <div className={`text-sm font-semibold ${isOld ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>{formatted}</div>
                 </div>
               );
             })}

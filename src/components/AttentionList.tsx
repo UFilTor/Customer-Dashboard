@@ -169,14 +169,14 @@ export function AttentionList({ onSelectCompany, currentOwnerId }: Props) {
       </div>
 
       <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: `repeat(${signalCounts.length + 1}, minmax(0, 1fr))` }}>
-        <div className="bg-[#F9F9F7] rounded-[var(--border-radius)] p-4">
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
           <div className="text-[#999] text-xs uppercase tracking-wide mb-1">Total</div>
           <div className="text-xl font-bold text-[var(--moss)]">{totalCompanies}</div>
         </div>
         {signalCounts.map((s) => {
           const isUrgent = s.signal === "overdue_invoices" || s.signal === "overdue_tasks";
           return (
-            <div key={s.signal} className="bg-[#F9F9F7] rounded-[var(--border-radius)] p-4">
+            <div key={s.signal} className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
               <div className="text-[#999] text-xs uppercase tracking-wide mb-1">{s.label}</div>
               <div className={`text-xl font-bold ${isUrgent && s.count > 0 ? "text-[var(--rust)]" : "text-[var(--moss)]"}`}>
                 {s.count}

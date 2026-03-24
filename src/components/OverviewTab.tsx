@@ -27,11 +27,11 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
     <div>
       <RecapCard recap={recap} companyId={companyId} />
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
           <h3 className="font-semibold text-[var(--moss)] mb-3">Company Info</h3>
-          <div className="space-y-2">
+          <div className="space-y-0">
             {dashboardConfig.tabs.overview.companyInfo.map((field) => (
-              <div key={field.property} className="flex justify-between text-sm">
+              <div key={field.property} className="flex justify-between text-sm py-2 border-b border-[#F0EEE8] last:border-b-0">
                 <span className="text-[var(--green-100)]">{field.label}</span>
                 <FieldRenderer
                   value={resolveValue(field.property, company, field.format)}
@@ -43,12 +43,12 @@ export function OverviewTab({ company, deal, owners, stages, recap, companyId }:
           </div>
         </div>
 
-        <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4">
+        <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
           <h3 className="font-semibold text-[var(--moss)] mb-3">Lifecycle Deal</h3>
           {deal ? (
-            <div className="space-y-2">
+            <div className="space-y-0">
               {dashboardConfig.tabs.overview.dealInfo.map((field) => (
-                <div key={field.property} className="flex justify-between text-sm">
+                <div key={field.property} className="flex justify-between text-sm py-2 border-b border-[#F0EEE8] last:border-b-0">
                   <span className="text-[var(--green-100)]">{field.label}</span>
                   <FieldRenderer
                     value={resolveValue(field.property, deal, field.format)}

@@ -24,7 +24,7 @@ export function RecapCard({ recap, companyId }: Props) {
 
   if (recap === null) {
     return (
-      <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4 mb-4">
+      <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 mb-4">
         <p className="text-[var(--green-100)] text-sm">No recent activity to summarize.</p>
       </div>
     );
@@ -32,7 +32,7 @@ export function RecapCard({ recap, companyId }: Props) {
 
   if (recap.error) {
     return (
-      <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4 mb-4">
+      <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 mb-4">
         <p className="text-[var(--green-100)] text-sm">
           Could not generate summary. Check the Activity tab for recent interactions.
         </p>
@@ -45,7 +45,7 @@ export function RecapCard({ recap, companyId }: Props) {
     : null;
 
   return (
-    <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4 mb-4">
+    <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 mb-4">
       <span className="text-xs text-[var(--green-100)] uppercase tracking-wide">AI Summary</span>
       <p className="text-sm text-[var(--dark-moss)] mt-2 leading-relaxed">
         {recap.summary}
@@ -53,7 +53,7 @@ export function RecapCard({ recap, companyId }: Props) {
 
       {recap.suggestedAction && (
         <>
-          <div className="border-t border-[var(--beige-gray)] my-3" />
+          <div className="border-t border-[#EDEDEA] my-3" />
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm text-[var(--moss)] font-medium flex-1">
               {recap.suggestedAction.text}

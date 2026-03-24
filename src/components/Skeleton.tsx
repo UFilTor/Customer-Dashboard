@@ -1,6 +1,6 @@
 export function SkeletonCard() {
   return (
-    <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4 animate-pulse">
+    <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 animate-pulse">
       <div className="h-3 w-16 bg-[var(--beige-gray)] rounded mb-2" />
       <div className="h-6 w-24 bg-[var(--beige-gray)] rounded" />
     </div>
@@ -18,7 +18,7 @@ export function SkeletonRow() {
 
 export function SkeletonBlock() {
   return (
-    <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4 animate-pulse">
+    <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 animate-pulse">
       <div className="h-5 w-32 bg-[var(--beige-gray)] rounded mb-4" />
       <div className="space-y-3">
         <SkeletonRow />
@@ -32,7 +32,7 @@ export function SkeletonBlock() {
 
 export function SkeletonRecap() {
   return (
-    <div className="bg-[var(--light-grey)] rounded-[var(--border-radius)] p-4 mb-4 animate-pulse">
+    <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4 mb-4 animate-pulse">
       <div className="h-3 w-20 bg-[var(--beige-gray)] rounded mb-3" />
       <div className="space-y-2">
         <div className="h-4 w-full bg-[var(--beige-gray)] rounded" />

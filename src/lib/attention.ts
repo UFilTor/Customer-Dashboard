@@ -6,6 +6,7 @@ const CHIP_COMPANY_PROPS = [
   "understory_booking_volume_12m",
   "understory_booking_volume_3m",
   "understory_booking_volume_6m",
+  "createdate",
 ];
 
 async function fetchCompanyBatch(
@@ -74,14 +75,20 @@ function computeGeneratedRevenue(
   bookingVolume12m: string | undefined,
   bookingFee: string | undefined,
   contractMrr: string | undefined,
-  currency: string | undefined
+  currency: string | undefined,
+  createdate?: string | undefined
 ): number {
   const volume = parseFloat(bookingVolume12m || "0") || 0;
   const fee = parseFloat(bookingFee || "0") || 0;
   const mrr = parseFloat(contractMrr || "0") || 0;
-  const revenueLocal = (volume * fee) + (mrr * 12);
-  const rate = TO_EUR[(currency || "EUR").toUpperCase()] ?? 1;
-  return Math.round(revenueLocal * rate);
+  const mrrRate = TO_EUR[(currency || "EUR").toUpperCase()] ?? 1;
+  const createTime = createdate ? new Date(createdate).getTime() : 0;
+  const monthsAsCustomer = createTime > 0
+    ? Math.min(12, Math.floor((Date.now() - createTime) / (30.44 * 24 * 60 * 60 * 1000)))
+    : 12;
+  const bookingFeeRevenue = volume * fee;
+  const mrrRevenue = mrr * monthsAsCustomer * mrrRate;
+  return Math.round(bookingFeeRevenue + mrrRevenue);
 }
 
 function formatRevenue(revenueEur: number): string {
@@ -98,7 +105,8 @@ function mapChipFields(
     companyProps.understory_booking_volume_12m,
     dealProps?.booking_fee || dealProps?.confirmed_booking_fee,
     dealProps?.confirmed__contract_mrr,
-    dealProps?.deal_currency_code
+    dealProps?.deal_currency_code,
+    companyProps.createdate
   );
   return {
     healthScore: companyProps.health_score || undefined,
@@ -216,7 +224,8 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
             props.understory_booking_volume_12m,
             entry._dealBookingFee,
             entry._dealMrr,
-            entry._dealCurrency
+            entry._dealCurrency,
+            props.createdate
           );
           entry.mrr = formatRevenue(revenue);
         }
@@ -328,7 +337,8 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
         entry.name = props.name || "Unknown";
         entry.ownerId = props.hubspot_owner_id || "";
         entry.country = props.understory_company_country || "";
-        (entry as AttentionCompany & { _bookingVolume?: string })._bookingVolume = props.understory_booking_volume_12m || "";
+        (entry as AttentionCompany & { _bookingVolume?: string; _createdate?: string })._bookingVolume = props.understory_booking_volume_12m || "";
+        (entry as AttentionCompany & { _createdate?: string })._createdate = props.createdate || "";
         Object.assign(entry, mapChipFields(props, null));
       }
     }
@@ -339,8 +349,8 @@ export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
       results.map(async (company) => {
         const deal = await fetchDealForCompany(company.id);
         if (deal) {
-          const bookingVolume = (company as AttentionCompany & { _bookingVolume?: string })._bookingVolume;
-          const revenue = computeGeneratedRevenue(bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code);
+          const ext = company as AttentionCompany & { _bookingVolume?: string; _createdate?: string };
+          const revenue = computeGeneratedRevenue(ext._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code, ext._createdate);
           company.mrr = formatRevenue(revenue);
           company.revenue = revenue || undefined;
           company.currency = "EUR";
@@ -370,7 +380,7 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
             }],
           },
         ],
-        properties: ["name", "health_score", "hubspot_owner_id", "understory_booking_volume_12m", "understory_booking_volume_3m", "understory_booking_volume_6m", "understory_company_country", "notes_last_contacted"],
+        properties: ["name", "health_score", "hubspot_owner_id", "understory_booking_volume_12m", "understory_booking_volume_3m", "understory_booking_volume_6m", "understory_company_country", "notes_last_contacted", "createdate"],
         limit: 100,
       }),
     });
@@ -379,7 +389,7 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
 
     const fourteenDaysAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
 
-    const companies: (AttentionCompany & { _bookingVolume?: string })[] = (data.results || []).map(
+    const companies: (AttentionCompany & { _bookingVolume?: string; _createdate?: string })[] = (data.results || []).map(
       (c: { id: string; properties: Record<string, string> }) => ({
         id: c.id,
         name: c.properties.name || "Unknown",
@@ -387,6 +397,7 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
         ownerId: c.properties.hubspot_owner_id || "",
         country: c.properties.understory_company_country || "",
         _bookingVolume: c.properties.understory_booking_volume_12m || "",
+        _createdate: c.properties.createdate || "",
         _notesLastContacted: c.properties.notes_last_contacted || "",
         ...mapChipFields(c.properties, null),
       })
@@ -440,7 +451,7 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
         // Get Generated Revenue from lifecycle deal
         const deal = await fetchDealForCompany(company.id);
         if (deal) {
-          const revenue = computeGeneratedRevenue(company._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code);
+          const revenue = computeGeneratedRevenue(company._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code, company._createdate);
           company.mrr = formatRevenue(revenue);
           company.revenue = revenue || undefined;
           company.currency = "EUR";
@@ -473,14 +484,14 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
             value: thresholdStr,
           }],
         }],
-        properties: ["name", "notes_last_contacted", "hubspot_owner_id", "understory_booking_volume_12m", "understory_booking_volume_3m", "understory_booking_volume_6m", "health_score", "understory_company_country"],
+        properties: ["name", "notes_last_contacted", "hubspot_owner_id", "understory_booking_volume_12m", "understory_booking_volume_3m", "understory_booking_volume_6m", "health_score", "understory_company_country", "createdate"],
         limit: 100,
       }),
     });
     if (!res.ok) return [];
     const data = await res.json();
 
-    const companies: (AttentionCompany & { _bookingVolume?: string })[] = (data.results || []).map(
+    const companies: (AttentionCompany & { _bookingVolume?: string; _createdate?: string })[] = (data.results || []).map(
       (c: { id: string; properties: Record<string, string> }) => {
         const lastDate = new Date(c.properties.notes_last_contacted);
         const daysAgo = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -492,6 +503,7 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
           ownerId: c.properties.hubspot_owner_id || "",
           country: c.properties.understory_company_country || "",
           _bookingVolume: c.properties.understory_booking_volume_12m || "",
+          _createdate: c.properties.createdate || "",
           ...mapChipFields(c.properties, null),
         };
       }
@@ -502,7 +514,7 @@ export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
       companies.map(async (company) => {
         const deal = await fetchDealForCompany(company.id);
         if (deal) {
-          const revenue = computeGeneratedRevenue(company._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code);
+          const revenue = computeGeneratedRevenue(company._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code, company._createdate);
           company.mrr = formatRevenue(revenue);
           company.revenue = revenue || undefined;
           company.currency = "EUR";
@@ -536,7 +548,7 @@ export async function fetchDecliningVolume(): Promise<AttentionCompany[]> {
             value: "0",
           }],
         }],
-        properties: ["name", "hubspot_owner_id", "health_score", "understory_booking_volume_3m", "understory_booking_volume_6m", "understory_booking_volume_12m", "understory_company_country"],
+        properties: ["name", "hubspot_owner_id", "health_score", "understory_booking_volume_3m", "understory_booking_volume_6m", "understory_booking_volume_12m", "understory_company_country", "createdate"],
         limit: 100,
       }),
     });
@@ -565,8 +577,9 @@ export async function fetchDecliningVolume(): Promise<AttentionCompany[]> {
           mrr: `\u20ac${Math.round(parseFloat(c.properties.understory_booking_volume_12m || "0")).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`,
           currency: "EUR",
           _bookingVolume: c.properties.understory_booking_volume_12m || "",
+          _createdate: c.properties.createdate || "",
           ...mapChipFields(c.properties, null),
-        } as AttentionCompany & { _bookingVolume: string });
+        } as AttentionCompany & { _bookingVolume: string; _createdate: string });
       }
     }
 
@@ -575,8 +588,8 @@ export async function fetchDecliningVolume(): Promise<AttentionCompany[]> {
       companies.map(async (company) => {
         const deal = await fetchDealForCompany(company.id);
         if (deal) {
-          const bookingVolume = (company as AttentionCompany & { _bookingVolume?: string })._bookingVolume;
-          const revenue = computeGeneratedRevenue(bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code);
+          const ext = company as AttentionCompany & { _bookingVolume?: string; _createdate?: string };
+          const revenue = computeGeneratedRevenue(ext._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code, ext._createdate);
           company.revenue = revenue || undefined;
           company.payStatus = deal.understory_pay_status__customer || undefined;
         }
@@ -684,7 +697,7 @@ export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
         if (dealEntry._dealBookingFee) dealProps.booking_fee = dealEntry._dealBookingFee;
         if (dealEntry._dealMrr) dealProps.confirmed__contract_mrr = dealEntry._dealMrr;
         if (dealEntry._dealCurrency) dealProps.deal_currency_code = dealEntry._dealCurrency;
-        const revenue = computeGeneratedRevenue(props.understory_booking_volume_12m, dealProps.booking_fee, dealProps.confirmed__contract_mrr, dealProps.deal_currency_code);
+        const revenue = computeGeneratedRevenue(props.understory_booking_volume_12m, dealProps.booking_fee, dealProps.confirmed__contract_mrr, dealProps.deal_currency_code, props.createdate);
         entry.mrr = revenue > 0 ? formatRevenue(revenue) : "-";
         const chipFields = mapChipFields(props, Object.keys(dealProps).length > 0 ? dealProps : null);
         Object.assign(entry, chipFields);

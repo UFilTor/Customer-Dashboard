@@ -129,3 +129,70 @@ export interface AttentionResponse {
   groups: AttentionGroup[];
   updatedAt: string;
 }
+
+// Pay Migration Dashboard
+
+export type PayStage =
+  | "Not yet enrolled"
+  | "Signed - Not Started"
+  | "Started Onboarding"
+  | "Pending Verification"
+  | "Verified"
+  | "Live"
+  | "Ineligible"
+  | "Unwilling";
+
+export interface PayDeal {
+  dealId: string;
+  companyId: string | null;
+  dealName: string;
+  stage: PayStage;
+  rawPayStatus: string;
+  bv: number;
+  acv: number;
+  plan: string;
+  ownerId: string;
+  ownerName: string;
+  lastActivityDate: string | null;
+  daysSinceActivity: number | null;
+  unwillingReason: string | null;
+  hasOpenInvoice: boolean;
+  zeroEvents: boolean;
+}
+
+export interface PayOwnerSummary {
+  ownerId: string;
+  ownerName: string;
+  lcPercent: number;
+  inProgressPercent: number;
+  arrPercent: number;
+  eligibleBv: number;
+  totalBv: number;
+  stageCounts: Record<PayStage, { count: number; bv: number }>;
+  deals: PayDeal[];
+}
+
+export interface PayMigrationData {
+  bvLiveVerifiedPercent: number;
+  bvInProgressPercent: number;
+  arrLiveVerifiedPercent: number;
+  aprilTarget: number;
+  mayTarget: number;
+
+  totalBv: number;
+  totalAcv: number;
+  eligibleBv: number;
+  liveVerifiedBv: number;
+  inProgressBv: number;
+  ineligibleBv: number;
+  liveVerifiedAcv: number;
+
+  stageBreakdown: Record<PayStage, { count: number; bv: number }>;
+  owners: PayOwnerSummary[];
+  allOwnersSummary: PayOwnerSummary;
+  needsAPush: PayDeal[];
+  unwilling: PayDeal[];
+  notEnrolled: PayDeal[];
+  allDeals: PayDeal[];
+  updatedAt: string;
+}

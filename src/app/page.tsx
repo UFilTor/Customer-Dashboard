@@ -14,6 +14,7 @@ import { AttentionList } from "@/components/AttentionList";
 import { addRecentCompany, removeRecentCompany, computeRevenueFromDetail } from "@/lib/recent-companies";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
+import { PayMigrationDashboard } from "@/components/PayMigrationDashboard";
 
 interface CompanyData extends CompanyDetail {
   owners: OwnerMap;
@@ -27,6 +28,8 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [navigationSource, setNavigationSource] = useState<"attention" | "search" | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [activeView, setActiveView] = useState<"attention" | "pay">("attention");
+  const [payEverLoaded, setPayEverLoaded] = useState(false);
   const [focusedAttentionIndex, setFocusedAttentionIndex] = useState(-1);
   const [focusedTabItemIndex, setFocusedTabItemIndex] = useState(-1);
   const scrollPositionRef = useRef<number>(0);
@@ -217,7 +220,31 @@ export default function Dashboard() {
           <div className="justify-self-center w-full max-w-sm lg:max-w-md">
             <SearchBar ref={searchInputRef} onSelect={handleSearchSelect} />
           </div>
-          <div />
+          <div className="justify-self-end flex items-center bg-white/10 rounded-[10px] p-1">
+            <button
+              onClick={() => setActiveView("attention")}
+              className={`px-4 py-1.5 rounded-[8px] text-xs font-medium transition-all duration-200 ${
+                activeView === "attention"
+                  ? "bg-white text-[var(--moss)]"
+                  : "text-white/70 hover:text-white"
+              }`}
+            >
+              Attention
+            </button>
+            <button
+              onClick={() => {
+                setActiveView("pay");
+                if (!payEverLoaded) setPayEverLoaded(true);
+              }}
+              className={`px-4 py-1.5 rounded-[8px] text-xs font-medium transition-all duration-200 ${
+                activeView === "pay"
+                  ? "bg-white text-[var(--moss)]"
+                  : "text-white/70 hover:text-white"
+              }`}
+            >
+              Pay Migration
+            </button>
+          </div>
         </nav>
 
         {/* Content */}
@@ -235,9 +262,16 @@ export default function Dashboard() {
           )}
 
           {!companyData && !isLoading && (
-            <div className="animate-fadeIn">
-              <AttentionList onSelectCompany={handleAttentionSelect} />
-            </div>
+            <>
+              <div className={activeView === "attention" ? "animate-fadeIn" : "hidden"}>
+                <AttentionList onSelectCompany={handleAttentionSelect} />
+              </div>
+              {payEverLoaded && (
+                <div className={activeView === "pay" ? "animate-fadeIn" : "hidden"}>
+                  <PayMigrationDashboard onSelectCompany={handleSearchSelect} />
+                </div>
+              )}
+            </>
           )}
 
           {isLoading && (

@@ -8,6 +8,7 @@ const OWNER_NAMES: Record<string, string> = {
   "559364799": "Cecilia Lexe",
   "1939229547": "Filip Torstensson",
   "44912650": "Marc Moller Nielsen",
+  "90324081": "Vlad Maties",
 };
 
 interface Props {

@@ -17,12 +17,14 @@ type PersonOption = string; // owner ID
 // Region mapping based on owner assignment
 const SE_PLUS_OWNERS = ["1939229547", "559364799"]; // Filip, Cecilia
 const DK_PLUS_OWNERS = ["44912650", "962517007"]; // Marc, Anders
+const IT_OWNERS = ["90324081"]; // Vlad
 
 const PEOPLE: { id: string; name: string }[] = [
   { id: "962517007", name: "Anders" },
   { id: "559364799", name: "Cecilia" },
   { id: "1939229547", name: "Filip" },
   { id: "44912650", name: "Marc" },
+  { id: "90324081", name: "Vlad" },
 ];
 
 const FILTER_STORAGE_KEY = "dashboard-default-filter";
@@ -161,11 +163,11 @@ export function AttentionList({ onSelectCompany }: Props) {
         .filter((g) => g.companies.length > 0);
     }
 
-    // IT - no filter for now, show nothing
+    // IT - Vlad
     return data.groups
       .map((g) => ({
         ...g,
-        companies: g.companies.filter(() => false),
+        companies: g.companies.filter((c) => IT_OWNERS.includes(c.ownerId || "")),
       }))
       .filter((g) => g.companies.length > 0);
   })();

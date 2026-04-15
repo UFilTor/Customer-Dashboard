@@ -1,4 +1,5 @@
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
+import { getDealStages } from "./hubspot";
 import { AttentionCompany } from "./types";
 
 const CHIP_COMPANY_PROPS = [
@@ -52,7 +53,7 @@ async function fetchDealForCompany(companyId: string): Promise<Record<string, st
       headers: hubspotHeaders(),
       body: JSON.stringify({
         inputs: dealIds.map((id) => ({ id })),
-        properties: ["confirmed__contract_mrr", "deal_currency_code", "pipeline", "booking_fee", "understory_pay_status__customer"],
+        properties: ["confirmed__contract_mrr", "deal_currency_code", "pipeline", "booking_fee", "understory_pay_status__customer", "dealstage"],
       }),
     });
     if (!batchRes.ok) return null;
@@ -467,136 +468,132 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
   }
 }
 
-export async function fetchGoneQuiet(): Promise<AttentionCompany[]> {
+const ACTIVE_LIFECYCLE_LABELS = ["adopted", "started", "ramp up", "established"];
+const RETENTION_PIPELINE = "1072518362";
+
+export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
   try {
-    const threshold = new Date();
-    threshold.setDate(threshold.getDate() - 45);
-    const thresholdStr = threshold.toISOString().split("T")[0];
+    // Step 1: Get stage map and find active retention stage IDs
+    const stageMap = await getDealStages();
+    const activeStageIds = Object.entries(stageMap)
+      .filter(([, label]) => ACTIVE_LIFECYCLE_LABELS.includes(label.toLowerCase()))
+      .map(([id]) => id);
 
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/search`, {
-      method: "POST",
-      headers: hubspotHeaders(),
-      body: JSON.stringify({
+    if (activeStageIds.length === 0) return [];
+
+    // Step 2: Query deals in Customer retention pipeline with active stages (paginated)
+    const allDeals: { id: string; properties: Record<string, string> }[] = [];
+    let after: string | undefined;
+    do {
+      const body: Record<string, unknown> = {
         filterGroups: [{
-          filters: [{
-            propertyName: "notes_last_contacted",
-            operator: "LT",
-            value: thresholdStr,
-          }],
+          filters: [
+            { propertyName: "pipeline", operator: "EQ", value: RETENTION_PIPELINE },
+            { propertyName: "dealstage", operator: "IN", values: activeStageIds },
+          ],
         }],
-        properties: ["name", "notes_last_contacted", "hubspot_owner_id", "understory_booking_volume_12m", "understory_booking_volume_3m", "understory_booking_volume_6m", "health_score", "understory_company_country", "createdate"],
+        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "understory_pay_status__customer", "pipeline"],
         limit: 100,
-      }),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
+      };
+      if (after) body.after = after;
 
-    const companies: (AttentionCompany & { _bookingVolume?: string; _createdate?: string })[] = (data.results || []).map(
-      (c: { id: string; properties: Record<string, string> }) => {
-        const lastDate = new Date(c.properties.notes_last_contacted);
-        const daysAgo = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-        return {
-          id: c.id,
-          name: c.properties.name || "Unknown",
-          detail: `Last contacted ${daysAgo} days ago`,
-          daysSilent: daysAgo,
-          ownerId: c.properties.hubspot_owner_id || "",
-          country: c.properties.understory_company_country || "",
-          _bookingVolume: c.properties.understory_booking_volume_12m || "",
-          _createdate: c.properties.createdate || "",
-          ...mapChipFields(c.properties, null),
-        };
-      }
-    );
+      const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
+        method: "POST",
+        headers: hubspotHeaders(),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) break;
+      const data = await res.json();
+      allDeals.push(...(data.results || []));
+      after = data.paging?.next?.after;
+    } while (after);
 
-    // Fetch deal data and compute Generated Revenue for each company
-    await Promise.all(
-      companies.map(async (company) => {
-        const deal = await fetchDealForCompany(company.id);
-        if (deal) {
-          const revenue = computeGeneratedRevenue(company._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code, company._createdate);
-          company.mrr = formatRevenue(revenue);
-          company.revenue = revenue || undefined;
-          company.currency = "EUR";
-          company.payStatus = deal.understory_pay_status__customer || undefined;
+    if (allDeals.length === 0) return [];
+
+    // Step 3: Batch-read deal-to-company associations (v4 API, up to 100 per request)
+    const companyToDeal = new Map<string, { id: string; properties: Record<string, string> }>();
+    const dealMap = new Map(allDeals.map((d) => [d.id, d]));
+
+    for (let i = 0; i < allDeals.length; i += 50) {
+      const batch = allDeals.slice(i, i + 50);
+      try {
+        const res = await fetch(
+          `${HUBSPOT_API}/crm/v4/associations/deals/companies/batch/read`,
+          {
+            method: "POST",
+            headers: hubspotHeaders(),
+            body: JSON.stringify({ inputs: batch.map((d) => ({ id: d.id })) }),
+          }
+        );
+        if (!res.ok) continue;
+        const data = await res.json();
+        for (const result of data.results || []) {
+          const deal = dealMap.get(String(result.from.id));
+          if (!deal) continue;
+          for (const to of result.to || []) {
+            const companyId = String(to.toObjectId);
+            if (!companyToDeal.has(companyId)) {
+              companyToDeal.set(companyId, deal);
+            }
+          }
         }
-      })
-    );
-
-    // Sort by Generated Revenue descending (higher value customers first)
-    return companies.sort((a, b) => {
-      const revenueA = parseFloat((a.mrr || "").replace(/[^\d]/g, "")) || 0;
-      const revenueB = parseFloat((b.mrr || "").replace(/[^\d]/g, "")) || 0;
-      return revenueB - revenueA;
-    });
-  } catch {
-    return [];
-  }
-}
-
-export async function fetchDecliningVolume(): Promise<AttentionCompany[]> {
-  try {
-    // Search for companies with booking volume data
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/search`, {
-      method: "POST",
-      headers: hubspotHeaders(),
-      body: JSON.stringify({
-        filterGroups: [{
-          filters: [{
-            propertyName: "understory_booking_volume_6m",
-            operator: "GT",
-            value: "0",
-          }],
-        }],
-        properties: ["name", "hubspot_owner_id", "health_score", "understory_booking_volume_3m", "understory_booking_volume_6m", "understory_booking_volume_12m", "understory_company_country", "createdate"],
-        limit: 100,
-      }),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-
-    const companies: AttentionCompany[] = [];
-    for (const c of data.results || []) {
-      const m3 = parseFloat(c.properties.understory_booking_volume_3m || "0");
-      const m6 = parseFloat(c.properties.understory_booking_volume_6m || "0");
-      if (m6 === 0) continue;
-
-      // Previous 3 months = 6m total - current 3m
-      const previous3m = m6 - m3;
-      if (previous3m <= 0) continue;
-
-      // Flag if current 3m is less than 50% of previous 3m
-      if (m3 < previous3m * 0.5) {
-        const declinePct = Math.round(((previous3m - m3) / previous3m) * 100);
-        companies.push({
-          id: c.id,
-          name: c.properties.name || "Unknown",
-          detail: `Volume down ${declinePct}% vs previous 3 months`,
-          ownerId: c.properties.hubspot_owner_id || "",
-          country: c.properties.understory_company_country || "",
-          mrr: `\u20ac${Math.round(parseFloat(c.properties.understory_booking_volume_12m || "0")).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`,
-          currency: "EUR",
-          _bookingVolume: c.properties.understory_booking_volume_12m || "",
-          _createdate: c.properties.createdate || "",
-          ...mapChipFields(c.properties, null),
-        } as AttentionCompany & { _bookingVolume: string; _createdate: string });
-      }
+      } catch { /* skip */ }
     }
 
-    // Fetch deal data for revenue chip
-    await Promise.all(
-      companies.map(async (company) => {
-        const deal = await fetchDealForCompany(company.id);
-        if (deal) {
-          const ext = company as AttentionCompany & { _bookingVolume?: string; _createdate?: string };
-          const revenue = computeGeneratedRevenue(ext._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code, ext._createdate);
-          company.revenue = revenue || undefined;
-          company.payStatus = deal.understory_pay_status__customer || undefined;
-        }
-      })
-    );
+    const companyIds = Array.from(companyToDeal.keys());
+    if (companyIds.length === 0) return [];
 
-    return companies;
+    // Step 4: Batch-read company properties including upcoming events
+    const companyProps: Record<string, Record<string, string>> = {};
+    for (let i = 0; i < companyIds.length; i += 100) {
+      const batch = companyIds.slice(i, i + 100);
+      try {
+        const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/batch/read`, {
+          method: "POST",
+          headers: hubspotHeaders(),
+          body: JSON.stringify({
+            inputs: batch.map((id) => ({ id })),
+            properties: ["name", "hubspot_owner_id", "understory_company_country", "createdate", "understory_health_score_upcoming_events", ...CHIP_COMPANY_PROPS],
+          }),
+        });
+        if (!res.ok) continue;
+        const data = await res.json();
+        for (const c of data.results || []) {
+          companyProps[c.id] = c.properties;
+        }
+      } catch { /* skip */ }
+    }
+
+    // Step 5: Filter to companies with 0 upcoming events and build results
+    const results: AttentionCompany[] = [];
+    for (const [companyId, deal] of companyToDeal.entries()) {
+      const props = companyProps[companyId];
+      if (!props) continue;
+
+      const rawEvents = props.understory_health_score_upcoming_events;
+      const upcomingEvents = parseFloat(rawEvents || "");
+      // Include if field is 0 or not set (null/empty = no events scheduled)
+      if (!isNaN(upcomingEvents) && upcomingEvents > 0) continue;
+
+      const bookingVolume = props.understory_booking_volume_12m || "";
+      const createdate = props.createdate || "";
+      const revenue = computeGeneratedRevenue(bookingVolume, deal.properties.booking_fee, deal.properties.confirmed__contract_mrr, deal.properties.deal_currency_code, createdate);
+
+      results.push({
+        id: companyId,
+        name: props.name || "Unknown",
+        detail: "No upcoming events",
+        ownerId: props.hubspot_owner_id || "",
+        country: props.understory_company_country || "",
+        mrr: formatRevenue(revenue),
+        revenue: revenue || undefined,
+        currency: "EUR",
+        payStatus: deal.properties.understory_pay_status__customer || undefined,
+        ...mapChipFields(props, null),
+      });
+    }
+
+    return results.sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
   } catch {
     return [];
   }

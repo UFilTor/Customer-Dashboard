@@ -101,13 +101,8 @@ function CompanyRow({
               )}
             </>
           )}
-          {signal === "gone_quiet" && (
-            <span className="text-xs text-[var(--green-100)]">
-              {company.daysSilent !== undefined ? `Silent for ${company.daysSilent} days` : company.detail}
-            </span>
-          )}
-          {signal === "declining_volume" && (
-            <span className="text-xs text-[var(--rust)]">{company.detail}</span>
+          {signal === "no_future_events" && (
+            <span className="text-xs text-[var(--green-100)]">{company.detail}</span>
           )}
           {signal === "churn_risk" && (
             <span className="text-xs text-[var(--rust)]">{company.detail}</span>
@@ -151,8 +146,6 @@ function getEffectiveSortField(signal: AttentionSignal, globalSort: SortField): 
   if (globalSort === "mrr") return "mrr";
   // "urgency" sort maps to the relevant time-based field per group
   if (signal === "overdue_invoices" || signal === "open_invoices" || signal === "overdue_tasks") return "daysOverdue";
-  if (signal === "gone_quiet") return "daysSilent";
-  // health_score has no time field, always sort by MRR
   return "mrr";
 }
 

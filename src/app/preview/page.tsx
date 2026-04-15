@@ -172,12 +172,12 @@ const MOCK_ATTENTION: AttentionResponse = {
       ],
     },
     {
-      signal: "gone_quiet",
-      label: "Gone Quiet",
+      signal: "no_future_events",
+      label: "No Future Events",
       companies: [
-        { id: "108", name: "Oslo Creative Labs", detail: "Last contacted 62 days ago", ownerId: "2", daysSilent: 62, mrr: "\u20ac15 000", currency: "EUR", enteredGroupAt: daysAgoISO(62), healthScore: "78", volume12m: 215000, volume3m: 62000, volume6m: 108000, payStatus: "Active", revenue: 12900 },
-        { id: "109", name: "Aarhus Adventure Park", detail: "Last contacted 51 days ago", ownerId: "1", daysSilent: 51, mrr: "\u20ac12 000", currency: "EUR", enteredGroupAt: daysAgoISO(51), healthScore: "48", volume12m: 56000, volume3m: 10000, volume6m: 34000, payStatus: undefined, revenue: 4480 },
-        { id: "110", name: "Tampere Escape Rooms", detail: "Last contacted 48 days ago", ownerId: "1", daysSilent: 48, mrr: "\u20ac9 000", currency: "EUR", enteredGroupAt: daysAgoISO(48), healthScore: "71", volume12m: 130000, volume3m: 35000, volume6m: 67000, payStatus: "Active", revenue: 7800 },
+        { id: "108", name: "Oslo Creative Labs", detail: "No upcoming events", ownerId: "2", mrr: "\u20ac15 000", currency: "EUR", healthScore: "78", volume12m: 215000, volume3m: 62000, volume6m: 108000, payStatus: "Active", revenue: 12900 },
+        { id: "109", name: "Aarhus Adventure Park", detail: "No upcoming events", ownerId: "1", mrr: "\u20ac12 000", currency: "EUR", healthScore: "48", volume12m: 56000, volume3m: 10000, volume6m: 34000, payStatus: undefined, revenue: 4480 },
+        { id: "110", name: "Tampere Escape Rooms", detail: "No upcoming events", ownerId: "1", mrr: "\u20ac9 000", currency: "EUR", healthScore: "71", volume12m: 130000, volume3m: 35000, volume6m: 67000, payStatus: "Active", revenue: 7800 },
       ],
     },
   ],

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchInvoices, fetchOverdueTasks, fetchHealthScoreIssues, fetchGoneQuiet, fetchDecliningVolume, fetchChurnRisk } from "@/lib/attention";
+import { fetchInvoices, fetchOverdueTasks, fetchHealthScoreIssues, fetchChurnRisk, fetchNoFutureEvents } from "@/lib/attention";
 import { Cache } from "@/lib/cache";
 import { AttentionCompany, AttentionResponse } from "@/lib/types";
 
@@ -13,9 +13,6 @@ function computeEnteredGroupAt(company: AttentionCompany, signal: string): strin
   }
   if (signal === "health_score" && company.categoryChangedAt) {
     return company.categoryChangedAt;
-  }
-  if (signal === "gone_quiet" && company.daysSilent !== undefined) {
-    return new Date(now - company.daysSilent * 86400000).toISOString();
   }
   return undefined;
 }
@@ -35,18 +32,16 @@ export async function GET(request: NextRequest) {
     const invoices = await fetchInvoices();
     const overdueTasks = await fetchOverdueTasks();
     const healthScore = await fetchHealthScoreIssues();
-    const goneQuiet = await fetchGoneQuiet();
-    const decliningVolume = await fetchDecliningVolume();
     const churnRisk = await fetchChurnRisk();
+    const noFutureEvents = await fetchNoFutureEvents();
 
     const groups = [
       { signal: "overdue_invoices" as const, label: "Overdue Invoices", companies: invoices.overdue },
       { signal: "open_invoices" as const, label: "Open Invoices", companies: invoices.open },
       { signal: "overdue_tasks" as const, label: "Overdue Tasks", companies: overdueTasks },
       { signal: "health_score" as const, label: "Health Score Issues", companies: healthScore },
-      { signal: "declining_volume" as const, label: "Declining Volume", companies: decliningVolume },
       { signal: "churn_risk" as const, label: "Churn Risk", companies: churnRisk },
-      { signal: "gone_quiet" as const, label: "Gone Quiet", companies: goneQuiet },
+      { signal: "no_future_events" as const, label: "No Future Events", companies: noFutureEvents },
     ].filter((g) => g.companies.length > 0);
 
     const enrichedGroups = groups.map((group) => ({

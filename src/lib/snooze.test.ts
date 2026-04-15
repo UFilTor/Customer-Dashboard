@@ -33,7 +33,7 @@ describe("snooze", () => {
       snoozeUntil: "2026-04-01T00:00:00Z",
       companyName: "Test Co",
     });
-    expect(isCompanySnoozed("1", "gone_quiet")).toBe(false);
+    expect(isCompanySnoozed("1", "no_future_events")).toBe(false);
   });
 
   it("updates existing snooze for same company+signal", () => {
@@ -70,7 +70,7 @@ describe("snooze", () => {
       "snoozed-companies",
       JSON.stringify([
         { companyId: "1", signal: "overdue_invoices", snoozeUntil: "2020-01-01T00:00:00Z", companyName: "Old" },
-        { companyId: "2", signal: "gone_quiet", snoozeUntil: "2099-01-01T00:00:00Z", companyName: "Future" },
+        { companyId: "2", signal: "no_future_events", snoozeUntil: "2099-01-01T00:00:00Z", companyName: "Future" },
       ])
     );
     const result = getSnoozedCompanies();

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchInvoices, fetchOverdueTasks, fetchHealthScoreIssues, fetchChurnRisk, fetchNoFutureEvents } from "@/lib/attention";
+import { fetchInvoices, fetchOverdueTasks, fetchHealthScoreIssues, fetchNoFutureEvents } from "@/lib/attention";
 import { Cache } from "@/lib/cache";
 import { AttentionCompany, AttentionResponse } from "@/lib/types";
 
@@ -32,7 +32,6 @@ export async function GET(request: NextRequest) {
     const invoices = await fetchInvoices();
     const overdueTasks = await fetchOverdueTasks();
     const healthScore = await fetchHealthScoreIssues();
-    const churnRisk = await fetchChurnRisk();
     const noFutureEvents = await fetchNoFutureEvents();
 
     const groups = [
@@ -40,7 +39,6 @@ export async function GET(request: NextRequest) {
       { signal: "open_invoices" as const, label: "Open Invoices", companies: invoices.open },
       { signal: "overdue_tasks" as const, label: "Overdue Tasks", companies: overdueTasks },
       { signal: "health_score" as const, label: "Health Score Issues", companies: healthScore },
-      { signal: "churn_risk" as const, label: "Churn Risk", companies: churnRisk },
       { signal: "no_future_events" as const, label: "No Future Events", companies: noFutureEvents },
     ].filter((g) => g.companies.length > 0);
 

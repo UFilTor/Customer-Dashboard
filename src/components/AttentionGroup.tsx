@@ -104,9 +104,6 @@ function CompanyRow({
           {signal === "no_future_events" && (
             <span className="text-xs text-[var(--green-100)]">{company.detail}</span>
           )}
-          {signal === "churn_risk" && (
-            <span className="text-xs text-[var(--rust)]">{company.detail}</span>
-          )}
           {(() => {
             const duration = formatGroupDuration(company.enteredGroupAt);
             if (!duration) return null;

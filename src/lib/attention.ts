@@ -53,7 +53,7 @@ async function fetchDealForCompany(companyId: string): Promise<Record<string, st
       headers: hubspotHeaders(),
       body: JSON.stringify({
         inputs: dealIds.map((id) => ({ id })),
-        properties: ["confirmed__contract_mrr", "deal_currency_code", "pipeline", "booking_fee", "understory_pay_status__customer", "dealstage"],
+        properties: ["confirmed__contract_mrr", "deal_currency_code", "pipeline", "booking_fee", "understory_pay_status__customer", "dealstage", "amount_in_home_currency"],
       }),
     });
     if (!batchRes.ok) return null;
@@ -412,11 +412,13 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
       return isNaN(contactedAt) || contactedAt < fourteenDaysAgo;
     });
 
-    // Fetch property history and MRR for each company
+    // Fetch property history and ACV for each company (batched to avoid rate limits)
     const toExcludeImproved = new Set<string>();
 
-    await Promise.all(
-      notRecentlyContacted.map(async (company) => {
+    for (let i = 0; i < notRecentlyContacted.length; i += 5) {
+      const batch = notRecentlyContacted.slice(i, i + 5);
+      await Promise.all(
+        batch.map(async (company) => {
         try {
           // Get health score property history
           const histRes = await fetch(
@@ -449,17 +451,18 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
           }
         } catch { /* continue without history */ }
 
-        // Get Generated Revenue from lifecycle deal
+        // Get ACV from lifecycle deal for sorting
         const deal = await fetchDealForCompany(company.id);
         if (deal) {
-          const revenue = computeGeneratedRevenue(company._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code, company._createdate);
-          company.mrr = formatRevenue(revenue);
-          company.revenue = revenue || undefined;
+          const acv = parseFloat(deal.amount_in_home_currency || "0") || 0;
+          company.mrr = formatRevenue(acv);
+          company.revenue = acv || undefined;
           company.currency = "EUR";
           company.payStatus = deal.understory_pay_status__customer || undefined;
         }
       })
-    );
+      );
+    }
 
     // Remove companies whose score improved 15+ points in the last 14 days
     return notRecentlyContacted.filter((company) => !toExcludeImproved.has(company.id));
@@ -492,7 +495,7 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
             { propertyName: "dealstage", operator: "IN", values: activeStageIds },
           ],
         }],
-        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "understory_pay_status__customer", "pipeline"],
+        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "understory_pay_status__customer", "pipeline", "amount_in_home_currency"],
         limit: 100,
       };
       if (after) body.after = after;
@@ -575,9 +578,7 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
       // Include if field is 0 or not set (null/empty = no events scheduled)
       if (!isNaN(upcomingEvents) && upcomingEvents > 0) continue;
 
-      const bookingVolume = props.understory_booking_volume_12m || "";
-      const createdate = props.createdate || "";
-      const revenue = computeGeneratedRevenue(bookingVolume, deal.properties.booking_fee, deal.properties.confirmed__contract_mrr, deal.properties.deal_currency_code, createdate);
+      const acv = parseFloat(deal.properties.amount_in_home_currency || "0") || 0;
 
       results.push({
         id: companyId,
@@ -585,11 +586,11 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
         detail: "No upcoming events",
         ownerId: props.hubspot_owner_id || "",
         country: props.understory_company_country || "",
-        mrr: formatRevenue(revenue),
-        revenue: revenue || undefined,
         currency: "EUR",
-        payStatus: deal.properties.understory_pay_status__customer || undefined,
         ...mapChipFields(props, null),
+        mrr: formatRevenue(acv),
+        revenue: acv || undefined,
+        payStatus: deal.properties.understory_pay_status__customer || undefined,
       });
     }
 

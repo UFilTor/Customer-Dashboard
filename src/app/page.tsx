@@ -63,17 +63,35 @@ export default function Dashboard() {
     if (!companyData) setFocusedTabItemIndex(-1);
   }, [companyData]);
 
-  function handleBack() {
+  function resetToList() {
     setCompanyData(null);
     setSelectedCompanyId(null);
     setError(null);
-    const pos = scrollPositionRef.current;
     setNavigationSource(null);
     attentionMetaRef.current = null;
+    const pos = scrollPositionRef.current;
     requestAnimationFrame(() => window.scrollTo(0, pos));
   }
 
+  // Listen for browser back/forward
+  useEffect(() => {
+    function onPopState() {
+      resetToList();
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  function handleBack() {
+    if (companyData || isLoading) {
+      window.history.back();
+    } else {
+      resetToList();
+    }
+  }
+
   async function fetchCompany(company: CompanySearchResult) {
+    window.history.pushState({ company: true }, "");
     setIsLoading(true);
     setError(null);
     setSelectedCompanyId(company.id);
@@ -106,6 +124,7 @@ export default function Dashboard() {
   }
 
   function handleSearchSelect(company: CompanySearchResult) {
+    scrollPositionRef.current = window.scrollY;
     setNavigationSource("search");
     attentionMetaRef.current = null;
     fetchCompany(company);

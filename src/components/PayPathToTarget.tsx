@@ -1,6 +1,3 @@
-"use client";
-
-import { useState } from "react";
 import type { PayOwnerSummary, PayDeal } from "@/lib/types";
 
 const LIVE_STAGES = new Set(["Verified", "Live"]);
@@ -54,8 +51,6 @@ interface Props {
 }
 
 function PathCard({ owner, targetPercent, totalEligibleBv, onDealClick }: { owner: PayOwnerSummary; targetPercent: number; totalEligibleBv: number; onDealClick: DealClickHandler }) {
-  const [expanded, setExpanded] = useState(false);
-
   const eligDenom = owner.eligibleBv;
   const curPct = owner.lcPercent;
   const barFill = Math.min(curPct / 50 * 100, 100);
@@ -99,8 +94,7 @@ function PathCard({ owner, targetPercent, totalEligibleBv, onDealClick }: { owne
     if (runPct >= 50) break;
   }
 
-  const shown = expanded ? rows : rows.slice(0, 15);
-  const canExpand = rows.length > 15;
+  const shown = rows;
 
   return (
     <div className="border border-[#EDEDEA] rounded-[var(--border-radius)] p-4">
@@ -182,14 +176,6 @@ function PathCard({ owner, targetPercent, totalEligibleBv, onDealClick }: { owne
         </table>
       </div>
 
-      {canExpand && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="text-xs text-[var(--moss)] hover:text-[var(--green-100)] mt-2"
-        >
-          {expanded ? "Show less" : `Show all ${rows.filter((r) => !r.isSeparator).length} deals`}
-        </button>
-      )}
     </div>
   );
 }

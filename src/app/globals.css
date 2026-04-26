@@ -3,6 +3,7 @@
 :root {
   /* Understory Brand Tokens */
   --moss: #022C12;
+  --dark-moss: #1D261F;
   --citrus: #F1F97E;
   --white: #FFFFFF;
   --grey: #F3F3F3;
@@ -13,7 +14,7 @@
   --beige-gray: #D3D1C6;
   --lichen: #D5DFCA;
   --green-100: #7A8A72;
-  --dark-moss: #1D261F;
+  --green-muted: #B9C2B2;
   --lilac: #D1BEE7;
   --sky-blue: #CFE8FF;
   --rust: #933F29;
@@ -23,6 +24,18 @@
 
   --background: #FFFFFF;
   --foreground: var(--moss);
+
+  /* Page surfaces */
+  --page-bg: #EAE8DD;
+  --card-bg: #F8F6ED;
+  --hairline: rgba(2, 44, 18, 0.08);
+  --hairline-strong: rgba(2, 44, 18, 0.14);
+
+  /* Type stack — wired through next/font in layout.tsx */
+  --font-body: var(--font-inter), system-ui, Arial, sans-serif;
+  --font-display: var(--font-oswald), 'National 2 Condensed', Impact, sans-serif;
+  --font-editorial: var(--font-fraunces), 'PP Editorial New', Georgia, serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
 }
 
 @theme inline {
@@ -32,38 +45,181 @@
 }
 
 body {
-  background: var(--background);
+  background: var(--page-bg);
   color: var(--foreground);
-  font-family: 'Inter', Arial, sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  letter-spacing: -0.005em;
 }
 
+button, input, select { font-family: inherit; color: inherit; }
+
+/* Reset button chrome so per-component inline styles don't need to repeat
+   `border: 0` (which conflicts with adjacent border-bottom-* longhand props
+   that React's reconciler complains about). */
+button {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: inherit;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--green-muted); }
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--focus-blue); outline-offset: 2px; border-radius: 6px;
+}
+
+/* Legacy focused-row classes used by existing keyboard nav */
 .attention-item-focused button:first-child,
 .attention-item-focused > div > button:first-child {
-  background-color: #EEF3E8 !important;
+  background-color: var(--light-grey) !important;
   box-shadow: inset 3px 0 0 var(--moss);
   color: var(--moss) !important;
 }
 
 .tab-item-focused {
-  background-color: #EEF3E8 !important;
+  background-color: var(--light-grey) !important;
   border-left-color: var(--moss) !important;
 }
 
+/* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.animate-fadeIn {
-  animation: fadeIn 200ms ease-out;
-}
+.animate-fadeIn { animation: fadeIn 200ms ease-out; }
 
 @keyframes modalIn {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
 }
-.animate-modalIn {
-  animation: modalIn 150ms ease-out;
+.animate-modalIn { animation: modalIn 150ms ease-out; }
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-scaleIn { animation: scaleIn 180ms cubic-bezier(0.8, 0.24, 0.16, 1); }
+
+@keyframes staggerIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* View transitions — dashboard switch fades, variant switch slides directionally */
+@keyframes viewFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes viewSlideFromRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes viewSlideFromLeft {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.view-fade { animation: viewFade 150ms ease-out; }
+.view-slide-from-right { animation: viewSlideFromRight 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+.view-slide-from-left { animation: viewSlideFromLeft 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* Stale-while-revalidate — dim and lock interaction during a refetch */
+.is-revalidating {
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+}
+
+/* Helper for row-by-row reveal. Use inline style animationDelay for stagger. */
+.row-staggered {
+  animation: staggerIn 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes citrusWipe {
+  from { background-size: 0% 100%; }
+  to { background-size: 100% 100%; }
+}
+.citrus-wipe {
+  background-image: linear-gradient(var(--citrus), var(--citrus));
+  background-repeat: no-repeat;
+  background-size: 0% 100%;
+  background-position: 0 0;
+  color: var(--moss);
+  padding: 0 0.15em;
+  animation: citrusWipe 520ms cubic-bezier(0.22, 1, 0.36, 1) 120ms forwards;
+}
+
+@keyframes drift {
+  0% { transform: translate(0, 0); }
+  50% { transform: translate(-8px, 6px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.drift-slow { animation: drift 11s ease-in-out infinite; }
+.drift-slower { animation: drift 16s ease-in-out infinite reverse; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Hover row */
+.hrow { transition: background 120ms ease; }
+.hrow:hover { background: var(--light-grey); }
+
+.truncate-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Keyboard pill */
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(2, 44, 18, 0.06);
+  color: var(--moss);
+  border: 1px solid var(--hairline);
+  line-height: 1;
+}
+
+/* Segmented control button (variant tabs, pay filter tabs).
+   Lifted out of inline styles because React 19's hydration validator
+   trips on shorthand props (padding, transition, background) — the browser
+   normalises them to longhand and the diff fails. */
+.seg-light-btn {
+  padding: 5px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--green-100);
+  background: transparent;
+  box-shadow: none;
+  transition: all 160ms ease;
+  cursor: pointer;
+  border: 0;
+  font-family: inherit;
+}
+.seg-light-btn:hover { color: var(--moss); }
+.seg-light-btn.active {
+  color: var(--moss);
+  font-weight: 600;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }

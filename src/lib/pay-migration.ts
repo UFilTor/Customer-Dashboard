@@ -1,14 +1,17 @@
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { getOwners } from "./hubspot";
+import { OWNERS } from "./owners";
 import type { PayDeal, PayStage, PayOwnerSummary, PayMigrationData } from "./types";
 
 const PAY_PIPELINE = "1072518362";
-const PAY_DEALSTAGES = ["2621864134", "2621864135", "3460322544", "1486762226"];
+// Excluded customer_stage values — these are not retention candidates.
+const RETENTION_EXCLUDED_STAGES = ["Churned", "Paused"];
 
 const DEAL_PROPERTIES = [
   "dealname",
   "dealstage",
   "pipeline",
+  "customer_stage",
   "understory_pay_status__customer",
   "realized_business_volume_annual",
   "amount_in_home_currency",
@@ -106,11 +109,15 @@ async function fetchAllPayDeals(): Promise<RawDeal[]> {
       filterGroups: [{
         filters: [
           { propertyName: "pipeline", operator: "EQ", value: PAY_PIPELINE },
-          { propertyName: "dealstage", operator: "IN", values: PAY_DEALSTAGES },
+          { propertyName: "customer_stage", operator: "NOT_IN", values: RETENTION_EXCLUDED_STAGES },
         ],
       }],
       properties: DEAL_PROPERTIES,
-      limit: 200,
+      // HubSpot search pagination is reliable only when a `sorts` clause is
+      // present — without it the cursor can stop early. createdate desc gives
+      // a stable order for the page-through to honor.
+      sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
+      limit: 100,
     };
     if (after) body.after = after;
 
@@ -359,8 +366,11 @@ export async function fetchPayMigrationData(): Promise<PayMigrationData> {
   // Build "All Owners" summary
   const allOwnersSummary = buildOwnerSummary("all", "All Owners", allDeals);
 
-  // Group by owner
+  // Group by owner. Seed with every CS owner so the dashboard always lists
+  // each person — even at 0% or 100% — regardless of whether HubSpot has any
+  // deals attributed to them today.
   const ownerGroups = new Map<string, PayDeal[]>();
+  for (const o of OWNERS) ownerGroups.set(o.id, []);
   for (const deal of allDeals) {
     const key = deal.ownerId || "unassigned";
     if (!ownerGroups.has(key)) ownerGroups.set(key, []);

@@ -1,0 +1,1307 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { PayMigrationData, PayDeal, PayOwnerSummary, PayStage, CompanySearchResult } from "@/lib/types";
+import { CountUpPct, AnimBar, Stagger } from "../Motion";
+
+type PayFilter = "default" | "all" | string; // "default" = key owners, "all" = everyone, otherwise ownerId
+
+interface Props {
+  data: PayMigrationData;
+  payFilter: PayFilter;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+  onDealClick: (deal: PayDeal) => void;
+}
+
+const KEY_OWNER_IDS = new Set(["962517007", "559364799"]); // Anders, Cecilia
+
+// Stage taxonomy + display config
+const STAGE_ORDER: { key: PayStage; short: string; color: string }[] = [
+  { key: "Live", short: "Live", color: "#1a7a4a" },
+  { key: "Verified", short: "Verified", color: "#27ae60" },
+  { key: "Pending Verification", short: "Pending", color: "#D49545" },
+  { key: "Started Onboarding", short: "Started Onb.", color: "#F2A669" },
+  { key: "Signed - Not Started", short: "Signed", color: "#9CC4F0" },
+  { key: "Not yet enrolled", short: "Not enrolled", color: "#C9D2DD" },
+  { key: "Unwilling", short: "Unwilling", color: "#F4B5B5" },
+  { key: "Ineligible", short: "Ineligible", color: "#BFC3C7" },
+];
+
+const STAGE_BY_KEY: Record<string, { color: string; short: string }> = Object.fromEntries(
+  STAGE_ORDER.map((s) => [s.key, s])
+);
+
+const LIVE_STAGES: PayStage[] = ["Live", "Verified"];
+const PUSH_STAGES: PayStage[] = ["Signed - Not Started", "Pending Verification"];
+
+function fmtEurShort(v: number): string {
+  if (v >= 1_000_000) return `€${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `€${Math.round(v / 1_000)}k`;
+  return `€${Math.round(v)}`;
+}
+
+function bvWithPct(v: number, denom: number): string {
+  const p = denom > 0 ? (v / denom) * 100 : 0;
+  return `${fmtEurShort(v)} (${p.toFixed(1)}%)`;
+}
+
+function ownerFullName(name: string): string {
+  // Verified against HubSpot search_owners.
+  const NAMES: Record<string, string> = {
+    Anders: "Anders Hansen",
+    Cecilia: "Cecilia Lexe",
+    Filip: "Filip Torstensson",
+    Marc: "Marc Møller Nielsen",
+  };
+  const first = name.split(" ")[0];
+  return NAMES[first] || name;
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+export function PayMigrationView({ data, payFilter, isRefreshing, onRefresh, onDealClick }: Props) {
+  // Decide which owners to render in per-owner sections
+  const breakoutOwners: PayOwnerSummary[] = useMemo(() => {
+    if (payFilter === "default") {
+      return data.owners.filter((o) => KEY_OWNER_IDS.has(o.ownerId));
+    }
+    if (payFilter === "all") return data.owners;
+    return data.owners.filter((o) => o.ownerId === payFilter);
+  }, [data.owners, payFilter]);
+
+  // Top-line KPIs reflect filtered owners (default + all both show org-wide totals)
+  const topline = useMemo(() => {
+    if (payFilter === "default" || payFilter === "all") {
+      return {
+        eligibleBv: data.eligibleBv,
+        totalAcv: data.totalAcv,
+        liveVerifiedAcv: data.liveVerifiedAcv,
+        liveVerifiedBv: data.liveVerifiedBv,
+        inProgressBv: data.inProgressBv,
+        ineligibleBv: data.ineligibleBv,
+        pctLc: data.bvLiveVerifiedPercent,
+        pctProg: data.bvInProgressPercent,
+        pctAcv: data.arrLiveVerifiedPercent,
+        deals: data.allDeals,
+      };
+    }
+    const ownerStats = data.owners.find((o) => o.ownerId === payFilter);
+    if (!ownerStats) {
+      return {
+        eligibleBv: 0, totalAcv: 0, liveVerifiedAcv: 0, liveVerifiedBv: 0,
+        inProgressBv: 0, ineligibleBv: 0, pctLc: 0, pctProg: 0, pctAcv: 0, deals: [],
+      };
+    }
+    const liveBv = LIVE_STAGES.reduce((s, k) => s + (ownerStats.stageCounts[k]?.bv || 0), 0);
+    const progBv = PUSH_STAGES.reduce((s, k) => s + (ownerStats.stageCounts[k]?.bv || 0), 0)
+      + (ownerStats.stageCounts["Started Onboarding"]?.bv || 0);
+    return {
+      eligibleBv: ownerStats.eligibleBv,
+      totalAcv: ownerStats.deals.reduce((s, d) => s + d.acv, 0),
+      liveVerifiedAcv: ownerStats.deals
+        .filter((d) => LIVE_STAGES.includes(d.stage))
+        .reduce((s, d) => s + d.acv, 0),
+      liveVerifiedBv: liveBv,
+      inProgressBv: progBv,
+      ineligibleBv: ownerStats.stageCounts["Ineligible"]?.bv || 0,
+      pctLc: ownerStats.lcPercent,
+      pctProg: ownerStats.inProgressPercent,
+      pctAcv: ownerStats.arrPercent,
+      deals: ownerStats.deals,
+    };
+  }, [data, payFilter]);
+
+  const gapApr = Math.max(0, data.aprilTarget - topline.pctLc);
+  const gapMay = Math.max(0, data.mayTarget - topline.pctLc);
+
+  return (
+    <div
+      className={`animate-fadeIn${isRefreshing ? " is-revalidating" : ""}`}
+      style={{
+        background: "var(--beige-new)",
+        minHeight: "calc(100vh - 120px)",
+        padding: "32px 28px 60px",
+      }}
+    >
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        {/* HEADER */}
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20, marginBottom: 24 }}>
+          <div>
+            <div
+              style={{
+                fontFamily: "var(--font-display)",
+                textTransform: "uppercase",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.12em",
+                color: "var(--green-100)",
+                marginBottom: 8,
+              }}
+            >
+              Understory Pay migration
+            </div>
+            <h1
+              style={{
+                margin: "0 0 6px",
+                fontFamily: "var(--font-display)",
+                fontSize: 40,
+                fontWeight: 700,
+                color: "var(--moss)",
+                textTransform: "uppercase",
+                letterSpacing: "-0.01em",
+                lineHeight: 1,
+              }}
+            >
+              Moving{" "}
+              <span
+                style={{
+                  fontFamily: "var(--font-editorial)",
+                  fontWeight: 400,
+                  fontStyle: "italic",
+                  textTransform: "none",
+                }}
+              >
+                {topline.deals.length}
+              </span>{" "}
+              deals to Pay
+            </h1>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 13.5,
+                color: "var(--green-100)",
+                fontFamily: "var(--font-editorial)",
+                fontStyle: "italic",
+              }}
+            >
+              {data.updatedAt ? `Updated ${timeAgo(data.updatedAt)}` : ""}
+              {" · "}Adopted stage and beyond.
+            </p>
+          </div>
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--hairline)",
+              background: "#fff",
+              color: "var(--moss)",
+              fontSize: 12.5,
+              fontWeight: 500,
+              cursor: isRefreshing ? "wait" : "pointer",
+              opacity: isRefreshing ? 0.7 : 1,
+            }}
+          >
+            {isRefreshing ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+
+        {/* KPI CARDS */}
+        <Stagger
+          delay={70}
+          initial={120}
+          style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 12 }}
+        >
+          <KpiCard
+            label="BV live / verified"
+            big={<CountUpPct value={topline.pctLc} />}
+            sub={`${fmtEurShort(topline.liveVerifiedBv)} of ${fmtEurShort(topline.eligibleBv)} eligible`}
+            accent="#1a7a4a"
+          />
+          <KpiCard
+            label="BV in progress"
+            big={<CountUpPct value={topline.pctProg} />}
+            sub={`${fmtEurShort(topline.liveVerifiedBv + topline.inProgressBv)} of ${fmtEurShort(topline.eligibleBv)}`}
+            accent="#27ae60"
+          />
+          <KpiCard
+            label="ARR live / verified"
+            big={<CountUpPct value={topline.pctAcv} />}
+            sub={`${fmtEurShort(topline.liveVerifiedAcv)} of ${fmtEurShort(topline.totalAcv)}`}
+            accent="#2980b9"
+          />
+          <KpiCard
+            label="April target"
+            big={`${data.aprilTarget}%`}
+            sub={`${gapApr.toFixed(1)}pp to go`}
+            accent="#C16E2A"
+          />
+          <KpiCard
+            label="May target"
+            big={`${data.mayTarget}%`}
+            sub={`${gapMay.toFixed(1)}pp to go`}
+            accent="#C16E2A"
+          />
+        </Stagger>
+
+        {/* Flag legend */}
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--green-100)",
+            marginBottom: 24,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            fontFamily: "var(--font-editorial)",
+            fontStyle: "italic",
+          }}
+        >
+          Ineligible BV excluded from target denominator ·
+          <Flag kind="invoice" />open invoice in HubSpot ·
+          <Flag kind="noevents" />0 upcoming events
+        </div>
+
+        {/* PIPELINE BAR */}
+        <SectionTitle title="Full pipeline" subtitle="BV breakdown across stages" />
+        <PipelineBar stageBreakdown={data.stageBreakdown} ineligibleBv={data.ineligibleBv} />
+
+        {/* OVERVIEW BY OWNER */}
+        <SectionTitle title="Overview by owner" />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.min(breakoutOwners.length + 1, 4)}, 1fr)`,
+            gap: 14,
+            marginBottom: 32,
+          }}
+        >
+          <OwnerCard
+            name={payFilter === "all" || payFilter === "default" ? "All owners" : "Selected"}
+            stats={{
+              totalBv: payFilter === "default" || payFilter === "all" ? data.totalBv : topline.eligibleBv + topline.ineligibleBv,
+              eligBv: topline.eligibleBv,
+              pctLc: topline.pctLc,
+              pctAcv: topline.pctAcv,
+              stageCounts: aggregateStageCounts(topline.deals),
+            }}
+          />
+          {breakoutOwners.map((o) => (
+            <OwnerCard
+              key={o.ownerId}
+              name={ownerFullName(o.ownerName)}
+              stats={{
+                totalBv: o.totalBv,
+                eligBv: o.eligibleBv,
+                pctLc: o.lcPercent,
+                pctAcv: o.arrPercent,
+                stageCounts: o.stageCounts,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* PATH TO TARGET */}
+        <SectionTitle title={`Path to ${data.aprilTarget}%`} subtitle="Top deals to close — by owner" />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.min(Math.max(breakoutOwners.length, 1), 2)}, 1fr)`,
+            gap: 14,
+            marginBottom: 32,
+          }}
+        >
+          {breakoutOwners.map((o) => (
+            <PathCard
+              key={o.ownerId}
+              name={ownerFullName(o.ownerName)}
+              owner={o}
+              targetPct={data.aprilTarget}
+              allEligBv={data.eligibleBv}
+              onDealClick={onDealClick}
+            />
+          ))}
+        </div>
+
+        {/* NEEDS A PUSH */}
+        <SectionTitle title="Needs a push" subtitle="In progress, no activity 3+ days" />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.min(Math.max(breakoutOwners.length, 1), 2)}, 1fr)`,
+            gap: 14,
+            marginBottom: 32,
+          }}
+        >
+          {breakoutOwners.map((o) => {
+            const stalled = data.needsAPush
+              .filter((d) => d.ownerId === o.ownerId)
+              .sort((a, b) => b.bv - a.bv);
+            return (
+              <PushCard
+                key={o.ownerId}
+                name={ownerFullName(o.ownerName)}
+                stalled={stalled}
+                allEligBv={data.eligibleBv}
+                onDealClick={onDealClick}
+              />
+            );
+          })}
+        </div>
+
+        {/* UNWILLING */}
+        <SectionTitle title="Unwilling" subtitle="Customers who declined — with reasons" />
+        <UnwillingTable
+          deals={data.unwilling.filter((d) =>
+            payFilter === "all" || payFilter === "default"
+              ? true
+              : d.ownerId === payFilter
+          )}
+          allEligBv={data.eligibleBv}
+          onDealClick={onDealClick}
+        />
+
+        {/* NOT YET ENROLLED */}
+        <SectionTitle title="Not yet enrolled" subtitle="Top by BV — no Pay status in HubSpot" />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.min(Math.max(breakoutOwners.length, 1), 2)}, 1fr)`,
+            gap: 14,
+          }}
+        >
+          {breakoutOwners.map((o) => {
+            const ne = data.notEnrolled
+              .filter((d) => d.ownerId === o.ownerId)
+              .sort((a, b) => b.bv - a.bv);
+            return (
+              <NotEnrolledCard
+                key={o.ownerId}
+                name={ownerFullName(o.ownerName)}
+                deals={ne}
+                allEligBv={data.eligibleBv}
+                onDealClick={onDealClick}
+              />
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function aggregateStageCounts(deals: PayDeal[]): Record<PayStage, { count: number; bv: number }> {
+  const out = {} as Record<PayStage, { count: number; bv: number }>;
+  for (const d of deals) {
+    if (!out[d.stage]) out[d.stage] = { count: 0, bv: 0 };
+    out[d.stage].count += 1;
+    out[d.stage].bv += d.bv;
+  }
+  return out;
+}
+
+/* ---------------- atoms ---------------- */
+
+function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
+      <h2
+        style={{
+          margin: 0,
+          fontFamily: "var(--font-display)",
+          fontSize: 18,
+          fontWeight: 700,
+          color: "var(--moss)",
+          textTransform: "uppercase",
+          letterSpacing: "-0.005em",
+        }}
+      >
+        {title}
+      </h2>
+      {subtitle && (
+        <span
+          style={{
+            fontSize: 12.5,
+            color: "var(--green-100)",
+            fontFamily: "var(--font-editorial)",
+            fontStyle: "italic",
+          }}
+        >
+          {subtitle}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function KpiCard({
+  label,
+  big,
+  sub,
+  accent,
+}: {
+  label: string;
+  big: React.ReactNode;
+  sub: string;
+  accent: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "var(--light-grey)",
+        border: "1px solid var(--beige-gray)",
+        borderTopWidth: 3,
+        borderTopStyle: "solid",
+        borderTopColor: accent,
+        borderRadius: 10,
+        padding: "14px 16px",
+      }}
+    >
+      <div
+        style={{
+          fontFamily: "var(--font-display)",
+          fontSize: 28,
+          fontWeight: 700,
+          color: accent,
+          lineHeight: 1,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {big}
+      </div>
+      <div
+        style={{
+          fontFamily: "var(--font-display)",
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          color: "var(--green-100)",
+          letterSpacing: "0.06em",
+          marginTop: 8,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--green-100)", marginTop: 4 }}>{sub}</div>
+    </div>
+  );
+}
+
+function Flag({ kind }: { kind: "summer" | "invoice" | "noevents" }) {
+  const styles: Record<typeof kind, { bg: string; fg: string; text: string }> = {
+    summer: { bg: "#fff3cd", fg: "#856404", text: "☀ SUMMER" },
+    invoice: { bg: "#d1ecf1", fg: "#0c5460", text: "INVOICE" },
+    noevents: { bg: "#e2d9f3", fg: "#5a3d8f", text: "0 EVENTS" },
+  };
+  const s = styles[kind];
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "1px 5px",
+        borderRadius: 3,
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        background: s.bg,
+        color: s.fg,
+        marginLeft: 4,
+        verticalAlign: "middle",
+      }}
+    >
+      {s.text}
+    </span>
+  );
+}
+
+function FlagsFor({ deal }: { deal: PayDeal }) {
+  const isPushStage = (
+    ["Not yet enrolled", "Signed - Not Started", "Pending Verification"] as PayStage[]
+  ).includes(deal.stage);
+  const flags: React.ReactNode[] = [];
+  if (isPushStage) {
+    if (deal.hasOpenInvoice) flags.push(<Flag key="i" kind="invoice" />);
+    if (deal.zeroEvents) flags.push(<Flag key="z" kind="noevents" />);
+  }
+  return <>{flags}</>;
+}
+
+function StageDot({ stage }: { stage: PayStage }) {
+  const s = STAGE_BY_KEY[stage];
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        width: 7,
+        height: 7,
+        borderRadius: "50%",
+        background: s?.color || "#999",
+        marginRight: 5,
+        verticalAlign: "middle",
+      }}
+    />
+  );
+}
+
+function StageLabel({ stage }: { stage: PayStage }) {
+  return (
+    <span style={{ fontSize: 11.5, color: "var(--moss)" }}>
+      <StageDot stage={stage} />
+      {stage}
+    </span>
+  );
+}
+
+/* ---------------- pipeline bar ---------------- */
+
+function PipelineBar({
+  stageBreakdown,
+  ineligibleBv,
+}: {
+  stageBreakdown: Record<PayStage, { count: number; bv: number }>;
+  ineligibleBv: number;
+}) {
+  const stages = STAGE_ORDER.filter((s) => s.key !== "Ineligible");
+  const stageBv = stages.map((s) => ({ ...s, bv: stageBreakdown[s.key]?.bv || 0 }));
+  const total = stageBv.reduce((sum, x) => sum + x.bv, 0);
+
+  return (
+    <div
+      style={{
+        background: "var(--light-grey)",
+        border: "1px solid var(--beige-gray)",
+        borderRadius: 10,
+        padding: "16px 18px",
+        marginBottom: 32,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11.5,
+          color: "var(--green-100)",
+          marginBottom: 10,
+          fontFamily: "var(--font-editorial)",
+          fontStyle: "italic",
+        }}
+      >
+        Total eligible: {fmtEurShort(total)} · Ineligible excluded: {fmtEurShort(ineligibleBv)}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          borderRadius: 6,
+          overflow: "hidden",
+          height: 28,
+          marginBottom: 12,
+        }}
+      >
+        {stageBv.map((s, i) => {
+          if (s.bv <= 0) return null;
+          const p = (s.bv / total) * 100;
+          return (
+            <PipeSeg
+              key={s.key}
+              flex={s.bv}
+              color={s.color}
+              label={p >= 4 ? `${s.short} ${p.toFixed(1)}%` : null}
+              title={`${s.key}: ${fmtEurShort(s.bv)} (${p.toFixed(1)}%)`}
+              delay={120 + i * 70}
+            />
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
+        {stageBv.map(
+          (s) =>
+            s.bv > 0 && (
+              <span key={s.key} style={{ fontSize: 11, color: "var(--moss)" }}>
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: 10,
+                    height: 10,
+                    background: s.color,
+                    borderRadius: 2,
+                    marginRight: 4,
+                    verticalAlign: "middle",
+                  }}
+                />
+                {s.key} — {fmtEurShort(s.bv)} ({((s.bv / total) * 100).toFixed(1)}%)
+              </span>
+            )
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PipeSeg({
+  flex,
+  color,
+  label,
+  title,
+  delay = 0,
+}: {
+  flex: number;
+  color: string;
+  label: string | null;
+  title: string;
+  delay?: number;
+}) {
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => setW(flex), 30 + delay);
+    return () => clearTimeout(t);
+  }, [flex, delay]);
+  return (
+    <div
+      title={title}
+      style={{
+        flex: w,
+        background: color,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transition: "flex-grow 700ms cubic-bezier(0.22, 1, 0.36, 1)",
+        overflow: "hidden",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label && (
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: "#fff",
+            whiteSpace: "nowrap",
+            padding: "0 4px",
+            opacity: w > 0 ? 1 : 0,
+            transition: "opacity 320ms ease 320ms",
+          }}
+        >
+          {label}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- owner card ---------------- */
+
+function OwnerCard({
+  name,
+  stats,
+}: {
+  name: string;
+  stats: {
+    totalBv: number;
+    eligBv: number;
+    pctLc: number;
+    pctAcv: number;
+    stageCounts: Record<PayStage, { count: number; bv: number }>;
+  };
+}) {
+  return (
+    <div
+      style={{
+        background: "var(--light-grey)",
+        border: "1px solid var(--beige-gray)",
+        borderRadius: 10,
+        padding: 18,
+      }}
+    >
+      <h3
+        style={{
+          margin: "0 0 6px",
+          fontFamily: "var(--font-display)",
+          fontSize: 14,
+          fontWeight: 700,
+          color: "var(--moss)",
+          textTransform: "uppercase",
+          letterSpacing: "0.02em",
+        }}
+      >
+        {name}
+      </h3>
+      <div style={{ fontSize: 11, color: "var(--green-100)", marginBottom: 10 }}>
+        Total BV: {fmtEurShort(stats.totalBv)} · Eligible: {fmtEurShort(stats.eligBv)}
+      </div>
+      <AnimBar pct={Math.min(stats.pctLc, 100)} color="#27ae60" height={6} radius={3} bg="var(--hairline)" delay={120} />
+      <div style={{ height: 8 }} />
+      <div
+        style={{
+          fontFamily: "var(--font-display)",
+          fontSize: 26,
+          fontWeight: 700,
+          color: "#27ae60",
+          lineHeight: 1,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        <CountUpPct value={stats.pctLc} />
+      </div>
+      <div style={{ fontSize: 11, color: "var(--green-100)", marginBottom: 12 }}>BV live/verified</div>
+      <div>
+        {STAGE_ORDER.map((s) => {
+          const bv = stats.stageCounts[s.key]?.bv || 0;
+          if (bv <= 0) return null;
+          const denom = s.key === "Ineligible" ? stats.totalBv : stats.eligBv;
+          const p = denom > 0 ? (bv / denom) * 100 : 0;
+          return (
+            <div
+              key={s.key}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "3px 0",
+                fontSize: 12,
+                color: "var(--moss)",
+              }}
+            >
+              <span>
+                <StageDot stage={s.key} />
+                {s.key}
+                {s.key === "Ineligible" ? " (excl.)" : ""}
+              </span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                {p.toFixed(1)}% · {fmtEurShort(bv)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div
+        style={{
+          fontSize: 11,
+          color: "var(--green-100)",
+          marginTop: 10,
+          paddingTop: 8,
+          borderTop: "1px solid var(--hairline)",
+        }}
+      >
+        ARR live/verified: {stats.pctAcv.toFixed(1)}%
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- path to target ---------------- */
+
+function PathCard({
+  name,
+  owner,
+  targetPct,
+  allEligBv,
+  onDealClick,
+}: {
+  name: string;
+  owner: PayOwnerSummary;
+  targetPct: number;
+  allEligBv: number;
+  onDealClick: (deal: PayDeal) => void;
+}) {
+  const live = owner.deals.filter((d) => LIVE_STAGES.includes(d.stage)).sort((a, b) => b.bv - a.bv);
+  const pipe = owner.deals
+    .filter((d) => !LIVE_STAGES.includes(d.stage) && d.stage !== "Ineligible" && d.stage !== "Unwilling")
+    .sort((a, b) => b.bv - a.bv);
+  const ordered = [...live, ...pipe];
+
+  type Row =
+    | { kind: "sep" }
+    | { kind: "row"; deal: PayDeal; runPct: number; pp: number; isLive: boolean; highlight: boolean; n: number };
+
+  let running = 0;
+  let pastTarget = false;
+  let sepShown = false;
+  const rows: Row[] = [];
+  for (const d of ordered) {
+    const isLive = LIVE_STAGES.includes(d.stage);
+    if (!sepShown && !isLive) {
+      sepShown = true;
+      rows.push({ kind: "sep" });
+    }
+    running += d.bv;
+    const runPct = owner.eligibleBv > 0 ? (running / owner.eligibleBv) * 100 : 0;
+    const pp = owner.eligibleBv > 0 ? (d.bv / owner.eligibleBv) * 100 : 0;
+    let highlight = false;
+    if (!pastTarget && runPct >= targetPct && !isLive) {
+      pastTarget = true;
+      highlight = true;
+    }
+    const n = rows.filter((r) => r.kind === "row").length + 1;
+    rows.push({ kind: "row", deal: d, runPct, pp, isLive, highlight, n });
+    if (runPct >= targetPct + 10) break;
+  }
+
+  const fill = Math.min((owner.lcPercent / (targetPct + 10)) * 100, 100);
+  const marker = Math.min((targetPct / (targetPct + 10)) * 100, 100);
+
+  return (
+    <div
+      style={{
+        background: "var(--light-grey)",
+        border: "1px solid var(--beige-gray)",
+        borderRadius: 10,
+        padding: 18,
+      }}
+    >
+      <h3
+        style={{
+          margin: "0 0 10px",
+          fontFamily: "var(--font-display)",
+          fontSize: 14,
+          fontWeight: 700,
+          color: "var(--moss)",
+          textTransform: "uppercase",
+        }}
+      >
+        {name}
+      </h3>
+
+      <div
+        style={{
+          position: "relative",
+          height: 7,
+          background: "var(--hairline)",
+          borderRadius: 4,
+          marginBottom: 6,
+        }}
+      >
+        <div style={{ position: "absolute", height: "100%", width: "100%", borderRadius: 4, overflow: "hidden" }}>
+          <AnimBar pct={fill} color="#2980b9" height={7} radius={4} bg="transparent" delay={180} />
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            top: -4,
+            left: `${marker}%`,
+            width: 2,
+            height: 15,
+            background: "#C16E2A",
+          }}
+        />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 12 }}>
+        <span style={{ color: "#2980b9", fontWeight: 600 }}>
+          <CountUpPct value={owner.lcPercent} /> current
+        </span>
+        <span style={{ color: "#C16E2A", fontWeight: 600 }}>{targetPct}% target</span>
+      </div>
+
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <Th>#</Th>
+            <Th>Customer</Th>
+            <Th>Stage</Th>
+            <Th align="right">BV (% of {fmtEurShort(allEligBv)})</Th>
+            <Th align="right">+PP</Th>
+            <Th align="right">Run %</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td
+                colSpan={6}
+                style={{
+                  padding: 16,
+                  textAlign: "center",
+                  color: "var(--green-100)",
+                  fontStyle: "italic",
+                  fontFamily: "var(--font-editorial)",
+                }}
+              >
+                No deals to show
+              </td>
+            </tr>
+          ) : (
+            rows.map((r, i) => {
+              if (r.kind === "sep") {
+                return (
+                  <tr key={`sep-${i}`}>
+                    <td
+                      colSpan={6}
+                      style={{
+                        fontSize: 10.5,
+                        color: "var(--green-100)",
+                        padding: "6px 4px",
+                        background: "var(--beige-new)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      ▼ Pipeline needed to reach {targetPct}%
+                    </td>
+                  </tr>
+                );
+              }
+              const { deal, runPct, pp, isLive, highlight, n } = r;
+              const bg = isLive ? "rgba(26,122,74,0.06)" : highlight ? "rgba(193,110,42,0.08)" : "transparent";
+              return (
+                <tr
+                  key={deal.dealId}
+                  style={{
+                    background: bg,
+                    borderLeft: highlight ? "3px solid #C16E2A" : undefined,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => onDealClick(deal)}
+                >
+                  <Td muted>{n}</Td>
+                  <Td>
+                    <strong style={{ color: "var(--moss)" }}>{deal.dealName}</strong>
+                    <FlagsFor deal={deal} />
+                  </Td>
+                  <Td>
+                    <StageLabel stage={deal.stage} />
+                  </Td>
+                  <Td align="right">{bvWithPct(deal.bv, allEligBv)}</Td>
+                  <Td align="right" muted>
+                    +{pp.toFixed(1)}pp
+                  </Td>
+                  <Td align="right" bold>
+                    {runPct.toFixed(1)}%
+                  </Td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ---------------- needs a push ---------------- */
+
+function PushCard({
+  name,
+  stalled,
+  allEligBv,
+  onDealClick,
+}: {
+  name: string;
+  stalled: PayDeal[];
+  allEligBv: number;
+  onDealClick: (deal: PayDeal) => void;
+}) {
+  return (
+    <div
+      style={{
+        background: "var(--light-grey)",
+        border: "1px solid var(--beige-gray)",
+        borderRadius: 10,
+        padding: 18,
+      }}
+    >
+      <h3
+        style={{
+          margin: "0 0 12px",
+          fontFamily: "var(--font-display)",
+          fontSize: 14,
+          fontWeight: 700,
+          color: "var(--moss)",
+          textTransform: "uppercase",
+        }}
+      >
+        {name}{" "}
+        <span style={{ fontWeight: 400, color: "var(--green-100)", textTransform: "none" }}>
+          ({stalled.length} stalled)
+        </span>
+      </h3>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <Th>Customer</Th>
+            <Th>Stage</Th>
+            <Th>Last activity</Th>
+            <Th align="right">BV</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {stalled.length === 0 ? (
+            <tr>
+              <td
+                colSpan={4}
+                style={{
+                  padding: 16,
+                  textAlign: "center",
+                  color: "var(--green-100)",
+                  fontStyle: "italic",
+                  fontFamily: "var(--font-editorial)",
+                }}
+              >
+                No stalled deals
+              </td>
+            </tr>
+          ) : (
+            stalled.slice(0, 10).map((d) => {
+              const days = d.daysSinceActivity ?? 0;
+              let dayColor = "var(--green-100)";
+              if (days > 30) dayColor = "#C0392B";
+              else if (days > 14) dayColor = "#C16E2A";
+              else if (days > 7) dayColor = "#D49545";
+              return (
+                <tr
+                  key={d.dealId}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => onDealClick(d)}
+                >
+                  <Td>
+                    <strong style={{ color: "var(--moss)" }}>{d.dealName}</strong>
+                    <FlagsFor deal={d} />
+                  </Td>
+                  <Td>
+                    <StageLabel stage={d.stage} />
+                  </Td>
+                  <Td>
+                    <span style={{ color: dayColor, fontWeight: 600 }}>{days}d ago</span>
+                  </Td>
+                  <Td align="right">{bvWithPct(d.bv, allEligBv)}</Td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ---------------- unwilling ---------------- */
+
+function UnwillingTable({
+  deals,
+  allEligBv,
+  onDealClick,
+}: {
+  deals: PayDeal[];
+  allEligBv: number;
+  onDealClick: (deal: PayDeal) => void;
+}) {
+  const sorted = [...deals].sort((a, b) => b.bv - a.bv);
+  const total = sorted.reduce((s, d) => s + d.bv, 0);
+  const pctOfElig = allEligBv > 0 ? (total / allEligBv) * 100 : 0;
+
+  return (
+    <div
+      style={{
+        background: "var(--light-grey)",
+        border: "1px solid var(--beige-gray)",
+        borderRadius: 10,
+        padding: 18,
+        marginBottom: 32,
+      }}
+    >
+      <div
+        style={{
+          display: "inline-block",
+          background: "#C16E2A",
+          color: "#fff",
+          borderRadius: 6,
+          padding: "4px 12px",
+          fontSize: 11,
+          fontWeight: 700,
+          marginBottom: 12,
+          letterSpacing: "0.04em",
+        }}
+      >
+        {sorted.length} customers — {fmtEurShort(total)} ({pctOfElig.toFixed(1)}% of eligible BV)
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <Th>Customer</Th>
+            <Th>Owner</Th>
+            <Th>Reason</Th>
+            <Th align="right">BV</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.length === 0 ? (
+            <tr>
+              <td
+                colSpan={4}
+                style={{
+                  padding: 16,
+                  textAlign: "center",
+                  color: "var(--green-100)",
+                  fontStyle: "italic",
+                  fontFamily: "var(--font-editorial)",
+                }}
+              >
+                None
+              </td>
+            </tr>
+          ) : (
+            sorted.map((d) => (
+              <tr key={d.dealId} style={{ cursor: "pointer" }} onClick={() => onDealClick(d)}>
+                <Td>
+                  <strong style={{ color: "var(--moss)" }}>{d.dealName}</strong>
+                </Td>
+                <Td muted>{d.ownerName}</Td>
+                <Td>
+                  <span style={{ fontSize: 12, color: "var(--moss)" }}>{d.unwillingReason || "—"}</span>
+                </Td>
+                <Td align="right">{bvWithPct(d.bv, allEligBv)}</Td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ---------------- not yet enrolled ---------------- */
+
+function NotEnrolledCard({
+  name,
+  deals,
+  allEligBv,
+  onDealClick,
+}: {
+  name: string;
+  deals: PayDeal[];
+  allEligBv: number;
+  onDealClick: (deal: PayDeal) => void;
+}) {
+  const totalBv = deals.reduce((s, d) => s + d.bv, 0);
+  const pctOfElig = allEligBv > 0 ? (totalBv / allEligBv) * 100 : 0;
+
+  return (
+    <div
+      style={{
+        background: "var(--light-grey)",
+        border: "1px solid var(--beige-gray)",
+        borderRadius: 10,
+        padding: 18,
+      }}
+    >
+      <h3
+        style={{
+          margin: "0 0 12px",
+          fontFamily: "var(--font-display)",
+          fontSize: 14,
+          fontWeight: 700,
+          color: "var(--moss)",
+          textTransform: "uppercase",
+        }}
+      >
+        {name}{" "}
+        <span style={{ fontWeight: 400, color: "var(--green-100)", textTransform: "none" }}>
+          ({deals.length} not enrolled · {fmtEurShort(totalBv)} · {pctOfElig.toFixed(1)}%)
+        </span>
+      </h3>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <Th>#</Th>
+            <Th>Customer</Th>
+            <Th>Last activity</Th>
+            <Th align="right">BV</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {deals.length === 0 ? (
+            <tr>
+              <td
+                colSpan={4}
+                style={{
+                  padding: 16,
+                  textAlign: "center",
+                  color: "var(--green-100)",
+                  fontStyle: "italic",
+                  fontFamily: "var(--font-editorial)",
+                }}
+              >
+                None
+              </td>
+            </tr>
+          ) : (
+            deals.slice(0, 20).map((d, i) => {
+              const days = d.daysSinceActivity;
+              let act: React.ReactNode = <span style={{ color: "var(--beige-gray)" }}>—</span>;
+              if (days != null) {
+                let color = "var(--moss)";
+                if (days > 90) color = "#C0392B";
+                else if (days > 30) color = "#C16E2A";
+                act = (
+                  <span style={{ color, fontWeight: days > 30 ? 600 : 400 }}>
+                    {days}d ago
+                  </span>
+                );
+              }
+              return (
+                <tr key={d.dealId} style={{ cursor: "pointer" }} onClick={() => onDealClick(d)}>
+                  <Td muted>{i + 1}</Td>
+                  <Td>
+                    <strong style={{ color: "var(--moss)" }}>{d.dealName}</strong>
+                    <FlagsFor deal={d} />
+                  </Td>
+                  <Td>{act}</Td>
+                  <Td align="right">{bvWithPct(d.bv, allEligBv)}</Td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ---------------- table primitives ---------------- */
+
+function Th({ children, align }: { children: React.ReactNode; align?: "left" | "right" }) {
+  return (
+    <th
+      style={{
+        padding: "5px 7px",
+        textAlign: align || "left",
+        fontFamily: "var(--font-display)",
+        fontSize: 9.5,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        color: "var(--green-100)",
+        borderBottom: "1px solid var(--hairline)",
+      }}
+    >
+      {children}
+    </th>
+  );
+}
+
+function Td({
+  children,
+  align,
+  muted,
+  bold,
+}: {
+  children: React.ReactNode;
+  align?: "left" | "right";
+  muted?: boolean;
+  bold?: boolean;
+}) {
+  return (
+    <td
+      style={{
+        padding: "5px 7px",
+        textAlign: align || "left",
+        fontSize: 12,
+        color: muted ? "var(--green-100)" : "var(--moss)",
+        fontWeight: bold ? 600 : 400,
+        borderBottom: "1px solid var(--hairline)",
+        fontVariantNumeric: align === "right" ? "tabular-nums" : "normal",
+      }}
+    >
+      {children}
+    </td>
+  );
+}
+
+// re-export for the search-result mapping done in the parent
+export type { CompanySearchResult };

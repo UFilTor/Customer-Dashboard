@@ -1,368 +1,720 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { SearchBar } from "@/components/SearchBar";
-import { CompanyHeader } from "@/components/CompanyHeader";
-import { MetricCards } from "@/components/MetricCards";
-import { TabContainer } from "@/components/TabContainer";
-import { OverviewTab } from "@/components/OverviewTab";
-import { ActivityTab } from "@/components/ActivityTab";
-import { TasksTab } from "@/components/TasksTab";
-import { SkeletonCard, SkeletonBlock, SkeletonRecap } from "@/components/Skeleton";
-import { CompanySearchResult, CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
-import { AttentionList } from "@/components/AttentionList";
-import { addRecentCompany, removeRecentCompany, computeRevenueFromDetail } from "@/lib/recent-companies";
-import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  AttentionResponse,
+  CompanyDetail as CompanyDetailData,
+  CompanySearchResult,
+  OwnerMap,
+  StageMap,
+} from "@/lib/types";
+import { TopBar } from "@/components/design/TopBar";
+import {
+  VariantPicker,
+  DASHBOARDS,
+  type Variant,
+  type DashboardKey,
+  type OnboardingSubview,
+} from "@/components/design/VariantPicker";
+import { CommandPalette, type PaletteAction } from "@/components/design/CommandPalette";
+import { ViewTransition } from "@/components/design/ViewTransition";
+import { BriefingView } from "@/components/design/views/BriefingView";
+import { SplitView } from "@/components/design/views/SplitView";
+import { KanbanView } from "@/components/design/views/KanbanView";
+import { CompanyDetail } from "@/components/design/CompanyDetail";
+import { PayMigrationContainer } from "@/components/design/views/PayMigrationContainer";
+import { OnboardingContainer } from "@/components/design/views/OnboardingContainer";
 import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
-import { PayMigrationDashboard } from "@/components/PayMigrationDashboard";
+import { flattenGroups, type FlatCompany } from "@/lib/signals";
+import {
+  effectiveOwnerIds,
+  filterLabel as buildFilterLabel,
+  parseFilter,
+  serializeFilter,
+  ALL_FILTER,
+  type GlobalFilter,
+} from "@/lib/owners";
+import { addRecentCompany, computeRevenueFromDetail } from "@/lib/recent-companies";
 
-interface CompanyData extends CompanyDetail {
-  owners: OwnerMap;
-  stages: StageMap;
-}
+type DetailData = CompanyDetailData & { owners: OwnerMap; stages: StageMap };
+
+const HUBSPOT_PORTAL = process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID;
 
 export default function Dashboard() {
-  const [companyData, setCompanyData] = useState<CompanyData | null>(null);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [navigationSource, setNavigationSource] = useState<"attention" | "search" | null>(null);
+  // View state
+  const [dashboard, setDashboard] = useState<DashboardKey>("status");
+  const [variant, setVariant] = useState<Variant>("briefing");
+  const [globalFilter, setGlobalFilter] = useState<GlobalFilter>(ALL_FILTER);
+  const [defaultFilter, setDefaultFilter] = useState<GlobalFilter | null>(null);
+  const [payFilter, setPayFilter] = useState<"default" | "all">("default");
+  const [onboardingSubview, setOnboardingSubview] = useState<OnboardingSubview>("meetings");
+
+  // Data state
+  const [attention, setAttention] = useState<AttentionResponse | null>(null);
+  const [isLoadingAttention, setIsLoadingAttention] = useState(true);
+  const [errorAttention, setErrorAttention] = useState<string | null>(null);
+
+  // Selection state. Each Status-dashboard variant (briefing/split/kanban) owns
+  // its own slot — switching variants brings back what was selected there last,
+  // so a detail view in split doesn't bleed over into briefing or vice versa.
+  // Onboarding/pay_migration use the shared `_other` slot (they don't have
+  // sub-variants today).
+  type SelectionScope = Variant | "_other";
+  const [selectionByScope, setSelectionByScope] = useState<Record<SelectionScope, string | null>>({
+    briefing: null,
+    split: null,
+    kanban: null,
+    _other: null,
+  });
+  const selectionScope: SelectionScope = dashboard === "status" ? variant : "_other";
+  const selectedCompanyId = selectionByScope[selectionScope];
+  const setSelectedCompanyId = useCallback(
+    (id: string | null) => {
+      setSelectionByScope((prev) =>
+        prev[selectionScope] === id ? prev : { ...prev, [selectionScope]: id }
+      );
+    },
+    [selectionScope]
+  );
+  const [companyData, setCompanyData] = useState<DetailData | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  // UI state
+  const [cmdkOpen, setCmdkOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [activeView, setActiveView] = useState<"attention" | "pay">("attention");
-  const [payEverLoaded, setPayEverLoaded] = useState(false);
-  const [focusedAttentionIndex, setFocusedAttentionIndex] = useState(-1);
-  const [focusedTabItemIndex, setFocusedTabItemIndex] = useState(-1);
-  const scrollPositionRef = useRef<number>(0);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const attentionMetaRef = useRef<{ previousCategory?: string } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Sync focused attention item highlight
+  // Persist view + filter choices across reloads.
+  // Filter resolution order on load: pinned default → last-used → All.
+  // Pinned default loads on every refresh; last-used keeps the session sticky
+  // for users who haven't pinned anything.
   useEffect(() => {
-    const items = document.querySelectorAll("[data-attention-item]");
-    items.forEach((el) => el.classList.remove("attention-item-focused"));
-    if (focusedAttentionIndex >= 0 && focusedAttentionIndex < items.length) {
-      const target = items[focusedAttentionIndex];
-      target.classList.add("attention-item-focused");
-      target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    try {
+      const v = localStorage.getItem("ud-v2-variant");
+      if (v === "briefing" || v === "split" || v === "kanban") setVariant(v);
+      const d = localStorage.getItem("ud-v2-dashboard");
+      if (d === "status" || d === "pay_migration" || d === "onboarding") setDashboard(d);
+      const pinned = parseFilter(localStorage.getItem("ud-v2-filter-default"));
+      if (pinned) setDefaultFilter(pinned);
+      const last = parseFilter(localStorage.getItem("ud-v2-filter"));
+      const initial = pinned ?? last;
+      if (initial) setGlobalFilter(initial);
+      const p = localStorage.getItem("ud-v2-pay-filter");
+      if (p === "default" || p === "all") setPayFilter(p);
+      const ob = localStorage.getItem("ud-v2-onboarding-subview");
+      if (ob === "meetings" || ob === "attention") setOnboardingSubview(ob);
+    } catch {/* ignore */}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("ud-v2-variant", variant);
+      localStorage.setItem("ud-v2-dashboard", dashboard);
+      localStorage.setItem("ud-v2-filter", serializeFilter(globalFilter));
+      localStorage.setItem("ud-v2-pay-filter", payFilter);
+      localStorage.setItem("ud-v2-onboarding-subview", onboardingSubview);
+    } catch {/* ignore */}
+  }, [variant, dashboard, globalFilter, payFilter, onboardingSubview]);
+
+  // Pin / unpin the current filter as this device's default.
+  const setAsDefault = useCallback(() => {
+    setDefaultFilter(globalFilter);
+    try { localStorage.setItem("ud-v2-filter-default", serializeFilter(globalFilter)); } catch {/* ignore */}
+  }, [globalFilter]);
+  const clearDefault = useCallback(() => {
+    setDefaultFilter(null);
+    try { localStorage.removeItem("ud-v2-filter-default"); } catch {/* ignore */}
+  }, []);
+
+  // The pin star lights up only when the *current* filter matches the pinned default.
+  const isDefault =
+    defaultFilter !== null &&
+    defaultFilter.kind === globalFilter.kind &&
+    (defaultFilter.kind === "all"
+      || (defaultFilter.kind === "region" && globalFilter.kind === "region" && defaultFilter.region === globalFilter.region)
+      || (defaultFilter.kind === "person" && globalFilter.kind === "person" && defaultFilter.ownerId === globalFilter.ownerId));
+
+  // Fetch attention data
+  const loadAttention = useCallback(async () => {
+    setIsLoadingAttention(true);
+    setErrorAttention(null);
+    try {
+      const res = await fetch("/api/attention");
+      if (!res.ok) throw new Error("Failed to load attention");
+      const json: AttentionResponse = await res.json();
+      setAttention(json);
+    } catch {
+      setErrorAttention("Could not load data. Try refreshing.");
+    } finally {
+      setIsLoadingAttention(false);
     }
-  }, [focusedAttentionIndex]);
+  }, []);
 
-  // Sync focused tab item highlight
+  useEffect(() => { loadAttention(); }, [loadAttention]);
+
+  // Fetch company detail when selectedCompanyId changes
   useEffect(() => {
-    const items = document.querySelectorAll("[data-tab-item]");
-    items.forEach((el) => el.classList.remove("tab-item-focused"));
-    if (focusedTabItemIndex >= 0 && focusedTabItemIndex < items.length) {
-      const target = items[focusedTabItemIndex];
-      target.classList.add("tab-item-focused");
-      target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (!selectedCompanyId) {
+      setCompanyData(null);
+      return;
     }
-  }, [focusedTabItemIndex]);
+    let cancelled = false;
+    setIsLoadingDetail(true);
+    setDetailError(null);
+    (async () => {
+      try {
+        const res = await fetch(`/api/companies/${selectedCompanyId}`);
+        if (!res.ok) throw new Error("Failed to load company");
+        const data: DetailData = await res.json();
+        if (cancelled) return;
+        setCompanyData(data);
+        addRecentCompany({
+          id: selectedCompanyId,
+          name: data.company?.name || "Unknown",
+          revenue: computeRevenueFromDetail(data.company, data.deal),
+          healthScore: data.company?.health_score,
+          domain: data.company?.domain,
+        });
+      } catch {
+        if (!cancelled) setDetailError("Could not load company.");
+      } finally {
+        if (!cancelled) setIsLoadingDetail(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedCompanyId]);
 
-  // Reset tab item focus when leaving company view
-  useEffect(() => {
-    if (!companyData) setFocusedTabItemIndex(-1);
-  }, [companyData]);
-
-  function resetToList() {
-    setCompanyData(null);
-    setSelectedCompanyId(null);
-    setError(null);
-    setNavigationSource(null);
-    attentionMetaRef.current = null;
-    const pos = scrollPositionRef.current;
-    requestAnimationFrame(() => window.scrollTo(0, pos));
-  }
-
-  // Listen for browser back/forward
+  // Browser back/forward navigation
   useEffect(() => {
     function onPopState() {
-      resetToList();
+      setSelectedCompanyId(null);
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  function handleBack() {
-    if (companyData || isLoading) {
-      window.history.back();
-    } else {
-      resetToList();
+  function selectCompany(id: string) {
+    if (selectedCompanyId === id) return;
+    // Push history only on the first transition from list → detail. Switching
+    // between accounts (split view prev/next, palette pick while a company is
+    // open) replaces in place so browser back always returns to the list.
+    if (selectedCompanyId == null) {
+      window.history.pushState({ company: true }, "");
     }
+    setSelectedCompanyId(id);
   }
 
-  async function fetchCompany(company: CompanySearchResult) {
-    window.history.pushState({ company: true }, "");
-    setIsLoading(true);
-    setError(null);
-    setSelectedCompanyId(company.id);
-    setFocusedAttentionIndex(-1);
-    try {
-      const res = await fetch(`/api/companies/${company.id}`);
-      if (!res.ok) throw new Error("Failed to load company data");
-      const data = await res.json();
-      setCompanyData(data);
-      addRecentCompany({
-        id: company.id,
-        name: company.name,
-        revenue: computeRevenueFromDetail(data.company, data.deal),
-        healthScore: data.company?.["health_score"] || company.healthScore,
-        domain: data.company?.["domain"] || company.domain,
-      });
-    } catch {
-      setError("Could not load data. Please try again.");
-      removeRecentCompany(company.id);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  function handleAttentionSelect(company: CompanySearchResult, meta?: { previousCategory?: string }) {
-    scrollPositionRef.current = window.scrollY;
-    setNavigationSource("attention");
-    attentionMetaRef.current = meta || null;
-    fetchCompany(company);
-  }
-
-  function handleSearchSelect(company: CompanySearchResult) {
-    scrollPositionRef.current = window.scrollY;
-    setNavigationSource("search");
-    attentionMetaRef.current = null;
-    fetchCompany(company);
-  }
-
-  useKeyboardShortcuts({
-    onSearch: () => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    },
-    onBack: () => {
-      if (showHelp) {
-        setShowHelp(false);
-        return;
-      }
-      if (companyData) {
-        handleBack();
-      }
-    },
-    onNavigate: (direction) => {
-      if (companyData) {
-        // Up/Down navigates items within the active tab
-        const total = document.querySelectorAll("[data-tab-item]").length;
-        if (total === 0) return;
-        setFocusedTabItemIndex((prev) => {
-          if (direction === "down") return Math.min(prev + 1, total - 1);
-          return Math.max(prev - 1, 0);
-        });
-        return;
-      }
-      const total = document.querySelectorAll("[data-attention-item]").length;
-      if (total === 0) return;
-      setFocusedAttentionIndex((prev) => {
-        if (direction === "down") return Math.min(prev + 1, total - 1);
-        return Math.max(prev - 1, 0);
-      });
-    },
-    onSelect: () => {
-      if (companyData) {
-        // Enter toggles expand/collapse on focused tab item
-        if (focusedTabItemIndex < 0) return;
-        const items = document.querySelectorAll("[data-tab-item]");
-        const target = items[focusedTabItemIndex] as HTMLElement | undefined;
-        if (!target) return;
-        const toggleBtn = target.querySelector<HTMLButtonElement>("button[class*='hover:underline']");
-        if (toggleBtn) toggleBtn.click();
-        return;
-      }
-      if (focusedAttentionIndex < 0) return;
-      const items = document.querySelectorAll("[data-attention-item]");
-      const target = items[focusedAttentionIndex] as HTMLElement | undefined;
-      if (!target) return;
-      const id = target.getAttribute("data-company-id");
-      const name = target.getAttribute("data-company-name");
-      if (id && name) {
-        handleAttentionSelect({ id, name, domain: "" });
-      }
-    },
-    onJumpToGroup: (index) => {
-      if (companyData) return;
-      const groups = document.querySelectorAll("[data-attention-group]");
-      if (index >= groups.length) return;
-      const group = groups[index];
-      group.scrollIntoView({ behavior: "smooth", block: "start" });
-      // Find the first attention item inside this group
-      const firstItem = group.querySelector("[data-attention-item]");
-      if (!firstItem) return;
-      const allItems = Array.from(document.querySelectorAll("[data-attention-item]"));
-      const itemIndex = allItems.indexOf(firstItem);
-      if (itemIndex >= 0) setFocusedAttentionIndex(itemIndex);
-    },
-    onSwitchTab: (direction) => {
-      if (!companyData) return;
-      const tabButtons = document.querySelectorAll<HTMLButtonElement>("[class*='border-b'] > button");
-      if (tabButtons.length === 0) return;
-      const activeIndex = Array.from(tabButtons).findIndex((b) =>
-        b.className.includes("font-semibold")
-      );
-      const nextIndex = direction === "next"
-        ? Math.min(activeIndex + 1, tabButtons.length - 1)
-        : Math.max(activeIndex - 1, 0);
-      tabButtons[nextIndex]?.click();
-      setFocusedTabItemIndex(-1);
-    },
-    onToggleSort: () => {
-      if (companyData) return;
-      const mrr = document.querySelector<HTMLButtonElement>("[data-sort='mrr']");
-      const urgency = document.querySelector<HTMLButtonElement>("[data-sort='urgency']");
-      if (!mrr || !urgency) return;
-      // Toggle: if MRR is active (has white text class), switch to urgency, else switch to MRR
-      if (mrr.className.includes("text-white")) {
-        urgency.click();
+  function back() {
+    if (selectedCompanyId) {
+      if (window.history.state?.company) {
+        window.history.back();
       } else {
-        mrr.click();
+        setSelectedCompanyId(null);
       }
-    },
-    onToggleHelp: () => setShowHelp((prev) => !prev),
+    }
+  }
+
+  // Derived: filtered, flat company list
+  const allCompanies: FlatCompany[] = useMemo(
+    () => (attention ? flattenGroups(attention.groups) : []),
+    [attention]
+  );
+  const filteredCompanies: FlatCompany[] = useMemo(() => {
+    const ids = effectiveOwnerIds(globalFilter);
+    if (!ids) return allCompanies;
+    return allCompanies.filter((c) => (c.ownerId ? ids.has(c.ownerId) : false));
+  }, [allCompanies, globalFilter]);
+
+  const totalCount = filteredCompanies.length;
+  const urgentCount = filteredCompanies.filter((c) => c.signal === "overdue_invoices").length;
+  const revenueAtRisk = filteredCompanies.reduce((s, c) => s + (c.revenue || 0), 0);
+
+  // Human-readable label for the active filter, shown in the briefing header so
+  // a sticky filter never silently hides results.
+  const filterLabel = buildFilterLabel(globalFilter);
+
+  // Toast helper
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 1800);
+  }, []);
+
+  // Keyboard shortcuts. State is read through a ref so the listener attaches
+  // exactly once (no closure-staleness, no attach/detach churn). The listener
+  // runs in the capture phase so any noisy bubble-phase shortcuts from other
+  // libraries / browser extensions can't swallow keys before us.
+  const stateRef = useRef({
+    cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, filteredCompanies, onboardingSubview,
   });
+  stateRef.current = {
+    cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, filteredCompanies, onboardingSubview,
+  };
+
+  // "g" prefix: press g, then [s|o|r|p|b] to jump dashboards (Gmail-style).
+  const goPrefixRef = useRef<number | null>(null);
+  const GO_PREFIX_TIMEOUT_MS = 1500;
+
+  // Active detail tab — broadcast by CompanyDetail so the page-level handler
+  // can let ↑/↓ scroll the Activity feed instead of cycling the queue.
+  const detailTabRef = useRef<"overview" | "activity">("overview");
+  useEffect(() => {
+    function onChange(e: Event) {
+      const detail = (e as CustomEvent<"overview" | "activity">).detail;
+      if (detail === "overview" || detail === "activity") detailTabRef.current = detail;
+    }
+    window.addEventListener("ud-detail-tab-change", onChange);
+    return () => window.removeEventListener("ud-detail-tab-change", onChange);
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const inInput =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        (target?.isContentEditable ?? false);
+      const s = stateRef.current;
+
+      // ⌘K / Ctrl+K — works even when typing
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdkOpen(true);
+        return;
+      }
+
+      // Esc — help → palette → go-prefix → detail back-out
+      if (e.key === "Escape") {
+        if (s.showHelp) { setShowHelp(false); return; }
+        if (s.cmdkOpen) return;
+        if (goPrefixRef.current) {
+          goPrefixRef.current = null;
+          window.dispatchEvent(new Event("ud-dashboard-picker-close"));
+          return;
+        }
+        if (s.selectedCompanyId) {
+          if (window.history.state?.company) window.history.back();
+          else setSelectedCompanyId(null);
+        }
+        return;
+      }
+
+      if (inInput || s.cmdkOpen) return;
+      if (e.altKey || e.metaKey || e.ctrlKey) return;
+
+      // Resolve "g" prefix → dashboard nav. If the prefix is active and the
+      // next key matches, jump to the dashboard.
+      const goActive =
+        goPrefixRef.current != null &&
+        Date.now() - goPrefixRef.current < GO_PREFIX_TIMEOUT_MS;
+      if (goActive) {
+        const k = e.key.toLowerCase();
+        goPrefixRef.current = null;
+        const dashMap: Record<string, DashboardKey | undefined> = {
+          s: "status",
+          o: "onboarding",
+          r: "retention",
+          p: "pay_migration",
+          b: "bloom",
+        };
+        const target = dashMap[k];
+        if (target) {
+          e.preventDefault();
+          window.dispatchEvent(new Event("ud-dashboard-picker-close"));
+          const dash = DASHBOARDS.find((d) => d.key === target);
+          if (dash?.available) {
+            setDashboard(target);
+          } else {
+            showToast(`${dash?.label ?? target} — coming soon`);
+          }
+          return;
+        }
+        // Unknown second key — close the picker; fall through to normal handling.
+        window.dispatchEvent(new Event("ud-dashboard-picker-close"));
+      }
+
+      // Activate "g" prefix → open the picker dropdown so the options are visible
+      if (e.key === "g") {
+        e.preventDefault();
+        goPrefixRef.current = Date.now();
+        window.dispatchEvent(new Event("ud-dashboard-picker-open"));
+        // Auto-close the dropdown if the prefix expires without a selection
+        const expiry = goPrefixRef.current;
+        setTimeout(() => {
+          if (goPrefixRef.current === expiry) {
+            goPrefixRef.current = null;
+            window.dispatchEvent(new Event("ud-dashboard-picker-close"));
+          }
+        }, GO_PREFIX_TIMEOUT_MS + 50);
+        return;
+      }
+
+      // Layout variants 1/2/3 — Status dashboard, any state.
+      // Switching variant within the Status dashboard. Each variant owns its
+      // own selection (per-scope memory), so the destination variant snaps
+      // back to whatever was selected there last — including null.
+      if (s.dashboard === "status") {
+        if (e.key === "1") {
+          e.preventDefault();
+          setVariant("briefing");
+          return;
+        }
+        if (e.key === "2") {
+          e.preventDefault();
+          setVariant("split");
+          return;
+        }
+        if (e.key === "3") {
+          e.preventDefault();
+          setVariant("kanban");
+          return;
+        }
+      }
+
+      // Onboarding subviews: 1 = meeting prep, 2 = needs attention.
+      if (s.dashboard === "onboarding" && !s.selectedCompanyId) {
+        if (e.key === "1") {
+          e.preventDefault();
+          setOnboardingSubview("meetings");
+          return;
+        }
+        if (e.key === "2") {
+          e.preventDefault();
+          setOnboardingSubview("attention");
+          return;
+        }
+      }
+
+      // Onboarding meeting prep — ← / → walks the day strip.
+      if (
+        s.dashboard === "onboarding" &&
+        s.onboardingSubview === "meetings" &&
+        !s.selectedCompanyId &&
+        (e.key === "ArrowLeft" || e.key === "ArrowRight")
+      ) {
+        e.preventDefault();
+        window.dispatchEvent(
+          new CustomEvent("ud-onboarding-day-shift", {
+            detail: e.key === "ArrowLeft" ? "prev" : "next",
+          })
+        );
+        return;
+      }
+
+      // Up / Down inside the Activity tab → move between engagement entries.
+      // Always wins over queue nav so the user never accidentally swaps company.
+      if (
+        s.selectedCompanyId &&
+        detailTabRef.current === "activity" &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown")
+      ) {
+        e.preventDefault();
+        window.dispatchEvent(
+          new CustomEvent("ud-activity-nav", { detail: e.key === "ArrowUp" ? "prev" : "next" })
+        );
+        return;
+      }
+
+      // Space inside the Activity tab → toggle expand on the focused entry.
+      if (
+        s.selectedCompanyId &&
+        detailTabRef.current === "activity" &&
+        (e.key === " " || e.code === "Space")
+      ) {
+        e.preventDefault();
+        window.dispatchEvent(new Event("ud-activity-expand"));
+        return;
+      }
+
+      // Up / Down: cycle the queue in Split view (Overview tab path).
+      if (
+        s.dashboard === "status" &&
+        s.variant === "split" &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown")
+      ) {
+        e.preventDefault();
+        const list = s.filteredCompanies;
+        if (list.length === 0) return;
+        const curIdx = list.findIndex((c) => c.id === s.selectedCompanyId);
+        const nextIdx =
+          curIdx === -1
+            ? 0
+            : e.key === "ArrowUp"
+              ? (curIdx - 1 + list.length) % list.length
+              : (curIdx + 1) % list.length;
+        const next = list[nextIdx];
+        if (!next || next.id === s.selectedCompanyId) return;
+        if (s.selectedCompanyId == null) {
+          window.history.pushState({ company: true }, "");
+        }
+        setSelectedCompanyId(next.id);
+        return;
+      }
+
+      // Left / Right — switch detail tabs when a company is open
+      if (s.selectedCompanyId && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        window.dispatchEvent(
+          new CustomEvent("ud-detail-tab", { detail: e.key === "ArrowLeft" ? "prev" : "next" })
+        );
+        return;
+      }
+
+      if (e.key === "?") {
+        e.preventDefault();
+        setShowHelp((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [showToast]);
+
+  // Palette actions
+  function handlePaletteAction(action: PaletteAction) {
+    switch (action) {
+      case "refresh":
+        loadAttention();
+        showToast("Refreshing…");
+        return;
+      case "open-company-in-hubspot":
+        if (selectedCompanyId) {
+          window.open(
+            `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL}/record/0-2/${selectedCompanyId}`,
+            "_blank",
+            "noopener,noreferrer"
+          );
+        }
+        return;
+      case "open-deal-in-hubspot": {
+        const dealId = companyData?.deal?.hs_object_id;
+        if (dealId) {
+          window.open(
+            `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL}/record/0-3/${dealId}`,
+            "_blank",
+            "noopener,noreferrer"
+          );
+        } else {
+          showToast("No deal linked to this company");
+        }
+        return;
+      }
+    }
+  }
+
+  function handlePaletteCompany(c: CompanySearchResult) {
+    selectCompany(c.id);
+  }
+
+  const showBack = !!selectedCompanyId;
+
+  // Render the active view body
+  let body: React.ReactNode;
+
+  if (selectedCompanyId) {
+    // Detail flow: shared across every dashboard.
+    // Status + Split is the only layout that keeps the queue visible alongside the detail.
+    if (dashboard === "status" && variant === "split") {
+      body = (
+        <SplitView
+          companies={filteredCompanies}
+          selectedId={selectedCompanyId}
+          detailData={companyData}
+          isLoadingDetail={isLoadingDetail}
+          onSelect={(c) => selectCompany(c.id)}
+          updatedAt={attention?.updatedAt || null}
+          showAvatar={globalFilter.kind !== "person"}
+        />
+      );
+    } else if (companyData && !isLoadingDetail) {
+      body = (
+        <CompanyDetail
+          companyId={selectedCompanyId}
+          data={companyData}
+          onBack={back}
+        />
+      );
+    } else if (detailError) {
+      body = <div style={{ padding: 32, textAlign: "center", color: "var(--rust)" }}>{detailError}</div>;
+    } else {
+      body = <DetailLoading />;
+    }
+  } else if (dashboard === "pay_migration") {
+    // Pay Migration ignores the global filter — the dashboard's own Default/All
+    // toggle is the only filter that applies here.
+    body = (
+      <PayMigrationContainer
+        payFilter={payFilter}
+        onSelectCompany={(c) => selectCompany(c.id)}
+      />
+    );
+  } else if (dashboard === "onboarding") {
+    body = (
+      <OnboardingContainer
+        subview={onboardingSubview}
+        filter={globalFilter}
+        filterLabel={filterLabel}
+        onSelectDeal={(d) => {
+          if (d.companyId) selectCompany(d.companyId);
+        }}
+      />
+    );
+  } else {
+    // Status list views
+    body = (() => {
+      if (isLoadingAttention) return <ListLoading />;
+      if (errorAttention) {
+        return (
+          <div style={{ padding: 32, textAlign: "center", color: "var(--rust)" }}>
+            {errorAttention}
+            <div style={{ marginTop: 12 }}>
+              <button
+                onClick={loadAttention}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 10,
+                  background: "var(--moss)",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        );
+      }
+      if (variant === "briefing") {
+        return (
+          <BriefingView
+            companies={filteredCompanies}
+            onSelect={(c) => selectCompany(c.id)}
+            filterLabel={filterLabel}
+            showAvatar={globalFilter.kind !== "person"}
+          />
+        );
+      }
+      if (variant === "split") {
+        return (
+          <SplitView
+            companies={filteredCompanies}
+            selectedId={null}
+            detailData={null}
+            isLoadingDetail={false}
+            onSelect={(c) => selectCompany(c.id)}
+            updatedAt={attention?.updatedAt || null}
+            showAvatar={globalFilter.kind !== "person"}
+          />
+        );
+      }
+      return <KanbanView companies={filteredCompanies} onSelect={(c) => selectCompany(c.id)} />;
+    })();
+  }
 
   return (
     <>
-      <div className="min-h-screen bg-white">
-        {/* Top bar */}
-        <nav className="bg-[var(--moss)] px-6 py-3 grid grid-cols-3 items-center">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 justify-self-start hover:opacity-80 transition-opacity"
-          >
-            <img src="/understory-logo.png" alt="Understory" className="h-8 w-8 rounded" />
-            <span className="text-white font-bold text-lg">Customer Dashboard</span>
-          </button>
-          <div className="justify-self-center w-full max-w-sm lg:max-w-md">
-            <SearchBar ref={searchInputRef} onSelect={handleSearchSelect} />
-          </div>
-          <div className="justify-self-end flex items-center bg-white/10 rounded-[10px] p-1">
-            <button
-              onClick={() => setActiveView("attention")}
-              className={`px-4 py-1.5 rounded-[8px] text-xs font-medium transition-all duration-200 ${
-                activeView === "attention"
-                  ? "bg-white text-[var(--moss)]"
-                  : "text-white/70 hover:text-white"
-              }`}
-            >
-              Attention
-            </button>
-            <button
-              onClick={() => {
-                setActiveView("pay");
-                if (!payEverLoaded) setPayEverLoaded(true);
-              }}
-              className={`px-4 py-1.5 rounded-[8px] text-xs font-medium transition-all duration-200 ${
-                activeView === "pay"
-                  ? "bg-white text-[var(--moss)]"
-                  : "text-white/70 hover:text-white"
-              }`}
-            >
-              Pay Migration
-            </button>
-          </div>
-        </nav>
-
-        {/* Content */}
-        <main className="max-w-7xl mx-auto px-6 py-4">
-          {error && (
-            <div className="bg-[var(--rust)]/10 border border-[var(--rust)]/20 rounded-[var(--border-radius)] p-4 mb-4 flex justify-between items-center">
-              <span className="text-[var(--rust)] text-sm">{error}</span>
-              <button
-                onClick={() => setError(null)}
-                className="text-[var(--rust)] text-sm underline"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
-
-          {!companyData && !isLoading && (
-            <>
-              <div className={activeView === "attention" ? "animate-fadeIn" : "hidden"}>
-                <AttentionList onSelectCompany={handleAttentionSelect} />
-              </div>
-              {payEverLoaded && (
-                <div className={activeView === "pay" ? "animate-fadeIn" : "hidden"}>
-                  <PayMigrationDashboard onSelectCompany={handleSearchSelect} />
-                </div>
-              )}
-            </>
-          )}
-
-          {isLoading && (
-            <div>
-              <div className="mb-4 animate-pulse">
-                <div className="h-8 w-64 bg-[#e5e7eb] rounded mb-2" />
-                <div className="h-4 w-96 bg-[#e5e7eb] rounded" />
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-                <SkeletonCard />
-                <SkeletonCard />
-                <SkeletonCard />
-                <SkeletonCard />
-                <SkeletonCard />
-              </div>
-              <SkeletonRecap />
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <SkeletonBlock />
-                <SkeletonBlock />
-              </div>
-            </div>
-          )}
-
-          {companyData && !isLoading && (
-            <div className="animate-fadeIn">
-              <CompanyHeader
-                companyId={selectedCompanyId!}
-                company={companyData.company}
-                deal={companyData.deal}
-                owners={companyData.owners}
-                showBack={navigationSource === "attention"}
-                onBack={handleBack}
-              />
-              <MetricCards
-                company={companyData.company}
-                deal={companyData.deal}
-                previousCategory={attentionMetaRef.current?.previousCategory}
-              />
-              <TabContainer
-                tabs={[
-                  {
-                    id: "overview",
-                    label: "Overview",
-                    content: (
-                      <OverviewTab
-                        company={companyData.company}
-                        deal={companyData.deal}
-                        owners={companyData.owners}
-                        stages={companyData.stages}
-                        recap={companyData.recap}
-                        companyId={selectedCompanyId!}
-                      />
-                    ),
-                  },
-                  {
-                    id: "activity",
-                    label: "Activity",
-                    content: (
-                      <ActivityTab
-                        engagements={companyData.engagements}
-                        owners={companyData.owners}
-                      />
-                    ),
-                  },
-                ]}
-              />
-            </div>
-          )}
+      <div style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
+        <TopBar
+          filter={globalFilter}
+          setFilter={setGlobalFilter}
+          isDefault={isDefault}
+          setAsDefault={setAsDefault}
+          clearDefault={clearDefault}
+          onOpenCmdk={() => setCmdkOpen(true)}
+          showBack={showBack}
+          onBack={back}
+        />
+        <VariantPicker
+          variant={variant}
+          setVariant={(v) => { setVariant(v); }}
+          dashboard={dashboard}
+          setDashboard={(d) => { setDashboard(d); }}
+          totalCount={totalCount}
+          urgentCount={urgentCount}
+          revenueAtRisk={revenueAtRisk}
+          payFilter={payFilter}
+          setPayFilter={setPayFilter}
+          onboardingSubview={onboardingSubview}
+          setOnboardingSubview={setOnboardingSubview}
+        />
+        <main>
+          <ViewTransition dashboard={dashboard} variant={variant}>
+            {body}
+          </ViewTransition>
         </main>
       </div>
 
+      <CommandPalette
+        open={cmdkOpen}
+        onClose={() => setCmdkOpen(false)}
+        onPickCompany={handlePaletteCompany}
+        onAction={handlePaletteAction}
+        hasCurrentCompany={!!selectedCompanyId}
+      />
+
       <ShortcutCheatSheet isOpen={showHelp} onClose={() => setShowHelp(false)} />
+
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "var(--moss)",
+            color: "#fff",
+            padding: "10px 18px",
+            borderRadius: 10,
+            fontSize: 13,
+            zIndex: 200,
+            boxShadow: "0 10px 30px rgba(2,44,18,0.3)",
+            animation: "fadeIn 200ms ease",
+          }}
+        >
+          {toast}
+        </div>
+      )}
     </>
+  );
+}
+
+function ListLoading() {
+  return (
+    <div className="animate-pulse" style={{ padding: "32px 28px", maxWidth: 1080, margin: "0 auto" }}>
+      <div style={{ height: 200, background: "var(--hairline)", borderRadius: 20, marginBottom: 28 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 32 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} style={{ height: 96, background: "var(--hairline)", borderRadius: 14 }} />
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 28 }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ height: 180, background: "var(--hairline)", borderRadius: 16 }} />
+        ))}
+      </div>
+      <div style={{ height: 320, background: "var(--hairline)", borderRadius: 14 }} />
+    </div>
+  );
+}
+
+function DetailLoading() {
+  return (
+    <div className="animate-pulse" style={{ padding: "28px 32px", maxWidth: 1200, margin: "0 auto" }}>
+      <div style={{ height: 56, width: "40%", background: "var(--hairline)", borderRadius: 8, marginBottom: 18 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10, marginBottom: 18 }}>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} style={{ height: 76, background: "var(--hairline)", borderRadius: 14 }} />
+        ))}
+      </div>
+      <div style={{ height: 120, background: "var(--hairline)", borderRadius: 16, marginBottom: 18 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div style={{ height: 320, background: "var(--hairline)", borderRadius: 16 }} />
+        <div style={{ height: 320, background: "var(--hairline)", borderRadius: 16 }} />
+      </div>
+    </div>
   );
 }

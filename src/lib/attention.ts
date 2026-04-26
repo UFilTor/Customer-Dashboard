@@ -157,9 +157,7 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
 
     if (deals.length === 0) return emptyResult;
 
-    const companyMap = new Map<string, AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string; _payStatus: string }>();
-
-    // Fetch deal->company associations in batches of 10 to avoid rate limits
+    // Fetch deal->company associations in batches of 5 to avoid rate limits
     const assocResults: ({ companyId: string; deal: DealInfo } | null)[] = [];
     for (let i = 0; i < deals.length; i += 5) {
       const batch = deals.slice(i, i + 5);
@@ -182,9 +180,29 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
       assocResults.push(...batchResults);
     }
 
+    // Aggregate every open-invoice deal per company. A company is "overdue"
+    // when at least one of its deals is past invoice_due_date; daysOverdue
+    // becomes the oldest of those (max). outstandingLocal sums per currency
+    // and is reported only when every deal shares one currency — mixed-
+    // currency companies surface only the EUR total.
+    interface CompanyAcc {
+      sumEur: number;
+      sumOpenInvoices: number;
+      maxDaysOverdue: number | undefined;
+      perCurrency: Map<string, number>;
+      dealNames: string[];
+      // Deal props from the first deal we encountered, used later for
+      // mapChipFields / generated-revenue computation. Not fully accurate
+      // when a company has multiple deals but matches today's behaviour.
+      dealMrr: string;
+      dealCurrency: string;
+      dealBookingFee: string;
+      payStatus: string;
+    }
+    const acc = new Map<string, CompanyAcc>();
     const today = new Date().toISOString().split("T")[0];
     for (const result of assocResults) {
-      if (!result || companyMap.has(result.companyId)) continue;
+      if (!result) continue;
       const { companyId, deal } = result;
       const outstandingNum = parseFloat(deal.outstandingAmount) || 0;
       const rate = TO_EUR[(deal.currency || "EUR").toUpperCase()] ?? 1;
@@ -194,19 +212,66 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
         ? Math.floor((Date.now() - new Date(deal.invoiceDueDate).getTime()) / 86400000)
         : undefined;
 
+      const existing = acc.get(companyId);
+      if (existing) {
+        existing.sumEur += outstandingEur;
+        existing.sumOpenInvoices += deal.openInvoices;
+        if (daysOverdue !== undefined) {
+          existing.maxDaysOverdue = Math.max(existing.maxDaysOverdue ?? 0, daysOverdue);
+        }
+        if (outstandingNum > 0) {
+          const ccy = deal.currency || "EUR";
+          existing.perCurrency.set(ccy, (existing.perCurrency.get(ccy) ?? 0) + outstandingNum);
+        }
+        existing.dealNames.push(deal.dealname);
+      } else {
+        const perCurrency = new Map<string, number>();
+        if (outstandingNum > 0) perCurrency.set(deal.currency || "EUR", outstandingNum);
+        acc.set(companyId, {
+          sumEur: outstandingEur,
+          sumOpenInvoices: deal.openInvoices,
+          maxDaysOverdue: daysOverdue,
+          perCurrency,
+          dealNames: [deal.dealname],
+          dealMrr: deal.mrr,
+          dealCurrency: deal.currency,
+          dealBookingFee: deal.bookingFee,
+          payStatus: deal.payStatus,
+        });
+      }
+    }
+
+    const companyMap = new Map<string, AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string; _payStatus: string; _isOverdue: boolean }>();
+    for (const [companyId, a] of acc.entries()) {
+      const isMixedCurrency = a.perCurrency.size > 1;
+      let localSum: number | undefined;
+      let localCurrency: string | undefined;
+      if (!isMixedCurrency && a.perCurrency.size === 1) {
+        const [[ccy, sum]] = Array.from(a.perCurrency.entries());
+        localSum = Math.round(sum);
+        localCurrency = ccy;
+      }
+      const detail = a.dealNames.length === 1
+        ? a.dealNames[0]
+        : `${a.dealNames.length} deals`;
+
       companyMap.set(companyId, {
         id: companyId,
         name: "",
-        detail: deal.dealname,
-        mrr: outstandingEur > 0 ? formatRevenue(outstandingEur) : "-",
+        detail,
+        mrr: a.sumEur > 0 ? formatRevenue(a.sumEur) : "-",
         currency: "EUR",
-        daysOverdue,
-        _dealMrr: deal.mrr,
-        _dealCurrency: deal.currency,
-        _dealBookingFee: deal.bookingFee,
-        _payStatus: deal.payStatus,
-        _isOverdue: isOverdue,
-      } as AttentionCompany & { _dealMrr: string; _dealCurrency: string; _dealBookingFee: string; _payStatus: string; _isOverdue: boolean });
+        daysOverdue: a.maxDaysOverdue,
+        outstandingLocal: localSum,
+        outstandingCurrency: localCurrency,
+        outstandingEur: a.sumEur > 0 ? a.sumEur : undefined,
+        openInvoiceCount: a.sumOpenInvoices > 0 ? a.sumOpenInvoices : undefined,
+        _dealMrr: a.dealMrr,
+        _dealCurrency: a.dealCurrency,
+        _dealBookingFee: a.dealBookingFee,
+        _payStatus: a.payStatus,
+        _isOverdue: a.maxDaysOverdue !== undefined,
+      });
     }
 
     if (companyMap.size === 0) return emptyResult;
@@ -248,121 +313,6 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
     };
   } catch {
     return { overdue: [], open: [] };
-  }
-}
-
-export async function fetchOverdueTasks(): Promise<AttentionCompany[]> {
-  try {
-    const today = new Date().toISOString().split("T")[0];
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/tasks/search`, {
-      method: "POST",
-      headers: hubspotHeaders(),
-      body: JSON.stringify({
-        filterGroups: [{
-          filters: [
-            { propertyName: "hs_task_due_date", operator: "LT", value: today },
-            { propertyName: "hs_task_status", operator: "NEQ", value: "COMPLETED" },
-          ],
-        }],
-        properties: ["hs_task_subject", "hs_task_due_date"],
-        limit: 100,
-      }),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-
-    interface TaskInfo { id: string; subject: string; dueDate: string; daysOverdue: number }
-    const tasks: TaskInfo[] = (data.results || []).map(
-      (t: { id: string; properties: Record<string, string> }) => {
-        const dueDate = t.properties.hs_task_due_date || "";
-        const daysOverdue = dueDate
-          ? Math.floor((Date.now() - new Date(dueDate).getTime()) / (1000 * 60 * 60 * 24))
-          : 0;
-        return {
-          id: t.id,
-          subject: t.properties.hs_task_subject || "Untitled task",
-          dueDate,
-          daysOverdue,
-        };
-      }
-    );
-
-    if (tasks.length === 0) return [];
-
-    const companyMap = new Map<string, AttentionCompany & { _daysOverdue: number }>();
-
-    // Fetch task->company associations in batches of 10 to avoid rate limits
-    const taskAssocResults: ({ companyId: string; task: TaskInfo } | null)[] = [];
-    for (let i = 0; i < tasks.length; i += 5) {
-      const batch = tasks.slice(i, i + 5);
-      const batchResults = await Promise.all(
-        batch.map(async (task) => {
-          try {
-            const assocRes = await fetch(
-              `${HUBSPOT_API}/crm/v3/objects/tasks/${task.id}/associations/companies`,
-              { headers: hubspotHeaders(), cache: "no-store" as RequestCache }
-            );
-            if (!assocRes.ok) return null;
-            const assocData = await assocRes.json();
-            const companyId = assocData.results?.[0]?.id;
-            return companyId ? { companyId, task } : null;
-          } catch {
-            return null;
-          }
-        })
-      );
-      taskAssocResults.push(...batchResults);
-    }
-
-    for (const result of taskAssocResults) {
-      if (!result) continue;
-      const { companyId, task } = result;
-      const existing = companyMap.get(companyId);
-      if (!existing || task.daysOverdue > existing._daysOverdue) {
-        companyMap.set(companyId, {
-          id: companyId,
-          name: "",
-          detail: task.subject,
-          daysOverdue: task.daysOverdue,
-          _daysOverdue: task.daysOverdue,
-        });
-      }
-    }
-
-    if (companyMap.size === 0) return [];
-
-    const companyProps = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_company_country", ...CHIP_COMPANY_PROPS]);
-    for (const [id, props] of Object.entries(companyProps)) {
-      const entry = companyMap.get(id);
-      if (entry) {
-        entry.name = props.name || "Unknown";
-        entry.ownerId = props.hubspot_owner_id || "";
-        entry.country = props.understory_company_country || "";
-        (entry as AttentionCompany & { _bookingVolume?: string; _createdate?: string })._bookingVolume = props.understory_booking_volume_12m || "";
-        (entry as AttentionCompany & { _createdate?: string })._createdate = props.createdate || "";
-        Object.assign(entry, mapChipFields(props, null));
-      }
-    }
-
-    // Fetch deal data and compute Generated Revenue for each company
-    const results = Array.from(companyMap.values()).filter((c) => c.name);
-    await Promise.all(
-      results.map(async (company) => {
-        const deal = await fetchDealForCompany(company.id);
-        if (deal) {
-          const ext = company as AttentionCompany & { _bookingVolume?: string; _createdate?: string };
-          const revenue = computeGeneratedRevenue(ext._bookingVolume, deal.booking_fee, deal.confirmed__contract_mrr, deal.deal_currency_code, ext._createdate);
-          company.mrr = formatRevenue(revenue);
-          company.revenue = revenue || undefined;
-          company.currency = "EUR";
-          company.payStatus = deal.understory_pay_status__customer || undefined;
-        }
-      })
-    );
-
-    return results;
-  } catch {
-    return [];
   }
 }
 

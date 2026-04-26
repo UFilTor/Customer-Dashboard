@@ -172,12 +172,20 @@ const COMPANY_PROPERTIES = [
 ];
 
 const DEAL_PROPERTIES = [
+  "hs_object_id",
   "dealname", "dealstage", "confirmed__contract_mrr",
   "booking_fee", "confirmed_booking_fee", "understory_pay_status__customer", "unpaid_invoice",
   "pipeline", "deal_currency_code", "Storefront link",
   "share_of_transactions_via_understory_pay",
   "enable_understory_pay",
   "wish_to_churn", "churn_reason", "churned_reason_elaborated", "churn_date", "customer_stage",
+  "customer_substage",
+  "ob_note___customer_needs_",
+  "ob_note___promises_made",
+  "ob_note___link_to_experience_s__that_need_to_be_created_",
+  "ob_note___grow_notes__if_booked_",
+  "hibernation_notes",
+  "product_hold_note",
 ];
 
 export async function getCompanyDetail(companyId: string): Promise<CompanyDetail> {

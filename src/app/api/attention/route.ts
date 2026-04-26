@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchInvoices, fetchOverdueTasks, fetchHealthScoreIssues, fetchNoFutureEvents } from "@/lib/attention";
+import { fetchInvoices, fetchHealthScoreIssues, fetchNoFutureEvents } from "@/lib/attention";
 import { Cache } from "@/lib/cache";
 import { AttentionCompany, AttentionResponse } from "@/lib/types";
 
 function computeEnteredGroupAt(company: AttentionCompany, signal: string): string | undefined {
   const now = Date.now();
-  if (signal === "overdue_tasks" && company.daysOverdue !== undefined) {
-    return new Date(now - company.daysOverdue * 86400000).toISOString();
-  }
   if ((signal === "overdue_invoices" || signal === "open_invoices") && company.daysOverdue !== undefined) {
     return new Date(now - company.daysOverdue * 86400000).toISOString();
   }
@@ -30,14 +27,12 @@ export async function GET(request: NextRequest) {
   try {
     // Fetch sequentially to avoid HubSpot rate limits
     const invoices = await fetchInvoices();
-    const overdueTasks = await fetchOverdueTasks();
     const healthScore = await fetchHealthScoreIssues();
     const noFutureEvents = await fetchNoFutureEvents();
 
     const groups = [
       { signal: "overdue_invoices" as const, label: "Overdue Invoices", companies: invoices.overdue },
       { signal: "open_invoices" as const, label: "Open Invoices", companies: invoices.open },
-      { signal: "overdue_tasks" as const, label: "Overdue Tasks", companies: overdueTasks },
       { signal: "health_score" as const, label: "Health Score Issues", companies: healthScore },
       { signal: "no_future_events" as const, label: "No Future Events", companies: noFutureEvents },
     ].filter((g) => g.companies.length > 0);

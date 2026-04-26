@@ -139,11 +139,6 @@ const MOCK_DATA: CompanyData = {
 
 // overdue_invoices: company 101 has high revenue (daysOverdue 3), company 102 has low revenue (daysOverdue 14)
 // Sorting by revenue desc: 101, 102. Sorting by daysOverdue desc: 102, 101 — different order.
-//
-// overdue_tasks: company 103 has high revenue (€5 000) but low daysOverdue (2)
-//               company 104 has mid revenue (€3 500) and mid daysOverdue (8)
-//               company 105 has low revenue (€15 000) but high daysOverdue (15)
-// Sort by revenue desc: 105, 103, 104. Sort by daysOverdue desc: 105, 104, 103 — different order.
 const MOCK_ATTENTION: AttentionResponse = {
   groups: [
     {
@@ -152,15 +147,6 @@ const MOCK_ATTENTION: AttentionResponse = {
       companies: [
         { id: "101", name: "Nordic Kayak Tours", detail: "Nordic Kayak - Pro", ownerId: "1", mrr: "\u20ac25 000", currency: "EUR", daysOverdue: 3, enteredGroupAt: undefined, healthScore: "38", volume12m: 186000, volume3m: 52000, volume6m: 120000, payStatus: "Active", revenue: 11160 },
         { id: "102", name: "Copenhagen Food Walks", detail: "Food Walks - Starter", ownerId: "2", mrr: "\u20ac8 000", currency: "EUR", daysOverdue: 14, enteredGroupAt: undefined, healthScore: "52", volume12m: 42000, volume3m: 8000, volume6m: 22000, payStatus: undefined, revenue: 3360 },
-      ],
-    },
-    {
-      signal: "overdue_tasks",
-      label: "Overdue Tasks",
-      companies: [
-        { id: "103", name: "Stockholm Adventures", detail: "Send onboarding materials", ownerId: "1", daysOverdue: 2, mrr: "\u20ac5 000", currency: "EUR", enteredGroupAt: daysAgoISO(2), healthScore: "85", volume12m: 95000, volume3m: 28000, volume6m: 50000, payStatus: "Active", revenue: 7600 },
-        { id: "104", name: "Malmo Workshops", detail: "Schedule Q1 review", ownerId: "2", daysOverdue: 8, mrr: "\u20ac3 500", currency: "EUR", enteredGroupAt: daysAgoISO(8), healthScore: "61", volume12m: 31000, volume3m: 6000, volume6m: 16000, payStatus: "Active", revenue: 2480 },
-        { id: "105", name: "Gothenburg Experiences", detail: "Follow up on payment setup", ownerId: "1", daysOverdue: 15, mrr: "\u20ac15 000", currency: "EUR", enteredGroupAt: daysAgoISO(15), healthScore: "45", volume12m: 220000, volume3m: 40000, volume6m: 110000, payStatus: undefined, revenue: 13200 },
       ],
     },
     {

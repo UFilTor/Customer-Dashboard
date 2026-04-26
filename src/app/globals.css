@@ -138,11 +138,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   transition: opacity 180ms ease-out;
 }
 
-/* Helper for row-by-row reveal. Use inline style animationDelay for stagger. */
-.row-staggered {
-  animation: staggerIn 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
 @keyframes citrusWipe {
   from { background-size: 0% 100%; }
   to { background-size: 100% 100%; }

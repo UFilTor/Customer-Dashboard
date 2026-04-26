@@ -20,6 +20,7 @@ import { fmtMrr, relDays } from "@/lib/format-design";
 import { CountUpInt, Stagger } from "../Motion";
 import { Avatar } from "../Avatar";
 import { Icon } from "../Icon";
+import { useListKeyboardNav } from "../useListKeyboardNav";
 
 interface Props {
   subview: OnboardingSubview;
@@ -172,47 +173,126 @@ function MeetingsPanel({
   const dayMeetings = meetingsByDay.get(selectedKey) || [];
   const meetingsTodayCount = (meetingsByDay.get(dayKey(today)) || []).length;
 
-  // Focused meeting card for ↑/↓ keyboard nav. Resets to the first meeting
-  // when the user switches days. Refs mirror the latest values so the
-  // window-level event listeners don't need to attach/detach on every change.
-  const [focusedMeetingIdx, setFocusedMeetingIdx] = useState(0);
+  // Focused meeting card for ↑/↓ keyboard nav. null = nothing focused yet
+  // (no card carries the highlight outline). The first ↓ press selects index
+  // 0; subsequent presses move within bounds. Resets to null on day change.
+  const [focusedMeetingIdx, setFocusedMeetingIdx] = useState<number | null>(null);
+  // Focused history item *within* the focused meeting. Drives the
+  // "→ enters Previous activity" flow and the toggle-expand behaviour.
+  const [historyFocusedIdx, setHistoryFocusedIdx] = useState<number | null>(null);
   useEffect(() => {
-    setFocusedMeetingIdx(0);
+    setFocusedMeetingIdx(null);
+    setHistoryFocusedIdx(null);
   }, [selectedKey]);
+  // Switching the focused meeting always clears the history sub-focus.
+  useEffect(() => {
+    setHistoryFocusedIdx(null);
+  }, [focusedMeetingIdx]);
+
+  // Broadcast the two focus levels so page.tsx can route ←/→/↑/↓/Enter/Space
+  // appropriately (day-shift vs meeting-nav vs history-nav vs toggle).
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("ud-meeting-focused-state", { detail: focusedMeetingIdx !== null })
+    );
+  }, [focusedMeetingIdx]);
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("ud-history-focused-state", { detail: historyFocusedIdx !== null })
+    );
+  }, [historyFocusedIdx]);
 
   const meetingsContainerRef = useRef<HTMLDivElement | null>(null);
   const dayMeetingsRef = useRef(dayMeetings);
   dayMeetingsRef.current = dayMeetings;
   const focusedIdxRef = useRef(focusedMeetingIdx);
   focusedIdxRef.current = focusedMeetingIdx;
+  const historyFocusedRef = useRef(historyFocusedIdx);
+  historyFocusedRef.current = historyFocusedIdx;
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
   useEffect(() => {
     function onNav(e: Event) {
       const dir = (e as CustomEvent<"prev" | "next">).detail;
-      setFocusedMeetingIdx((cur) => {
-        const list = dayMeetingsRef.current;
-        if (list.length === 0) return 0;
-        const max = list.length - 1;
-        return dir === "prev" ? Math.max(0, cur - 1) : Math.min(max, cur + 1);
-      });
+      const list = dayMeetingsRef.current;
+      if (list.length === 0) return;
+      const cur = focusedIdxRef.current;
+
+      if (dir === "next") {
+        // First press from unfocused state lands on the first card.
+        setFocusedMeetingIdx(cur === null ? 0 : Math.min(list.length - 1, cur + 1));
+        return;
+      }
+
+      // ↑ from the first card (or from unfocused) returns to the top of the
+      // dashboard so the banner + day strip are back in view.
+      if (cur === null || cur === 0) {
+        setFocusedMeetingIdx(null);
+        if (typeof window !== "undefined") {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+        return;
+      }
+      setFocusedMeetingIdx(cur - 1);
     }
     function onOpen() {
-      const m = dayMeetingsRef.current[focusedIdxRef.current];
+      const idx = focusedIdxRef.current;
+      if (idx === null) return;
+      const m = dayMeetingsRef.current[idx];
       if (m) onSelectRef.current(m.deal);
+    }
+    function onHistoryEnter() {
+      const idx = focusedIdxRef.current;
+      if (idx === null) return;
+      const m = dayMeetingsRef.current[idx];
+      if (!m) return;
+      const count = Math.min(m.deal.history.length, 4);
+      if (count === 0) return;
+      setHistoryFocusedIdx(0);
+    }
+    function onHistoryExit() {
+      setHistoryFocusedIdx(null);
+    }
+    function onHistoryNav(e: Event) {
+      const dir = (e as CustomEvent<"prev" | "next">).detail;
+      const meetingIdx = focusedIdxRef.current;
+      if (meetingIdx === null) return;
+      const m = dayMeetingsRef.current[meetingIdx];
+      if (!m) return;
+      const count = Math.min(m.deal.history.length, 4);
+      if (count === 0) return;
+      setHistoryFocusedIdx((cur) => {
+        const start = cur ?? 0;
+        return dir === "next" ? Math.min(count - 1, start + 1) : Math.max(0, start - 1);
+      });
+    }
+    function onMeetingUnfocus() {
+      setFocusedMeetingIdx(null);
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     }
     window.addEventListener("ud-onboarding-meeting-nav", onNav);
     window.addEventListener("ud-onboarding-meeting-open", onOpen);
+    window.addEventListener("ud-onboarding-meeting-unfocus", onMeetingUnfocus);
+    window.addEventListener("ud-onboarding-history-enter", onHistoryEnter);
+    window.addEventListener("ud-onboarding-history-exit", onHistoryExit);
+    window.addEventListener("ud-onboarding-history-nav", onHistoryNav);
     return () => {
       window.removeEventListener("ud-onboarding-meeting-nav", onNav);
       window.removeEventListener("ud-onboarding-meeting-open", onOpen);
+      window.removeEventListener("ud-onboarding-meeting-unfocus", onMeetingUnfocus);
+      window.removeEventListener("ud-onboarding-history-enter", onHistoryEnter);
+      window.removeEventListener("ud-onboarding-history-exit", onHistoryExit);
+      window.removeEventListener("ud-onboarding-history-nav", onHistoryNav);
     };
   }, []);
 
   // Centre the focused card in the viewport when arrow nav lands on it, so
   // the whole brief is visible rather than clipped at the top/bottom edge.
   useEffect(() => {
+    if (focusedMeetingIdx === null) return;
     const root = meetingsContainerRef.current;
     if (!root) return;
     const target = root.querySelector(`[data-meeting-idx="${focusedMeetingIdx}"]`);
@@ -398,6 +478,8 @@ function MeetingsPanel({
                     <MeetingBriefCard
                       entry={entry}
                       onSelect={() => onSelect(entry.deal)}
+                      isFocused={isFocused}
+                      historyFocusedIdx={isFocused ? historyFocusedIdx : null}
                     />
                   </div>
                 );
@@ -638,6 +720,23 @@ function AttentionPanel({
     byStep[d.step] = arr;
   }
 
+  // Flat list across step groups in render order — drives ↑/↓/Enter nav.
+  const flatList = useMemo<OnboardingDeal[]>(
+    () => Object.values(byStep).flat(),
+    // overdue is the source of truth — recompute when it changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [overdue]
+  );
+  const idxByDealId = useMemo(() => {
+    const m = new Map<string, number>();
+    flatList.forEach((d, i) => m.set(d.dealId, i));
+    return m;
+  }, [flatList]);
+  const { focusedIdx, containerRef } = useListKeyboardNav<OnboardingDeal>(
+    flatList,
+    (d) => onSelect(d)
+  );
+
   const greeting = (() => {
     const h = new Date().getHours();
     return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
@@ -723,20 +822,32 @@ function AttentionPanel({
             text={`No onboarding accounts are more than ${ATTENTION_OVERDUE_THRESHOLD_DAYS} days past their expected step duration.`}
           />
         ) : (
-          Object.entries(byStep).map(([step, list]) => (
-            <Section
-              key={step}
-              title={stepLabel(step)}
-              subtitle={`${list.length} account${list.length === 1 ? "" : "s"} stuck > ${ATTENTION_OVERDUE_THRESHOLD_DAYS} days past expected`}
-              count={list.length}
-            >
-              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-                {list.map((d, i) => (
-                  <StuckCard key={d.dealId} deal={d} onClick={() => onSelect(d)} index={i} />
-                ))}
-              </div>
-            </Section>
-          ))
+          <div ref={containerRef}>
+            {Object.entries(byStep).map(([step, list]) => (
+              <Section
+                key={step}
+                title={stepLabel(step)}
+                subtitle={`${list.length} account${list.length === 1 ? "" : "s"} stuck > ${ATTENTION_OVERDUE_THRESHOLD_DAYS} days past expected`}
+                count={list.length}
+              >
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+                  {list.map((d, i) => {
+                    const globalIdx = idxByDealId.get(d.dealId) ?? -1;
+                    return (
+                      <StuckCard
+                        key={d.dealId}
+                        deal={d}
+                        onClick={() => onSelect(d)}
+                        index={i}
+                        listIdx={globalIdx}
+                        isFocused={globalIdx === focusedIdx}
+                      />
+                    );
+                  })}
+                </div>
+              </Section>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -1172,9 +1283,13 @@ function FetchDayButton({
 function MeetingBriefCard({
   entry,
   onSelect,
+  isFocused,
+  historyFocusedIdx,
 }: {
   entry: OnboardingMeetingEntry;
   onSelect: () => void;
+  isFocused?: boolean;
+  historyFocusedIdx?: number | null;
 }) {
   const { meeting, deal } = entry;
   const ownerLocal = OWNER_MAP[deal.ownerId] || null;
@@ -1188,6 +1303,50 @@ function MeetingBriefCard({
   const com = deal.commercial;
   const watchOuts = deal.blockers;
   const history = deal.history;
+  const visibleHistory = history.slice(0, 4);
+
+  // Lifted-up expanded state — keyed by entry id so toggling works whether
+  // the user clicks the inline "Read more" button or fires Enter/Space while
+  // a history item is keyboard-focused on this card.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Toggle the keyboard-focused history item (only when this card is the
+  // one with focus). Listener attaches/detaches with the focused state so
+  // we never accidentally toggle on an off-screen card.
+  const focusedHistoryRef = useRef(historyFocusedIdx ?? null);
+  focusedHistoryRef.current = historyFocusedIdx ?? null;
+  useEffect(() => {
+    if (!isFocused) return;
+    function onToggle() {
+      const idx = focusedHistoryRef.current;
+      if (idx === null || idx === undefined) return;
+      const item = visibleHistory[idx];
+      if (item) toggleExpanded(item.id);
+    }
+    window.addEventListener("ud-onboarding-history-toggle", onToggle);
+    return () => window.removeEventListener("ud-onboarding-history-toggle", onToggle);
+  }, [isFocused, visibleHistory]);
+
+  // Scroll the focused history item into view whenever it changes.
+  const historyContainerRef = useRef<HTMLUListElement | null>(null);
+  useEffect(() => {
+    if (!isFocused) return;
+    if (historyFocusedIdx === null || historyFocusedIdx === undefined) return;
+    const root = historyContainerRef.current;
+    if (!root) return;
+    const target = root.querySelector(`[data-history-idx="${historyFocusedIdx}"]`);
+    if (target && typeof (target as HTMLElement).scrollIntoView === "function") {
+      (target as HTMLElement).scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [isFocused, historyFocusedIdx]);
 
   return (
     <div
@@ -1390,14 +1549,26 @@ function MeetingBriefCard({
 
         <div style={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 22 }}>
           <div>
-            <BriefSectionTitle>History &amp; Gong</BriefSectionTitle>
-            {history.length === 0 ? (
+            <BriefSectionTitle>Previous activity</BriefSectionTitle>
+            {visibleHistory.length === 0 ? (
               <Italic>No prior meetings logged.</Italic>
             ) : (
-              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                {history.slice(0, 4).map((entry) => (
-                  <li key={entry.id} className="animate-fadeIn">
-                    <HistoryItem entry={entry} />
+              <ul
+                ref={historyContainerRef}
+                style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}
+              >
+                {visibleHistory.map((entry, i) => (
+                  <li
+                    key={entry.id}
+                    data-history-idx={i}
+                    className="animate-fadeIn"
+                  >
+                    <HistoryItem
+                      entry={entry}
+                      expanded={expandedIds.has(entry.id)}
+                      onToggleExpand={() => toggleExpanded(entry.id)}
+                      focused={isFocused && historyFocusedIdx === i}
+                    />
                   </li>
                 ))}
               </ul>
@@ -1789,8 +1960,17 @@ function kindStyles(kind: OnboardingHistoryEntry["kind"]): { bg: string; fg: str
   return { bg: "var(--lichen)", fg: "var(--moss)" };
 }
 
-function HistoryItem({ entry }: { entry: OnboardingHistoryEntry }) {
-  const [expanded, setExpanded] = useState(false);
+function HistoryItem({
+  entry,
+  expanded,
+  onToggleExpand,
+  focused,
+}: {
+  entry: OnboardingHistoryEntry;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  focused?: boolean;
+}) {
   const date = new Date(entry.occurredAt);
   const dateStr = isNaN(date.getTime())
     ? ""
@@ -1826,14 +2006,21 @@ function HistoryItem({ entry }: { entry: OnboardingHistoryEntry }) {
         lineHeight: 1.5,
         color: "var(--dark-moss)",
         paddingLeft: 14,
+        paddingRight: focused ? 8 : 0,
+        paddingTop: focused ? 6 : 0,
+        paddingBottom: focused ? 6 : 0,
         position: "relative",
+        background: focused ? "var(--beige-new)" : "transparent",
+        borderRadius: focused ? 8 : 0,
+        boxShadow: focused ? "inset 3px 0 0 var(--moss)" : "none",
+        transition: "background 0.12s, box-shadow 0.12s, padding 0.12s",
       }}
     >
       <span
         style={{
           position: "absolute",
           left: 0,
-          top: 8,
+          top: focused ? 14 : 8,
           width: 5,
           height: 5,
           borderRadius: "50%",
@@ -1879,7 +2066,7 @@ function HistoryItem({ entry }: { entry: OnboardingHistoryEntry }) {
         </span>
         {hasExpandable && (
           <button
-            onClick={() => setExpanded((v) => !v)}
+            onClick={onToggleExpand}
             style={{
               fontFamily: "var(--font-display)",
               textTransform: "uppercase",
@@ -2167,16 +2354,18 @@ function BriefRow({
    Stuck card (used by AttentionPanel)
    ===================================================== */
 
-function StuckCard({ deal: d, onClick, index = 0 }: { deal: OnboardingDeal; onClick: () => void; index?: number }) {
+function StuckCard({ deal: d, onClick, index = 0, listIdx, isFocused }: { deal: OnboardingDeal; onClick: () => void; index?: number; listIdx?: number; isFocused?: boolean }) {
   const ownerLocal = OWNER_MAP[d.ownerId] || null;
   const overBy = d.daysInStep - d.expectedDaysInStep;
   const delay = 80 + Math.min(index, 10) * 24;
   return (
     <button
       onClick={onClick}
+      data-list-idx={listIdx}
       style={{
-        background: "var(--light-grey)",
-        border: "1px solid var(--beige-gray)",
+        background: isFocused ? "var(--beige-new)" : "var(--light-grey)",
+        border: `1px solid ${isFocused ? "var(--moss)" : "var(--beige-gray)"}`,
+        boxShadow: isFocused ? "inset 3px 0 0 var(--moss)" : "none",
         borderRadius: 14,
         padding: "16px 20px",
         display: "grid",

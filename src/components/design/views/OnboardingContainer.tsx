@@ -116,6 +116,16 @@ export function OnboardingContainer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  // Global "R" refresh — page.tsx dispatches when the user presses R while
+  // this dashboard is mounted.
+  useEffect(() => {
+    function onRefresh() {
+      fetchData(true);
+    }
+    window.addEventListener("ud-refresh-dashboard", onRefresh);
+    return () => window.removeEventListener("ud-refresh-dashboard", onRefresh);
+  }, [fetchData]);
+
   // Fetch a single day's meetings on-demand. Merges into data.meetings,
   // replacing any existing entries for that day so we don't duplicate.
   const fetchDay = useCallback(async (dateKey: string) => {

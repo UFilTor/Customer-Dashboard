@@ -38,6 +38,16 @@ export function PayMigrationContainer({ payFilter, onSelectCompany }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Global "R" refresh — page.tsx dispatches when the user presses R while
+  // this dashboard is mounted.
+  useEffect(() => {
+    function onRefresh() {
+      fetchData(true);
+    }
+    window.addEventListener("ud-refresh-dashboard", onRefresh);
+    return () => window.removeEventListener("ud-refresh-dashboard", onRefresh);
+  }, [fetchData]);
+
   async function handleDealClick(deal: PayDeal) {
     // PayDeal carries the HubSpot companyId when available; fall back to a name search.
     if (deal.companyId) {

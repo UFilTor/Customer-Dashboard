@@ -209,7 +209,7 @@ export function CompanyDetail({ companyId, data, onBack, embedded = false }: Pro
       </div>
 
       {tab === "overview" && <OverviewPanel company={company} deal={deal} owners={owners} stages={stages} />}
-      {tab === "activity" && <ActivityPanel engagements={engagements} />}
+      {tab === "activity" && <ActivityPanel engagements={engagements} owners={owners} />}
     </div>
   );
 }
@@ -823,6 +823,13 @@ function SectionHead({ children, accent }: { children: React.ReactNode; accent?:
   );
 }
 
+function actionVerb(type: "call" | "meeting" | "note" | "email"): string {
+  if (type === "call") return "Called";
+  if (type === "email") return "Emailed";
+  if (type === "meeting") return "Hosted";
+  return "Noted";
+}
+
 interface ActivityViewItem {
   id: string;
   type: "call" | "meeting" | "note" | "email";
@@ -832,6 +839,8 @@ interface ActivityViewItem {
   body: string;
   /** Pre-computed AI summary (when present), otherwise empty. */
   summary: string;
+  /** HubSpot owner id (resolved to a name in the activity card). */
+  owner: string | undefined;
   /** For emails: every message in the thread, sorted ASC by timestamp. */
   thread?: { id: string; timestamp: string; body: string; direction: string | null }[];
 }
@@ -1182,6 +1191,8 @@ function transformActivity(engagements: Engagement[]): ActivityViewItem[] {
       timestamp: head.timestamp,
       body: stripHtml(head.body || head.bodyPreview),
       summary: head.summary || "",
+      // Latest message owner — usually who replied last on Understory's side.
+      owner: head.owner,
       thread: list.map((m, mi) => ({
         id: `thread:${threadIdx}:${mi}`,
         timestamp: m.timestamp,
@@ -1203,6 +1214,7 @@ function transformActivity(engagements: Engagement[]): ActivityViewItem[] {
     timestamp: e.timestamp,
     body: stripHtml(e.body || e.bodyPreview),
     summary: e.summary || "",
+    owner: e.owner,
   }));
 
   return [...threadItems, ...otherItems].sort((a, b) =>
@@ -1210,7 +1222,7 @@ function transformActivity(engagements: Engagement[]): ActivityViewItem[] {
   );
 }
 
-function ActivityPanel({ engagements }: { engagements: Engagement[] }) {
+function ActivityPanel({ engagements, owners }: { engagements: Engagement[]; owners: OwnerMap }) {
   const items = useMemo(() => transformActivity(engagements), [engagements]);
   const [focusedIdx, setFocusedIdx] = useState(0);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -1317,21 +1329,43 @@ function ActivityPanel({ engagements }: { engagements: Engagement[] }) {
               transition: "background 140ms ease, box-shadow 140ms ease",
             }}
           >
-            <span
+            <div
               style={{
-                background: c.bg,
-                color: c.fg,
-                fontSize: 10.5,
-                fontWeight: 600,
-                padding: "3px 7px",
-                borderRadius: 6,
-                textTransform: "capitalize",
-                alignSelf: "flex-start",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                gap: 4,
                 flexShrink: 0,
               }}
             >
-              {item.type === "email" ? "Email" : item.type}
-            </span>
+              <span
+                style={{
+                  background: c.bg,
+                  color: c.fg,
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  padding: "3px 7px",
+                  borderRadius: 6,
+                  textTransform: "capitalize",
+                }}
+              >
+                {item.type === "email" ? "Email" : item.type}
+              </span>
+              {item.owner && owners[item.owner] && (
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    color: "var(--green-100)",
+                    fontFamily: "var(--font-editorial)",
+                    fontStyle: "italic",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={`${actionVerb(item.type)} by ${owners[item.owner]}`}
+                >
+                  by {owners[item.owner].split(" ")[0]}
+                </span>
+              )}
+            </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
                 <span
@@ -1432,9 +1466,9 @@ function ActivityPanel({ engagements }: { engagements: Engagement[] }) {
                   })()}
                 </p>
               )}
-              {!isExpanded && !gong && !isThread && (
+              {!isExpanded && !gong && !isThread && (item.summary || item.body) && (
                 <p style={{ margin: "5px 0 0", fontSize: 13, color: "var(--dark-moss)", lineHeight: 1.55 }}>
-                  {item.summary || item.body || "—"}
+                  {item.summary || item.body}
                 </p>
               )}
 

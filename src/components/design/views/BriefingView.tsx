@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import type { FlatCompany } from "@/lib/signals";
 import { SIGNAL_MAP, SECTION_ORDER, sortBySignal } from "@/lib/signals";
 import { OWNER_MAP } from "@/lib/owners";
@@ -8,6 +9,7 @@ import { Avatar } from "../Avatar";
 import { Sparkline } from "../Sparkline";
 import { CountUpInt, CountUpEur, Stagger } from "../Motion";
 import { synthesizeMonthlyTrend, smoothTrend } from "@/lib/synth-trend";
+import { useListKeyboardNav } from "../useListKeyboardNav";
 import type { AttentionSignal } from "@/lib/types";
 
 // Plain-English explanation per signal. Used as the tooltip on the
@@ -52,6 +54,25 @@ function buildTrend(c: FlatCompany): number[] {
 }
 
 export function BriefingView({ companies, onSelect, filterLabel, showAvatar = true }: BriefingViewProps) {
+  // Flat list in the same order rows are rendered (sections in SECTION_ORDER,
+  // each section sorted by sortBySignal). Drives keyboard nav so arrows + Enter
+  // walk the visible queue without a side detail panel.
+  const flatList = useMemo<FlatCompany[]>(() => {
+    const out: FlatCompany[] = [];
+    for (const sig of SECTION_ORDER) {
+      out.push(...sortBySignal(sig, companies.filter((c) => c.signal === sig)));
+    }
+    return out;
+  }, [companies]);
+  const idxById = useMemo(() => {
+    const m = new Map<string, number>();
+    flatList.forEach((c, i) => m.set(c.id, i));
+    return m;
+  }, [flatList]);
+  const { focusedIdx, containerRef } = useListKeyboardNav<FlatCompany>(
+    flatList,
+    (c) => onSelect(c)
+  );
 
   const urgent = companies.filter((c) => SIGNAL_MAP[c.signal].urgent);
   const totalRevenue = companies.reduce((s, c) => s + (c.revenue || 0), 0);
@@ -255,7 +276,7 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
             urgency (days overdue, health drop, days silent), with revenue as
             the tie-breaker. */}
         {companies.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div ref={containerRef} style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             {SECTION_ORDER.map((signal) => {
               const items = sortBySignal(signal, companies.filter((c) => c.signal === signal));
               if (items.length === 0) return null;
@@ -266,6 +287,8 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
                   companies={items}
                   onSelect={onSelect}
                   showAvatar={showAvatar}
+                  focusedIdx={focusedIdx}
+                  idxById={idxById}
                 />
               );
             })}
@@ -350,11 +373,15 @@ function SignalSection({
   companies,
   onSelect,
   showAvatar,
+  focusedIdx,
+  idxById,
 }: {
   signal: AttentionSignal;
   companies: FlatCompany[];
   onSelect: (c: FlatCompany) => void;
   showAvatar: boolean;
+  focusedIdx: number | null;
+  idxById: Map<string, number>;
 }) {
   const sig = SIGNAL_MAP[signal];
   return (
@@ -398,9 +425,12 @@ function SignalSection({
           const cols = ["1.5fr", "auto"]; // name+detail, chip
           if (!isInvoice) cols.push("auto", "auto"); // revenue, sparkline
           if (showAvatar) cols.push("auto");
+          const globalIdx = idxById.get(c.id) ?? -1;
+          const isFocused = globalIdx === focusedIdx;
           return (
             <button
               key={`${c.signal}-${c.id}`}
+              data-list-idx={globalIdx}
               onClick={() => onSelect(c)}
               className="hrow"
               style={{
@@ -413,7 +443,8 @@ function SignalSection({
                 padding: "14px 18px",
                 borderBottom: i < companies.length - 1 ? "1px solid var(--hairline)" : "none",
                 textAlign: "left",
-                background: "transparent",
+                background: isFocused ? "var(--beige-new)" : "transparent",
+                boxShadow: isFocused ? "inset 3px 0 0 var(--moss)" : "none",
                 transition: "all 0.15s cubic-bezier(0.8, 0.24, 0.16, 1)",
                 cursor: "pointer",
                 animation: `staggerIn 320ms cubic-bezier(0.22, 1, 0.36, 1) ${80 + Math.min(i, 12) * 24}ms both`,

@@ -91,6 +91,36 @@ export default function Dashboard() {
   const [showHelp, setShowHelp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<NodeJS.Timeout | null>(null);
+  // Tracks whether any filter pill dropdown is open. Pills broadcast their
+  // state via ud-filter-pill-state; we mirror it into a ref so the keyboard
+  // handler can short-circuit cleanly without re-attaching on every change.
+  const filterPillOpenRef = useRef(false);
+  useEffect(() => {
+    function onState(e: Event) {
+      filterPillOpenRef.current = (e as CustomEvent<boolean>).detail === true;
+    }
+    window.addEventListener("ud-filter-pill-state", onState);
+    return () => window.removeEventListener("ud-filter-pill-state", onState);
+  }, []);
+
+  // Onboarding meeting prep focus levels. Drives whether ←/→/↑/↓/Enter route
+  // to day-shift, meeting-nav, history-nav, or toggle-expand.
+  const meetingFocusedRef = useRef(false);
+  const historyFocusedRef = useRef(false);
+  useEffect(() => {
+    function onMeetingState(e: Event) {
+      meetingFocusedRef.current = (e as CustomEvent<boolean>).detail === true;
+    }
+    function onHistoryState(e: Event) {
+      historyFocusedRef.current = (e as CustomEvent<boolean>).detail === true;
+    }
+    window.addEventListener("ud-meeting-focused-state", onMeetingState);
+    window.addEventListener("ud-history-focused-state", onHistoryState);
+    return () => {
+      window.removeEventListener("ud-meeting-focused-state", onMeetingState);
+      window.removeEventListener("ud-history-focused-state", onHistoryState);
+    };
+  }, []);
 
   // Persist view + filter choices across reloads.
   // Filter resolution order on load: pinned default → last-used → All.
@@ -304,10 +334,14 @@ export default function Dashboard() {
         return;
       }
 
-      // Esc — help → palette → go-prefix → detail back-out
+      // Esc — help → palette → filter pill → go-prefix → detail back-out
       if (e.key === "Escape") {
         if (s.showHelp) { setShowHelp(false); return; }
         if (s.cmdkOpen) return;
+        if (filterPillOpenRef.current) {
+          window.dispatchEvent(new Event("ud-filter-close-all"));
+          return;
+        }
         if (goPrefixRef.current) {
           goPrefixRef.current = null;
           window.dispatchEvent(new Event("ud-dashboard-picker-close"));
@@ -320,7 +354,7 @@ export default function Dashboard() {
         return;
       }
 
-      if (inInput || s.cmdkOpen) return;
+      if (inInput || s.cmdkOpen || filterPillOpenRef.current) return;
       if (e.altKey || e.metaKey || e.ctrlKey) return;
 
       // Resolve "g" prefix → dashboard nav. If the prefix is active and the
@@ -393,7 +427,9 @@ export default function Dashboard() {
       }
 
       // Onboarding subviews: 1 = meeting prep, 2 = needs attention.
-      if (s.dashboard === "onboarding" && !s.selectedCompanyId) {
+      // Fires from any state (mirrors Status 1/2/3) so the user can jump back
+      // out of a deep detail with a single keystroke.
+      if (s.dashboard === "onboarding") {
         if (e.key === "1") {
           e.preventDefault();
           setOnboardingSubview("meetings");
@@ -406,46 +442,118 @@ export default function Dashboard() {
         }
       }
 
-      // Onboarding meeting prep — ← / → walks the day strip.
-      if (
+      // Pay Migration filter: 1 = Default, 2 = All. Same any-state policy.
+      if (s.dashboard === "pay_migration") {
+        if (e.key === "1") {
+          e.preventDefault();
+          setPayFilter("default");
+          return;
+        }
+        if (e.key === "2") {
+          e.preventDefault();
+          setPayFilter("all");
+          return;
+        }
+      }
+
+      // Meeting prep nav — three modes:
+      //   1. nothing focused      → ←/→ shifts day, ↑/↓ starts cycling meetings
+      //   2. meeting focused      → → enters Previous activity, ← unfocuses,
+      //                             ↑/↓ cycles meetings, Enter opens
+      //   3. history focused      → ←/→ exits, ↑/↓ cycles history items,
+      //                             Enter or Space toggles expand
+      const inMeetingPrep =
         s.dashboard === "onboarding" &&
         s.onboardingSubview === "meetings" &&
+        !s.selectedCompanyId;
+
+      if (inMeetingPrep && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        const dir = e.key === "ArrowLeft" ? "prev" : "next";
+        if (historyFocusedRef.current) {
+          // Mode 3: ← exits history, → no-op (user already inside the section).
+          if (dir === "prev") window.dispatchEvent(new Event("ud-onboarding-history-exit"));
+          return;
+        }
+        if (meetingFocusedRef.current) {
+          // Mode 2: → enters Previous activity, ← drops focus back to top.
+          if (dir === "next") window.dispatchEvent(new Event("ud-onboarding-history-enter"));
+          else window.dispatchEvent(new Event("ud-onboarding-meeting-unfocus"));
+          return;
+        }
+        // Mode 1: walk the day strip.
+        window.dispatchEvent(
+          new CustomEvent("ud-onboarding-day-shift", { detail: dir })
+        );
+        return;
+      }
+
+      if (inMeetingPrep && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        const dir = e.key === "ArrowUp" ? "prev" : "next";
+        if (historyFocusedRef.current) {
+          window.dispatchEvent(
+            new CustomEvent("ud-onboarding-history-nav", { detail: dir })
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent("ud-onboarding-meeting-nav", { detail: dir })
+          );
+        }
+        return;
+      }
+
+      if (inMeetingPrep && e.key === "Enter") {
+        e.preventDefault();
+        if (historyFocusedRef.current) {
+          window.dispatchEvent(new Event("ud-onboarding-history-toggle"));
+        } else {
+          window.dispatchEvent(new Event("ud-onboarding-meeting-open"));
+        }
+        return;
+      }
+
+      if (inMeetingPrep && (e.key === " " || e.code === "Space") && historyFocusedRef.current) {
+        e.preventDefault();
+        window.dispatchEvent(new Event("ud-onboarding-history-toggle"));
+        return;
+      }
+
+      // Kanban column jump — ← / → moves focus to the previous / next
+      // signal column. Must come before the detail-tab handler since that
+      // also keys on ← / → (but only when a company is selected).
+      if (
+        s.dashboard === "status" &&
+        s.variant === "kanban" &&
         !s.selectedCompanyId &&
         (e.key === "ArrowLeft" || e.key === "ArrowRight")
       ) {
         e.preventDefault();
         window.dispatchEvent(
-          new CustomEvent("ud-onboarding-day-shift", {
+          new CustomEvent("ud-kanban-column-jump", {
             detail: e.key === "ArrowLeft" ? "prev" : "next",
           })
         );
         return;
       }
 
-      // Onboarding meeting prep — ↑ / ↓ moves between meeting cards on the
-      // selected day; Enter opens the focused card's deal.
-      if (
-        s.dashboard === "onboarding" &&
-        s.onboardingSubview === "meetings" &&
+      // List navigation in full-page views (Briefing, By signal, Onboarding
+      // Needs attention). The active view subscribes to ud-list-nav /
+      // ud-list-open and manages its own focused state.
+      const inListView =
         !s.selectedCompanyId &&
-        (e.key === "ArrowUp" || e.key === "ArrowDown")
-      ) {
+        ((s.dashboard === "status" && (s.variant === "briefing" || s.variant === "kanban")) ||
+          (s.dashboard === "onboarding" && s.onboardingSubview === "attention"));
+      if (inListView && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
         e.preventDefault();
         window.dispatchEvent(
-          new CustomEvent("ud-onboarding-meeting-nav", {
-            detail: e.key === "ArrowUp" ? "prev" : "next",
-          })
+          new CustomEvent("ud-list-nav", { detail: e.key === "ArrowUp" ? "prev" : "next" })
         );
         return;
       }
-      if (
-        s.dashboard === "onboarding" &&
-        s.onboardingSubview === "meetings" &&
-        !s.selectedCompanyId &&
-        e.key === "Enter"
-      ) {
+      if (inListView && e.key === "Enter") {
         e.preventDefault();
-        window.dispatchEvent(new Event("ud-onboarding-meeting-open"));
+        window.dispatchEvent(new Event("ud-list-open"));
         return;
       }
 
@@ -505,6 +613,28 @@ export default function Dashboard() {
         window.dispatchEvent(
           new CustomEvent("ud-detail-tab", { detail: e.key === "ArrowLeft" ? "prev" : "next" })
         );
+        return;
+      }
+
+      // F — open the LEFT filter pill (kind picker). Once a kind is chosen,
+      // the right pill auto-opens for the value selection.
+      if (e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        window.dispatchEvent(new Event("ud-filter-type-open"));
+        return;
+      }
+
+      // R — refresh the active dashboard's data. Status is fetched here at
+      // the page level; Onboarding + Pay Migration containers subscribe to
+      // ud-refresh-dashboard and refetch themselves.
+      if (e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        if (s.dashboard === "status") {
+          loadAttention();
+        } else {
+          window.dispatchEvent(new Event("ud-refresh-dashboard"));
+        }
+        showToast("Refreshing…");
         return;
       }
 
@@ -699,7 +829,14 @@ export default function Dashboard() {
         hasCurrentCompany={!!selectedCompanyId}
       />
 
-      <ShortcutCheatSheet isOpen={showHelp} onClose={() => setShowHelp(false)} />
+
+      <ShortcutCheatSheet
+        isOpen={showHelp}
+        onClose={() => setShowHelp(false)}
+        dashboard={dashboard}
+        variant={variant}
+        hasSelectedCompany={!!selectedCompanyId}
+      />
 
       {toast && (
         <div

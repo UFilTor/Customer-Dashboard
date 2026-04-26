@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { FlatCompany } from "@/lib/signals";
 import { SIGNALS } from "@/lib/signals";
 import { OWNER_MAP } from "@/lib/owners";
@@ -9,6 +9,7 @@ import { urgencyScore } from "@/lib/urgency";
 import { Avatar } from "../Avatar";
 import { Sparkline } from "../Sparkline";
 import { synthesizeMonthlyTrend, smoothTrend } from "@/lib/synth-trend";
+import { useListKeyboardNav } from "../useListKeyboardNav";
 
 interface KanbanViewProps {
   companies: FlatCompany[];
@@ -23,10 +24,74 @@ export function KanbanView({ companies, onSelect }: KanbanViewProps) {
       arr.push(c);
       buckets.set(c.signal, arr);
     }
-    return SIGNALS.map((meta) => ({ meta, items: buckets.get(meta.key) || [] })).filter(
-      (g) => g.items.length > 0
-    );
+    return SIGNALS.map((meta) => ({
+      meta,
+      // Sort once here so the flat list and the rendered cards share the same order.
+      items: [...(buckets.get(meta.key) || [])].sort((a, b) => urgencyScore(b) - urgencyScore(a)),
+    })).filter((g) => g.items.length > 0);
   }, [companies]);
+
+  // Flat list across all visible columns in render order: column 1 then 2,
+  // urgency-sorted within each. Keyboard nav walks this sequence.
+  const flatList = useMemo<FlatCompany[]>(
+    () => groups.flatMap((g) => g.items),
+    [groups]
+  );
+  const idxById = useMemo(() => {
+    const m = new Map<string, number>();
+    flatList.forEach((c, i) => m.set(c.id, i));
+    return m;
+  }, [flatList]);
+  const { focusedIdx, setFocusedIdx, containerRef } = useListKeyboardNav<FlatCompany>(
+    flatList,
+    (c) => onSelect(c)
+  );
+
+  // ←/→ jumps the focus between signal columns. With no current focus, →
+  // lands on the first column's first card; ← keeps the focus null and lets
+  // page.tsx's "scroll to top on prev" semantics apply via the hook (we just
+  // do nothing here — the hook only fires on ud-list-nav).
+  const groupsRef = useRef(groups);
+  groupsRef.current = groups;
+  const focusedIdxRef = useRef(focusedIdx);
+  focusedIdxRef.current = focusedIdx;
+  useEffect(() => {
+    function onColumnJump(e: Event) {
+      const dir = (e as CustomEvent<"prev" | "next">).detail;
+      const gs = groupsRef.current;
+      if (gs.length === 0) return;
+      const cur = focusedIdxRef.current;
+
+      // Find the group index that contains the currently-focused row.
+      let groupIdx = -1;
+      if (cur !== null) {
+        let acc = 0;
+        for (let i = 0; i < gs.length; i++) {
+          const len = gs[i].items.length;
+          if (cur < acc + len) {
+            groupIdx = i;
+            break;
+          }
+          acc += len;
+        }
+      }
+
+      // Compute the target group, then jump focus to its first item.
+      let nextGroupIdx: number;
+      if (groupIdx === -1) {
+        nextGroupIdx = dir === "next" ? 0 : -1;
+      } else {
+        nextGroupIdx = dir === "next" ? Math.min(groupIdx + 1, gs.length - 1) : Math.max(groupIdx - 1, 0);
+      }
+      if (nextGroupIdx < 0) return;
+
+      let firstFlatIdx = 0;
+      for (let i = 0; i < nextGroupIdx; i++) firstFlatIdx += gs[i].items.length;
+      setFocusedIdx(firstFlatIdx);
+    }
+    window.addEventListener("ud-kanban-column-jump", onColumnJump);
+    return () => window.removeEventListener("ud-kanban-column-jump", onColumnJump);
+  }, [setFocusedIdx]);
 
   return (
     <div
@@ -83,6 +148,7 @@ export function KanbanView({ companies, onSelect }: KanbanViewProps) {
         </div>
 
         <div
+          ref={containerRef}
           style={{
             display: "grid",
             // Equal-width columns that always fit the centered wrapper.
@@ -93,7 +159,7 @@ export function KanbanView({ companies, onSelect }: KanbanViewProps) {
           }}
         >
         {groups.map((g) => {
-          const sorted = [...g.items].sort((a, b) => urgencyScore(b) - urgencyScore(a));
+          const sorted = g.items;
           const totalRev = sorted.reduce((s, c) => s + (c.revenue || 0), 0);
           return (
             <div
@@ -162,9 +228,18 @@ export function KanbanView({ companies, onSelect }: KanbanViewProps) {
                 </div>
               </div>
               <div style={{ padding: 10, overflowY: "auto", maxHeight: "calc(100vh - 280px)" }}>
-                {sorted.map((c) => (
-                  <KanbanCard key={`${c.signal}-${c.id}`} c={c} onClick={() => onSelect(c)} />
-                ))}
+                {sorted.map((c) => {
+                  const globalIdx = idxById.get(c.id) ?? -1;
+                  return (
+                    <KanbanCard
+                      key={`${c.signal}-${c.id}`}
+                      c={c}
+                      onClick={() => onSelect(c)}
+                      listIdx={globalIdx}
+                      isFocused={globalIdx === focusedIdx}
+                    />
+                  );
+                })}
               </div>
             </div>
           );
@@ -193,7 +268,7 @@ export function KanbanView({ companies, onSelect }: KanbanViewProps) {
   );
 }
 
-function KanbanCard({ c, onClick }: { c: FlatCompany; onClick: () => void }) {
+function KanbanCard({ c, onClick, listIdx, isFocused }: { c: FlatCompany; onClick: () => void; listIdx: number; isFocused: boolean }) {
   const owner = c.ownerId ? OWNER_MAP[c.ownerId] : null;
   const trend = smoothTrend(
     synthesizeMonthlyTrend({ volume12m: c.volume12m, volume6m: c.volume6m, volume3m: c.volume3m })
@@ -201,9 +276,10 @@ function KanbanCard({ c, onClick }: { c: FlatCompany; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
+      data-list-idx={listIdx}
       style={{
-        background: "#fff",
-        border: "1px solid var(--hairline)",
+        background: isFocused ? "var(--beige-new)" : "#fff",
+        border: `1px solid ${isFocused ? "var(--moss)" : "var(--hairline)"}`,
         borderRadius: 12,
         padding: "12px 14px",
         marginBottom: 8,

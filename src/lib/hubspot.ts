@@ -263,10 +263,10 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
   const sinceTimestamp = ninetyDaysAgo.getTime();
 
   const types = [
-    { type: "calls" as const, props: ["hs_call_title", "hs_call_body", "hs_body_preview", "hs_call_direction", "hs_timestamp", "hs_call_status"] },
-    { type: "meetings" as const, props: ["hs_meeting_title", "hs_meeting_body", "hs_body_preview", "hs_timestamp", "hs_meeting_outcome"] },
+    { type: "calls" as const, props: ["hs_call_title", "hs_call_body", "hs_body_preview", "hs_call_direction", "hs_timestamp", "hs_call_status", "hubspot_owner_id"] },
+    { type: "meetings" as const, props: ["hs_meeting_title", "hs_meeting_body", "hs_body_preview", "hs_timestamp", "hs_meeting_outcome", "hubspot_owner_id"] },
     { type: "notes" as const, props: ["hs_note_body", "hs_timestamp", "hubspot_owner_id"] },
-    { type: "emails" as const, props: ["hs_email_subject", "hs_email_body", "hs_email_text", "hs_timestamp", "hs_email_from_email", "hs_email_to_email", "hs_email_direction"] },
+    { type: "emails" as const, props: ["hs_email_subject", "hs_email_body", "hs_email_text", "hs_timestamp", "hs_email_from_email", "hs_email_to_email", "hs_email_direction", "hubspot_owner_id"] },
   ];
 
   const results = await Promise.all(
@@ -356,6 +356,7 @@ function mapEngagement(type: string, props: Record<string, string>): Engagement 
         timestamp: props.hs_timestamp || "",
         direction: props.hs_call_direction,
         status: props.hs_call_status,
+        owner: props.hubspot_owner_id,
       };
     case "meetings":
       return {
@@ -366,6 +367,7 @@ function mapEngagement(type: string, props: Record<string, string>): Engagement 
         summary: "",
         timestamp: props.hs_timestamp || "",
         outcome: props.hs_meeting_outcome,
+        owner: props.hubspot_owner_id,
       };
     case "notes":
       return {
@@ -389,6 +391,7 @@ function mapEngagement(type: string, props: Record<string, string>): Engagement 
         direction: props.hs_email_direction,
         fromEmail: props.hs_email_from_email,
         toEmail: props.hs_email_to_email,
+        owner: props.hubspot_owner_id,
       };
     default:
       return {

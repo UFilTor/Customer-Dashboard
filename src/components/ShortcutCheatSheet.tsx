@@ -5,6 +5,9 @@ import { useState } from "react";
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  dashboard: "status" | "onboarding" | "pay_migration" | "retention" | "bloom";
+  variant: "briefing" | "split" | "kanban";
+  hasSelectedCompany: boolean;
 }
 
 interface ShortcutGroup {
@@ -12,59 +15,134 @@ interface ShortcutGroup {
   rows: { label: string; keys: string }[];
 }
 
-function groups(modLabel: string): ShortcutGroup[] {
-  return [
-    {
-      heading: "Anywhere",
+interface Context {
+  dashboard: Props["dashboard"];
+  variant: Props["variant"];
+  hasSelectedCompany: boolean;
+}
+
+// Groups always visible (global) and the dashboard-specific groups for the
+// current view. Keeps the sheet to a single screen — switch dashboard to
+// surface that area's shortcuts.
+function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
+  const out: ShortcutGroup[] = [];
+
+  out.push({
+    heading: "Anywhere",
+    rows: [
+      { label: "Open command palette", keys: `${modLabel} + K` },
+      { label: "Open filter pill", keys: "F" },
+      { label: "Refresh active dashboard", keys: "R" },
+      { label: "Toggle this help", keys: "?" },
+      { label: "Close / go back", keys: "Esc" },
+    ],
+  });
+
+  out.push({
+    heading: "Switch dashboard",
+    rows: [
+      { label: "Status", keys: "G then S" },
+      { label: "Onboarding", keys: "G then O" },
+      { label: "Retention", keys: "G then R" },
+      { label: "Pay migration", keys: "G then P" },
+      { label: "Bloom", keys: "G then B" },
+    ],
+  });
+
+  if (ctx.hasSelectedCompany) {
+    out.push({
+      heading: "Company detail",
       rows: [
-        { label: "Open command palette", keys: `${modLabel} + K` },
-        { label: "Toggle this help", keys: "?" },
-        { label: "Close / go back", keys: "Esc" },
+        { label: "Switch tab (Overview / Activity)", keys: "← / →" },
+        { label: "Previous / next activity item", keys: "↑ / ↓" },
+        { label: "Expand / collapse focused activity", keys: "Space" },
       ],
-    },
-    {
-      heading: "Switch dashboard",
-      rows: [
-        { label: "Status", keys: "G then S" },
-        { label: "Onboarding", keys: "G then O" },
-        { label: "Retention", keys: "G then R" },
-        { label: "Pay migration", keys: "G then P" },
-        { label: "Bloom", keys: "G then B" },
-      ],
-    },
-    {
+    });
+    return out;
+  }
+
+  if (ctx.dashboard === "status") {
+    out.push({
       heading: "Status layouts",
       rows: [
         { label: "Daily briefing", keys: "1" },
         { label: "Split view", keys: "2" },
         { label: "By signal", keys: "3" },
       ],
-    },
-    {
-      heading: "Split view",
-      rows: [
-        { label: "Previous / next account", keys: "↑ / ↓" },
-      ],
-    },
-    {
+    });
+    if (ctx.variant === "briefing") {
+      out.push({
+        heading: "Briefing",
+        rows: [
+          { label: "Previous / next account", keys: "↑ / ↓" },
+          { label: "Open focused account", keys: "Enter" },
+          { label: "Return to top from first row", keys: "↑ at first row" },
+        ],
+      });
+    } else if (ctx.variant === "split") {
+      out.push({
+        heading: "Split view",
+        rows: [
+          { label: "Previous / next account (auto-opens)", keys: "↑ / ↓" },
+        ],
+      });
+    } else if (ctx.variant === "kanban") {
+      out.push({
+        heading: "By signal",
+        rows: [
+          { label: "Previous / next account (within column)", keys: "↑ / ↓" },
+          { label: "Jump to previous / next column", keys: "← / →" },
+          { label: "Open focused account", keys: "Enter" },
+        ],
+      });
+    }
+  } else if (ctx.dashboard === "onboarding") {
+    out.push({
       heading: "Onboarding",
       rows: [
         { label: "Meeting prep", keys: "1" },
         { label: "Needs attention", keys: "2" },
-        { label: "Previous / next day (meeting prep)", keys: "← / →" },
       ],
-    },
-    {
-      heading: "Company detail",
+    });
+    out.push({
+      heading: "Meeting prep",
       rows: [
-        { label: "Switch tab (Overview / Activity)", keys: "← / →" },
-        { label: "Previous / next activity item", keys: "↑ / ↓" },
+        { label: "Previous / next day (when nothing focused)", keys: "← / →" },
+        { label: "Previous / next meeting card", keys: "↑ / ↓" },
+        { label: "Open focused meeting", keys: "Enter" },
+        { label: "Enter Previous activity (focused meeting)", keys: "→" },
+        { label: "Move within Previous activity", keys: "↑ / ↓" },
+        { label: "Toggle expand on focused activity", keys: "Enter / Space" },
+        { label: "Back out of Previous activity", keys: "←" },
       ],
-    },
-  ];
+    });
+    out.push({
+      heading: "Needs attention",
+      rows: [
+        { label: "Previous / next account", keys: "↑ / ↓" },
+        { label: "Open focused account", keys: "Enter" },
+      ],
+    });
+  } else if (ctx.dashboard === "pay_migration") {
+    out.push({
+      heading: "Pay migration",
+      rows: [
+        { label: "Default view", keys: "1" },
+        { label: "All view", keys: "2" },
+      ],
+    });
+  }
+
+  return out;
 }
 
-export default function ShortcutCheatSheet({ isOpen, onClose }: Props) {
+export default function ShortcutCheatSheet({
+  isOpen,
+  onClose,
+  dashboard,
+  variant,
+  hasSelectedCompany,
+}: Props) {
   // Default to Cmd so SSR markup matches the most common case (Mac).
   const [modLabel] = useState(() => {
     if (typeof navigator === "undefined") return "Cmd";
@@ -130,7 +208,7 @@ export default function ShortcutCheatSheet({ isOpen, onClose }: Props) {
           shortcuts
         </h3>
 
-        {groups(modLabel).map((g) => (
+        {groups(modLabel, { dashboard, variant, hasSelectedCompany }).map((g) => (
           <div key={g.heading} style={{ marginBottom: 18 }}>
             <div
               style={{

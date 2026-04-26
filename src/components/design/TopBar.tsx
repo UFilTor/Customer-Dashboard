@@ -179,12 +179,68 @@ function useDropdownDismiss(open: boolean, setOpen: (v: boolean) => void) {
   return ref;
 }
 
+const TYPE_OPTIONS = ["all", "region", "person"] as const;
+
 function FilterTypePill({ filter, setFilter, isDefault, setAsDefault, clearDefault }: PillProps) {
   const [open, setOpen] = useState(false);
+  const [focusedIdx, setFocusedIdx] = useState(0);
   const ref = useDropdownDismiss(open, setOpen);
 
   const label = filter.kind === "all" ? "All" : filter.kind === "region" ? "Region" : "Person";
   const isFiltered = filter.kind !== "all";
+
+  // Broadcast open state so page.tsx knows to suppress its own keyboard
+  // shortcuts while a pill dropdown is up.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("ud-filter-pill-state", { detail: open })
+    );
+  }, [open]);
+
+  // External open trigger (F key) and global close. Initial focus lands on
+  // whichever option matches the active filter so the user can step away
+  // from it without an extra keypress.
+  useEffect(() => {
+    function onOpenEvt() {
+      setOpen(true);
+    }
+    function onCloseAll() { setOpen(false); }
+    window.addEventListener("ud-filter-type-open", onOpenEvt);
+    window.addEventListener("ud-filter-close-all", onCloseAll);
+    return () => {
+      window.removeEventListener("ud-filter-type-open", onOpenEvt);
+      window.removeEventListener("ud-filter-close-all", onCloseAll);
+    };
+  }, []);
+
+  // Sync focus to the active option whenever the dropdown opens.
+  useEffect(() => {
+    if (!open) return;
+    const i = TYPE_OPTIONS.indexOf(filter.kind);
+    setFocusedIdx(i >= 0 ? i : 0);
+  }, [open, filter.kind]);
+
+  // Keyboard navigation while the dropdown is open.
+  const focusedRef = useRef(focusedIdx);
+  focusedRef.current = focusedIdx;
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setFocusedIdx((i) => Math.min(TYPE_OPTIONS.length - 1, i + 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setFocusedIdx((i) => Math.max(0, i - 1));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        pickType(TYPE_OPTIONS[focusedRef.current]);
+      }
+    }
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   function pickType(kind: "all" | "region" | "person") {
     if (kind === "all") setFilter({ kind: "all" });
@@ -197,6 +253,13 @@ function FilterTypePill({ filter, setFilter, isDefault, setAsDefault, clearDefau
       setFilter({ kind: "person", ownerId });
     }
     setOpen(false);
+    // Chain to the value pill if there's a value to pick.
+    if (kind !== "all") {
+      // Defer so the value pill mounts (it's conditional on filter.kind != "all").
+      setTimeout(() => {
+        window.dispatchEvent(new Event("ud-filter-value-open"));
+      }, 30);
+    }
   }
 
   return (
@@ -225,6 +288,7 @@ function FilterTypePill({ filter, setFilter, isDefault, setAsDefault, clearDefau
             sub="No filter applied"
             icon="★"
             active={filter.kind === "all"}
+            focused={focusedIdx === 0}
             onClick={() => pickType("all")}
           />
           <DropdownOption
@@ -232,6 +296,7 @@ function FilterTypePill({ filter, setFilter, isDefault, setAsDefault, clearDefau
             sub="Group by country"
             icon="◎"
             active={filter.kind === "region"}
+            focused={focusedIdx === 1}
             onClick={() => pickType("region")}
           />
           <DropdownOption
@@ -239,6 +304,7 @@ function FilterTypePill({ filter, setFilter, isDefault, setAsDefault, clearDefau
             sub="Filter by individual owner"
             icon="●"
             active={filter.kind === "person"}
+            focused={focusedIdx === 2}
             onClick={() => pickType("person")}
           />
           <DefaultPinFooter
@@ -254,7 +320,75 @@ function FilterTypePill({ filter, setFilter, isDefault, setAsDefault, clearDefau
 
 function FilterValuePill({ filter, setFilter, isDefault, setAsDefault, clearDefault }: PillProps) {
   const [open, setOpen] = useState(false);
+  const [focusedIdx, setFocusedIdx] = useState(0);
   const ref = useDropdownDismiss(open, setOpen);
+
+  // Broadcast open state so page.tsx can suppress its own shortcuts.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("ud-filter-pill-state", { detail: open })
+    );
+  }, [open]);
+
+  // External open trigger (chain from kind pill) and global close.
+  useEffect(() => {
+    function onOpenEvt() { setOpen(true); }
+    function onCloseAll() { setOpen(false); }
+    window.addEventListener("ud-filter-value-open", onOpenEvt);
+    window.addEventListener("ud-filter-close-all", onCloseAll);
+    return () => {
+      window.removeEventListener("ud-filter-value-open", onOpenEvt);
+      window.removeEventListener("ud-filter-close-all", onCloseAll);
+    };
+  }, []);
+
+  // Number of visible options depends on the kind. Computed lazily inside the
+  // keyboard effect so we don't break hooks order on filter.kind changes.
+  const optionsLength = filter.kind === "region" ? REGIONS.length : filter.kind === "person" ? OWNERS.length : 0;
+
+  // Sync focus to active option on open.
+  useEffect(() => {
+    if (!open) return;
+    if (filter.kind === "region") {
+      const i = REGIONS.findIndex((r) => r.key === filter.region);
+      setFocusedIdx(i >= 0 ? i : 0);
+    } else if (filter.kind === "person") {
+      const i = OWNERS.findIndex((o) => o.id === filter.ownerId);
+      setFocusedIdx(i >= 0 ? i : 0);
+    } else {
+      setFocusedIdx(0);
+    }
+  }, [open, filter]);
+
+  // Keyboard nav while the dropdown is open.
+  const focusedRef = useRef(focusedIdx);
+  focusedRef.current = focusedIdx;
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setFocusedIdx((i) => Math.min(optionsLength - 1, i + 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setFocusedIdx((i) => Math.max(0, i - 1));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const f = filterRef.current;
+        const idx = focusedRef.current;
+        if (f.kind === "region" && REGIONS[idx]) {
+          setFilter({ kind: "region", region: REGIONS[idx].key });
+        } else if (f.kind === "person" && OWNERS[idx]) {
+          setFilter({ kind: "person", ownerId: OWNERS[idx].id });
+        }
+        setOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open, optionsLength, setFilter]);
 
   // Memoised display values for the pill. The "all" case is filtered out by
   // the parent before this component renders, but we still narrow defensively.
@@ -288,13 +422,14 @@ function FilterValuePill({ filter, setFilter, isDefault, setAsDefault, clearDefa
 
         {open && (
           <Dropdown header="Region" sub="Filter dashboards by country">
-            {REGIONS.map((opt) => (
+            {REGIONS.map((opt, i) => (
               <DropdownOption
                 key={opt.key}
                 label={opt.label}
                 sub={opt.key}
                 icon={opt.key}
                 active={filter.region === opt.key}
+                focused={focusedIdx === i}
                 onClick={() => {
                   setFilter({ kind: "region", region: opt.key });
                   setOpen(false);
@@ -343,7 +478,7 @@ function FilterValuePill({ filter, setFilter, isDefault, setAsDefault, clearDefa
 
       {open && (
         <Dropdown header="Person" sub="Filter dashboards by owner">
-          {OWNERS.map((o) => (
+          {OWNERS.map((o, i) => (
             <DropdownOption
               key={o.id}
               label={o.name}
@@ -351,6 +486,7 @@ function FilterValuePill({ filter, setFilter, isDefault, setAsDefault, clearDefa
               icon={o.name[0]}
               color={o.color}
               active={filter.ownerId === o.id}
+              focused={focusedIdx === i}
               onClick={() => {
                 setFilter({ kind: "person", ownerId: o.id });
                 setOpen(false);
@@ -505,6 +641,7 @@ function DropdownOption({
   icon,
   color,
   active,
+  focused,
   onClick,
 }: {
   label: string;
@@ -512,6 +649,7 @@ function DropdownOption({
   icon: string;
   color?: string;
   active: boolean;
+  focused?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -524,17 +662,18 @@ function DropdownOption({
         gap: 10,
         padding: "8px 10px",
         borderRadius: 8,
-        background: active ? "var(--beige-new)" : "transparent",
+        background: focused ? "var(--light-grey)" : active ? "var(--beige-new)" : "transparent",
+        boxShadow: focused ? "inset 3px 0 0 var(--moss)" : "none",
         color: "var(--moss)",
         textAlign: "left",
         cursor: "pointer",
-        transition: "background 0.12s",
+        transition: "background 0.12s, box-shadow 0.12s",
       }}
       onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = "var(--light-grey)";
+        if (!active && !focused) e.currentTarget.style.background = "var(--light-grey)";
       }}
       onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.background = "transparent";
+        if (!active && !focused) e.currentTarget.style.background = "transparent";
       }}
     >
       <span

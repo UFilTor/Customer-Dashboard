@@ -732,14 +732,7 @@ function AttentionPanel({
             >
               <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
                 {list.map((d, i) => (
-                  <div
-                    key={d.dealId}
-                    style={{
-                      animation: `staggerIn 320ms cubic-bezier(0.22, 1, 0.36, 1) ${80 + Math.min(i, 10) * 24}ms both`,
-                    }}
-                  >
-                    <StuckCard deal={d} onClick={() => onSelect(d)} />
-                  </div>
+                  <StuckCard key={d.dealId} deal={d} onClick={() => onSelect(d)} index={i} />
                 ))}
               </div>
             </Section>
@@ -2174,9 +2167,10 @@ function BriefRow({
    Stuck card (used by AttentionPanel)
    ===================================================== */
 
-function StuckCard({ deal: d, onClick }: { deal: OnboardingDeal; onClick: () => void }) {
+function StuckCard({ deal: d, onClick, index = 0 }: { deal: OnboardingDeal; onClick: () => void; index?: number }) {
   const ownerLocal = OWNER_MAP[d.ownerId] || null;
   const overBy = d.daysInStep - d.expectedDaysInStep;
+  const delay = 80 + Math.min(index, 10) * 24;
   return (
     <button
       onClick={onClick}
@@ -2191,6 +2185,7 @@ function StuckCard({ deal: d, onClick }: { deal: OnboardingDeal; onClick: () => 
         alignItems: "center",
         textAlign: "left",
         cursor: "pointer",
+        animation: `staggerIn 320ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms both`,
       }}
     >
       <div style={{ minWidth: 0 }}>

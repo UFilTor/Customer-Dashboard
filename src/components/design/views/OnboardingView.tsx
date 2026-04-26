@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   OnboardingDeal,
   OnboardingHistoryEntry,
@@ -27,6 +27,12 @@ interface Props {
   meetings: OnboardingMeetingEntry[];
   filterLabel?: string | null;
   onSelect: (deal: OnboardingDeal) => void;
+  // Day strip integration: which dayKeys have been fetched (so the meeting
+  // panel can show a "fetch this day" button on others), which are currently
+  // in flight, and a callback to trigger a single-day fetch.
+  fetchedDays?: Set<string>;
+  fetchingDays?: Set<string>;
+  onFetchDay?: (dayKey: string) => void;
 }
 
 // Tightened "Needs attention" rule per design ask:
@@ -34,11 +40,12 @@ interface Props {
 const ATTENTION_OVERDUE_THRESHOLD_DAYS = 30;
 
 // Day strip: 5 weekdays visible at a time, selected one centred. Generate
-// enough weekdays before + after today so the centre always has neighbours.
+// enough weekdays before + after today so the centre always has neighbours
+// AND the user can navigate to days outside the default fetched window
+// (those days show a "fetch this day" button instead of meetings).
 const VISIBLE_DAYS = 5;
 const PAST_WEEKDAYS = 4;
-// Today + next 2 weekdays = 3 upcoming days, matching the API's 3-day fetch horizon.
-const FUTURE_WEEKDAYS = 2;
+const FUTURE_WEEKDAYS = 9;
 
 // Local-date day key (NOT toISOString — that flips across midnight in UTC).
 function dayKey(d: Date): string {
@@ -77,6 +84,9 @@ export function OnboardingView({
   meetings,
   filterLabel,
   onSelect,
+  fetchedDays,
+  fetchingDays,
+  onFetchDay,
 }: Props) {
   if (subview === "attention") {
     return (
@@ -93,6 +103,9 @@ export function OnboardingView({
       meetings={meetings}
       filterLabel={filterLabel}
       onSelect={onSelect}
+      fetchedDays={fetchedDays}
+      fetchingDays={fetchingDays}
+      onFetchDay={onFetchDay}
     />
   );
 }
@@ -106,11 +119,17 @@ function MeetingsPanel({
   meetings,
   filterLabel,
   onSelect,
+  fetchedDays,
+  fetchingDays,
+  onFetchDay,
 }: {
   deals: OnboardingDeal[];
   meetings: OnboardingMeetingEntry[];
   filterLabel?: string | null;
   onSelect: (deal: OnboardingDeal) => void;
+  fetchedDays?: Set<string>;
+  fetchingDays?: Set<string>;
+  onFetchDay?: (dayKey: string) => void;
 }) {
   const total = deals.length;
   const totalAcv = deals.reduce((s, d) => s + d.acv, 0);
@@ -152,6 +171,55 @@ function MeetingsPanel({
   const selectedKey = dayKey(selectedDay);
   const dayMeetings = meetingsByDay.get(selectedKey) || [];
   const meetingsTodayCount = (meetingsByDay.get(dayKey(today)) || []).length;
+
+  // Focused meeting card for ↑/↓ keyboard nav. Resets to the first meeting
+  // when the user switches days. Refs mirror the latest values so the
+  // window-level event listeners don't need to attach/detach on every change.
+  const [focusedMeetingIdx, setFocusedMeetingIdx] = useState(0);
+  useEffect(() => {
+    setFocusedMeetingIdx(0);
+  }, [selectedKey]);
+
+  const meetingsContainerRef = useRef<HTMLDivElement | null>(null);
+  const dayMeetingsRef = useRef(dayMeetings);
+  dayMeetingsRef.current = dayMeetings;
+  const focusedIdxRef = useRef(focusedMeetingIdx);
+  focusedIdxRef.current = focusedMeetingIdx;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  useEffect(() => {
+    function onNav(e: Event) {
+      const dir = (e as CustomEvent<"prev" | "next">).detail;
+      setFocusedMeetingIdx((cur) => {
+        const list = dayMeetingsRef.current;
+        if (list.length === 0) return 0;
+        const max = list.length - 1;
+        return dir === "prev" ? Math.max(0, cur - 1) : Math.min(max, cur + 1);
+      });
+    }
+    function onOpen() {
+      const m = dayMeetingsRef.current[focusedIdxRef.current];
+      if (m) onSelectRef.current(m.deal);
+    }
+    window.addEventListener("ud-onboarding-meeting-nav", onNav);
+    window.addEventListener("ud-onboarding-meeting-open", onOpen);
+    return () => {
+      window.removeEventListener("ud-onboarding-meeting-nav", onNav);
+      window.removeEventListener("ud-onboarding-meeting-open", onOpen);
+    };
+  }, []);
+
+  // Centre the focused card in the viewport when arrow nav lands on it, so
+  // the whole brief is visible rather than clipped at the top/bottom edge.
+  useEffect(() => {
+    const root = meetingsContainerRef.current;
+    if (!root) return;
+    const target = root.querySelector(`[data-meeting-idx="${focusedMeetingIdx}"]`);
+    if (target && typeof (target as HTMLElement).scrollIntoView === "function") {
+      (target as HTMLElement).scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [focusedMeetingIdx]);
 
   // Classify by hs_activity_type — the property HubSpot uses for "Onboarding"
   // vs "Follow up meeting" tagging.
@@ -203,7 +271,7 @@ function MeetingsPanel({
                   )}
                 </>
               )}
-              . {meetings.length} meetings booked across the next 3 days. Combined ACV in
+              . {meetings.length} meetings booked across the next 5 work days. Combined ACV in
               onboarding: {fmtMrr(totalAcv)}.
             </>
           }
@@ -216,7 +284,7 @@ function MeetingsPanel({
             display: "grid",
             gridTemplateColumns: "repeat(4, 1fr)",
             gap: 14,
-            marginBottom: 28,
+            marginBottom: 6,
           }}
         >
           <KpiTile label="In onboarding" value={<CountUpInt value={total} />} sub={`${fmtMrr(totalAcv)} ACV`} />
@@ -246,12 +314,41 @@ function MeetingsPanel({
           />
         </Stagger>
 
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            marginBottom: 6,
+            minHeight: 32,
+          }}
+        >
+          <button
+            onClick={() => setSelectedIdx(todayIdx)}
+            aria-label="Back to today"
+            style={{
+              visibility: selectedIdx === todayIdx ? "hidden" : "visible",
+              padding: "6px 12px",
+              borderRadius: 8,
+              background: "var(--moss)",
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Back to today
+          </button>
+        </div>
         <DayStrip
           weekdays={weekdays}
           meetingsByDay={meetingsByDay}
           selectedIdx={selectedIdx}
           setSelectedIdx={setSelectedIdx}
           today={today}
+          todayIdx={todayIdx}
+          fetchedDays={fetchedDays}
         />
 
         <Section
@@ -267,23 +364,44 @@ function MeetingsPanel({
           subtitle="Your full brief before you join"
           count={dayMeetings.length}
         >
-          {dayMeetings.length === 0 ? (
+          {fetchedDays && !fetchedDays.has(selectedKey) ? (
+            <FetchDayButton
+              dayLabel={selectedDay.toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
+              loading={!!fetchingDays?.has(selectedKey)}
+              onFetch={() => onFetchDay?.(selectedKey)}
+            />
+          ) : dayMeetings.length === 0 ? (
             <EmptyState text={isToday ? "No meetings today. Enjoy the focus time." : "No meetings on this day."} />
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 20 }}>
-              {dayMeetings.map((entry, i) => (
-                <div
-                  key={entry.meeting.id}
-                  style={{
-                    animation: `staggerIn 360ms cubic-bezier(0.22, 1, 0.36, 1) ${100 + Math.min(i, 8) * 60}ms both`,
-                  }}
-                >
-                  <MeetingBriefCard
-                    entry={entry}
-                    onSelect={() => onSelect(entry.deal)}
-                  />
-                </div>
-              ))}
+            <div
+              ref={meetingsContainerRef}
+              style={{ display: "grid", gridTemplateColumns: "1fr", gap: 20 }}
+            >
+              {dayMeetings.map((entry, i) => {
+                const isFocused = i === focusedMeetingIdx;
+                return (
+                  <div
+                    key={entry.meeting.id}
+                    data-meeting-idx={i}
+                    style={{
+                      animation: `staggerIn 360ms cubic-bezier(0.22, 1, 0.36, 1) ${100 + Math.min(i, 8) * 60}ms both`,
+                      borderRadius: 16,
+                      outline: isFocused ? "2px solid var(--moss)" : "2px solid transparent",
+                      outlineOffset: 2,
+                      transition: "outline-color 120ms ease",
+                    }}
+                  >
+                    <MeetingBriefCard
+                      entry={entry}
+                      onSelect={() => onSelect(entry.deal)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           )}
         </Section>
@@ -333,12 +451,16 @@ function DayStrip({
   selectedIdx,
   setSelectedIdx,
   today,
+  todayIdx,
+  fetchedDays,
 }: {
   weekdays: Date[];
   meetingsByDay: Map<string, OnboardingMeetingEntry[]>;
   selectedIdx: number;
   setSelectedIdx: (n: number) => void;
   today: Date;
+  todayIdx: number;
+  fetchedDays?: Set<string>;
 }) {
   // Visible window: 5 entries, selected centred where possible.
   // Clamp at the edges so we don't slice past the array bounds.
@@ -376,13 +498,14 @@ function DayStrip({
           const count = (meetingsByDay.get(k) || []).length;
           const isActive = idx === selectedIdx;
           const isToday = k === dayKey(today);
+          const isFetched = !fetchedDays || fetchedDays.has(k);
           return (
             <button
               key={k}
               onClick={() => setSelectedIdx(idx)}
               style={{
                 background: isActive ? "var(--moss)" : "var(--light-grey)",
-                border: `1px solid ${isActive ? "var(--moss)" : "var(--beige-gray)"}`,
+                border: `1px ${isFetched ? "solid" : "dashed"} ${isActive ? "var(--moss)" : "var(--beige-gray)"}`,
                 borderRadius: 12,
                 padding: "10px 8px",
                 textAlign: "center",
@@ -392,6 +515,7 @@ function DayStrip({
                 gap: 4,
                 color: isActive ? "#fff" : "var(--moss)",
                 transition: "all 160ms ease",
+                opacity: !isFetched && !isActive ? 0.7 : 1,
               }}
             >
               <span
@@ -425,7 +549,11 @@ function DayStrip({
                   fontStyle: "italic",
                 }}
               >
-                {count > 0 ? `${count} mtg${count === 1 ? "" : "s"}` : "—"}
+                {!isFetched
+                  ? "fetch"
+                  : count > 0
+                    ? `${count} mtg${count === 1 ? "" : "s"}`
+                    : "—"}
               </span>
             </button>
           );
@@ -988,6 +1116,58 @@ function EmptyState({ text }: { text: string }) {
       }}
     >
       {text}
+    </div>
+  );
+}
+
+function FetchDayButton({
+  dayLabel,
+  loading,
+  onFetch,
+}: {
+  dayLabel: string;
+  loading: boolean;
+  onFetch: () => void;
+}) {
+  return (
+    <div
+      style={{
+        background: "var(--light-grey)",
+        border: "1px dashed var(--beige-gray)",
+        borderRadius: 14,
+        padding: "36px 20px",
+        textAlign: "center",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 12,
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "var(--font-editorial)",
+          fontStyle: "italic",
+          fontSize: 14,
+          color: "var(--green-100)",
+        }}
+      >
+        {dayLabel} hasn&apos;t been fetched yet.
+      </span>
+      <button
+        onClick={onFetch}
+        disabled={loading}
+        style={{
+          padding: "9px 16px",
+          borderRadius: 10,
+          background: loading ? "var(--green-100)" : "var(--moss)",
+          color: "#fff",
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: loading ? "wait" : "pointer",
+        }}
+      >
+        {loading ? "Fetching…" : "Fetch this day"}
+      </button>
     </div>
   );
 }

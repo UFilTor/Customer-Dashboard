@@ -26,6 +26,30 @@ function filterKey(filter: GlobalFilter): string {
   return [...ids].sort().join(",");
 }
 
+// Local-date YYYY-MM-DD (don't toISOString — that flips across midnight UTC).
+function dayKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// Returns dayKeys for `start` (if it's a workday) plus the next workdays,
+// totalling `n` workdays. Mirrors endOfNthWorkDay() on the server so the
+// frontend can pre-populate the "fetched" set without a round-trip.
+function nextNWorkDayKeys(start: Date, n: number): string[] {
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  const keys: string[] = [];
+  if (cursor.getDay() !== 0 && cursor.getDay() !== 6) keys.push(dayKey(cursor));
+  while (keys.length < n) {
+    cursor.setDate(cursor.getDate() + 1);
+    const wd = cursor.getDay();
+    if (wd !== 0 && wd !== 6) keys.push(dayKey(cursor));
+  }
+  return keys;
+}
+
 export function OnboardingContainer({
   subview,
   filter,
@@ -38,6 +62,29 @@ export function OnboardingContainer({
   const [error, setError] = useState<string | null>(null);
 
   const key = filterKey(filter);
+
+  // Day keys we have meetings for. Seeded with the bulk endpoint's default
+  // window (today + 4 forward workdays) so the strip doesn't show "fetch"
+  // buttons on the days that are already loaded.
+  const defaultFetchedKeys = useMemo(() => {
+    const now = new Date();
+    return nextNWorkDayKeys(now, 5);
+  }, [key]); // recompute on filter switch — keeps Set fresh post-reset
+
+  const [fetchedDays, setFetchedDays] = useState<Set<string>>(
+    () => new Set(defaultFetchedKeys)
+  );
+  // Days currently in flight to /api/onboarding/day so the button can show a
+  // loading state and we don't fire duplicate requests on rapid clicks.
+  const [fetchingDays, setFetchingDays] = useState<Set<string>>(new Set());
+
+  // Reset the fetched-day set whenever the filter changes — the per-filter
+  // bulk fetch returns a fresh window, and previously manually-fetched days
+  // belong to a different filter scope's cache key on the server.
+  useEffect(() => {
+    setFetchedDays(new Set(defaultFetchedKeys));
+    setFetchingDays(new Set());
+  }, [key, defaultFetchedKeys]);
   // We deliberately read from a ref so fetchData stays stable across data
   // updates — the effect below already keys on `key` for refetch triggers.
   const dataRef = useRef<OnboardingResponse | null>(null);
@@ -68,6 +115,49 @@ export function OnboardingContainer({
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+
+  // Fetch a single day's meetings on-demand. Merges into data.meetings,
+  // replacing any existing entries for that day so we don't duplicate.
+  const fetchDay = useCallback(async (dateKey: string) => {
+    if (fetchingDays.has(dateKey)) return;
+    setFetchingDays((prev) => {
+      const next = new Set(prev);
+      next.add(dateKey);
+      return next;
+    });
+    try {
+      const params = new URLSearchParams({ date: dateKey });
+      if (key !== "all") params.set("ownerIds", key);
+      const res = await fetch(`/api/onboarding/day?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to load day");
+      const json: { meetings: OnboardingMeetingEntry[] } = await res.json();
+      setData((prev) => {
+        if (!prev) return prev;
+        const dropOldOnDay = prev.meetings.filter(
+          (m) => dayKey(new Date(m.meeting.startsAt)) !== dateKey
+        );
+        return {
+          ...prev,
+          meetings: [...dropOldOnDay, ...json.meetings].sort((a, b) =>
+            a.meeting.startsAt.localeCompare(b.meeting.startsAt)
+          ),
+        };
+      });
+      setFetchedDays((prev) => {
+        const next = new Set(prev);
+        next.add(dateKey);
+        return next;
+      });
+    } catch {
+      // Surfaced via the button staying in its un-fetched state — user can retry.
+    } finally {
+      setFetchingDays((prev) => {
+        const next = new Set(prev);
+        next.delete(dateKey);
+        return next;
+      });
+    }
+  }, [key, fetchingDays]);
 
   // Stable comma-joined string of deal IDs that need history. Memoised so the
   // history effect below only fires when the SET of deals changes, not when
@@ -102,7 +192,13 @@ export function OnboardingContainer({
           const mergeFor = (dealId: string, current: OnboardingHistoryEntry[]) => {
             const extra = json[dealId];
             if (!extra || extra.length === 0) return current;
-            return [...current, ...extra].sort(
+            // Dedup by entry.id — the effect can re-fire after a per-day
+            // fetch, and re-merging against already-merged history would
+            // otherwise duplicate thread:* keys.
+            const seen = new Set(current.map((e) => e.id));
+            const fresh = extra.filter((e) => !seen.has(e.id));
+            if (fresh.length === 0) return current;
+            return [...current, ...fresh].sort(
               (a, b) => b.occurredAt.localeCompare(a.occurredAt)
             );
           };
@@ -197,6 +293,9 @@ export function OnboardingContainer({
         meetings={filtered.meetings}
         filterLabel={filterLabel}
         onSelect={onSelectDeal}
+        fetchedDays={fetchedDays}
+        fetchingDays={fetchingDays}
+        onFetchDay={fetchDay}
       />
     </div>
   );

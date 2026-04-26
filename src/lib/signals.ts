@@ -55,16 +55,37 @@ export function sortBySignal<T extends AttentionCompany & { signal?: AttentionSi
 
 export type FlatCompany = AttentionCompany & { signal: AttentionSignal };
 
+// Flatten signal groups, deduping by company id so each company appears in at
+// most one section. Priority follows SECTION_ORDER — a company that's both
+// "overdue invoice" and "health drop" surfaces only under overdue invoices.
 export function flattenGroups(groups: AttentionGroup[]): FlatCompany[] {
+  const bySignal = new Map<AttentionSignal, AttentionCompany[]>();
+  for (const g of groups) bySignal.set(g.signal, g.companies);
+
   const seen = new Set<string>();
   const out: FlatCompany[] = [];
+
+  // Highest-priority signals first.
+  for (const signal of SECTION_ORDER) {
+    const companies = bySignal.get(signal);
+    if (!companies) continue;
+    for (const c of companies) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      out.push({ ...c, signal });
+    }
+  }
+
+  // Defensive: surface any signal not in SECTION_ORDER (shouldn't happen with
+  // current types, but keeps the function lossless if a new signal is added).
   for (const g of groups) {
+    if (SECTION_ORDER.includes(g.signal)) continue;
     for (const c of g.companies) {
-      const key = `${g.signal}:${c.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
       out.push({ ...c, signal: g.signal });
     }
   }
+
   return out;
 }

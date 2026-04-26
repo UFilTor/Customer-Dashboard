@@ -25,7 +25,7 @@ import { CompanyDetail } from "@/components/design/CompanyDetail";
 import { PayMigrationContainer } from "@/components/design/views/PayMigrationContainer";
 import { OnboardingContainer } from "@/components/design/views/OnboardingContainer";
 import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
-import { flattenGroups, type FlatCompany } from "@/lib/signals";
+import { flattenGroups, SECTION_ORDER, sortBySignal, type FlatCompany } from "@/lib/signals";
 import {
   effectiveOwnerIds,
   filterLabel as buildFilterLabel,
@@ -76,6 +76,12 @@ export default function Dashboard() {
     },
     [selectionScope]
   );
+  // Mirror the latest setter into a ref so the keyboard listener (attached
+  // once on mount) always writes to the current variant's selection slot.
+  // Without this, switching from briefing → split kept the listener pointed
+  // at the briefing slot and arrow keys silently no-op'd.
+  const setSelectedCompanyIdRef = useRef(setSelectedCompanyId);
+  setSelectedCompanyIdRef.current = setSelectedCompanyId;
   const [companyData, setCompanyData] = useState<DetailData | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -188,7 +194,7 @@ export default function Dashboard() {
   // Browser back/forward navigation
   useEffect(() => {
     function onPopState() {
-      setSelectedCompanyId(null);
+      setSelectedCompanyIdRef.current(null);
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -226,6 +232,16 @@ export default function Dashboard() {
     return allCompanies.filter((c) => (c.ownerId ? ids.has(c.ownerId) : false));
   }, [allCompanies, globalFilter]);
 
+  // Same sort order as the visible Brief / Split sections so keyboard nav
+  // tracks what the user is looking at instead of the raw API order.
+  const orderedCompanies: FlatCompany[] = useMemo(() => {
+    const out: FlatCompany[] = [];
+    for (const sig of SECTION_ORDER) {
+      out.push(...sortBySignal(sig, filteredCompanies.filter((c) => c.signal === sig)));
+    }
+    return out;
+  }, [filteredCompanies]);
+
   const totalCount = filteredCompanies.length;
   const urgentCount = filteredCompanies.filter((c) => c.signal === "overdue_invoices").length;
   const revenueAtRisk = filteredCompanies.reduce((s, c) => s + (c.revenue || 0), 0);
@@ -246,10 +262,10 @@ export default function Dashboard() {
   // runs in the capture phase so any noisy bubble-phase shortcuts from other
   // libraries / browser extensions can't swallow keys before us.
   const stateRef = useRef({
-    cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, filteredCompanies, onboardingSubview,
+    cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, orderedCompanies, onboardingSubview,
   });
   stateRef.current = {
-    cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, filteredCompanies, onboardingSubview,
+    cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, orderedCompanies, onboardingSubview,
   };
 
   // "g" prefix: press g, then [s|o|r|p|b] to jump dashboards (Gmail-style).
@@ -299,7 +315,7 @@ export default function Dashboard() {
         }
         if (s.selectedCompanyId) {
           if (window.history.state?.company) window.history.back();
-          else setSelectedCompanyId(null);
+          else setSelectedCompanyIdRef.current(null);
         }
         return;
       }
@@ -406,6 +422,33 @@ export default function Dashboard() {
         return;
       }
 
+      // Onboarding meeting prep — ↑ / ↓ moves between meeting cards on the
+      // selected day; Enter opens the focused card's deal.
+      if (
+        s.dashboard === "onboarding" &&
+        s.onboardingSubview === "meetings" &&
+        !s.selectedCompanyId &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown")
+      ) {
+        e.preventDefault();
+        window.dispatchEvent(
+          new CustomEvent("ud-onboarding-meeting-nav", {
+            detail: e.key === "ArrowUp" ? "prev" : "next",
+          })
+        );
+        return;
+      }
+      if (
+        s.dashboard === "onboarding" &&
+        s.onboardingSubview === "meetings" &&
+        !s.selectedCompanyId &&
+        e.key === "Enter"
+      ) {
+        e.preventDefault();
+        window.dispatchEvent(new Event("ud-onboarding-meeting-open"));
+        return;
+      }
+
       // Up / Down inside the Activity tab → move between engagement entries.
       // Always wins over queue nav so the user never accidentally swaps company.
       if (
@@ -438,7 +481,7 @@ export default function Dashboard() {
         (e.key === "ArrowUp" || e.key === "ArrowDown")
       ) {
         e.preventDefault();
-        const list = s.filteredCompanies;
+        const list = s.orderedCompanies;
         if (list.length === 0) return;
         const curIdx = list.findIndex((c) => c.id === s.selectedCompanyId);
         const nextIdx =
@@ -452,7 +495,7 @@ export default function Dashboard() {
         if (s.selectedCompanyId == null) {
           window.history.pushState({ company: true }, "");
         }
-        setSelectedCompanyId(next.id);
+        setSelectedCompanyIdRef.current(next.id);
         return;
       }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FlatCompany, SignalMeta } from "@/lib/signals";
 import { SIGNAL_MAP, SECTION_ORDER, sortBySignal } from "@/lib/signals";
 import { OWNER_MAP } from "@/lib/owners";
@@ -50,6 +50,22 @@ export function SplitView({
   updatedAt,
   showAvatar = true,
 }: SplitViewProps) {
+  // Sidebar scroll container — used to scroll the active row into view when
+  // arrow-key nav lands on a company that's outside the visible window.
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  // Whenever the selection changes, ensure the active row is visible. Uses
+  // block:"nearest" so it only scrolls when needed (no jump if already in view).
+  useEffect(() => {
+    if (!selectedId) return;
+    const root = listRef.current;
+    if (!root) return;
+    const el = root.querySelector(`[data-row-id="${CSS.escape(selectedId)}"]`);
+    if (el && typeof (el as HTMLElement).scrollIntoView === "function") {
+      (el as HTMLElement).scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [selectedId]);
+
   // Auto-select first company only when nothing is selected.
   // We deliberately do NOT auto-revert when the selection isn't in the queue,
   // so picking a company via ⌘K (which may not match the current filter) is preserved.
@@ -161,7 +177,7 @@ export function SplitView({
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto" }}>
+        <div ref={listRef} style={{ flex: 1, overflowY: "auto" }}>
           {grouped.map((g) => (
             <SplitGroup
               key={g.meta.key}
@@ -342,6 +358,7 @@ function SplitRow({ c, active, onClick, showAvatar, index }: { c: FlatCompany; a
   return (
     <button
       onClick={onClick}
+      data-row-id={c.id}
       className="hrow"
       style={{
         position: "relative",

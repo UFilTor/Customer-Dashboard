@@ -71,6 +71,24 @@ function daysSince(iso: string | null): number {
   return Math.max(0, Math.floor((Date.now() - t) / (24 * 60 * 60 * 1000)));
 }
 
+// End-of-day timestamp for the Nth work day starting from `start` (counts
+// `start` if it's a weekday). Used as the upper bound for meeting fetches
+// so the default window is always exactly 5 working days regardless of
+// whether today is Monday or Friday.
+function endOfNthWorkDay(start: Date, n: number): Date {
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  let counted = 0;
+  if (cursor.getDay() !== 0 && cursor.getDay() !== 6) counted = 1;
+  while (counted < n) {
+    cursor.setDate(cursor.getDate() + 1);
+    const wd = cursor.getDay();
+    if (wd !== 0 && wd !== 6) counted++;
+  }
+  cursor.setHours(23, 59, 59, 999);
+  return cursor;
+}
+
 function parseEnableUnderstoryPay(v: string | undefined): boolean | null {
   if (v == null || v === "") return null;
   if (v === "true") return true;
@@ -772,9 +790,12 @@ interface OnboardingPayload {
  * @param opts.ownerIds — when set, only deals owned by these CS owners are
  *                        fetched. Saves the per-deal enrichment cost when the
  *                        user is filtered down to a region or single person.
+ * @param opts.meetingFromIso / meetingToIso — overrides the default
+ *   today→endOfNthWorkDay(today, 5) meeting window. Used by the per-day
+ *   endpoint to fetch a single day outside the default window.
  */
 export async function buildOnboardingPayload(
-  opts: { ownerIds?: string[] } = {}
+  opts: { ownerIds?: string[]; meetingFromIso?: string; meetingToIso?: string } = {}
 ): Promise<OnboardingPayload> {
   const lifecycleDeals = await fetchLifecycleDeals(opts.ownerIds);
   if (lifecycleDeals.length === 0) {
@@ -808,10 +829,13 @@ export async function buildOnboardingPayload(
   // Build deals with full brief.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  // Meetings window: 3 days ahead. Trimmed from 7 to keep the payload small
-  // and avoid pulling a week of unrelated meetings the user won't act on.
-  const meetingHorizon = new Date(today);
-  meetingHorizon.setDate(meetingHorizon.getDate() + 3);
+  // Meetings window: today + the next 4 work days (5 work days total) by
+  // default. Days outside this window are fetched on-demand via the per-day
+  // endpoint, which calls back into this function with custom bounds.
+  const meetingFrom = opts.meetingFromIso ? new Date(opts.meetingFromIso) : today;
+  const meetingHorizon = opts.meetingToIso
+    ? new Date(opts.meetingToIso)
+    : endOfNthWorkDay(today, 5);
 
   const meetings: OnboardingMeetingEntry[] = [];
 
@@ -933,10 +957,10 @@ export async function buildOnboardingPayload(
       history,
     };
 
-    // Slot meetings inside the 7-day window into the flat list.
+    // Slot meetings inside the configured window into the flat list.
     for (const m of allMeetings) {
       const t = new Date(m.startsAt).getTime();
-      if (!isNaN(t) && t >= today.getTime() && t < meetingHorizon.getTime()) {
+      if (!isNaN(t) && t >= meetingFrom.getTime() && t < meetingHorizon.getTime()) {
         meetings.push({ meeting: m, deal });
       }
     }
@@ -955,7 +979,7 @@ export async function buildOnboardingPayload(
   if (csOwnerIds.length > 0) {
     const ownerDirect = await fetchUpcomingMeetingsByOwners(
       csOwnerIds,
-      today.toISOString(),
+      meetingFrom.toISOString(),
       meetingHorizon.toISOString()
     );
 

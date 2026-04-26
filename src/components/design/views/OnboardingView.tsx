@@ -180,14 +180,21 @@ function MeetingsPanel({
   // Focused history item *within* the focused meeting. Drives the
   // "→ enters Previous activity" flow and the toggle-expand behaviour.
   const [historyFocusedIdx, setHistoryFocusedIdx] = useState<number | null>(null);
-  useEffect(() => {
+
+  // Reset focus on day change and on meeting-focus change. Adjust-during-
+  // render (no useEffect) is React's recommended pattern for "respond to a
+  // prop / parent-state change with a state reset".
+  const [prevSelectedKey, setPrevSelectedKey] = useState(selectedKey);
+  if (prevSelectedKey !== selectedKey) {
+    setPrevSelectedKey(selectedKey);
     setFocusedMeetingIdx(null);
     setHistoryFocusedIdx(null);
-  }, [selectedKey]);
-  // Switching the focused meeting always clears the history sub-focus.
-  useEffect(() => {
+  }
+  const [prevFocusedMeetingIdx, setPrevFocusedMeetingIdx] = useState<number | null>(focusedMeetingIdx);
+  if (prevFocusedMeetingIdx !== focusedMeetingIdx) {
+    setPrevFocusedMeetingIdx(focusedMeetingIdx);
     setHistoryFocusedIdx(null);
-  }, [focusedMeetingIdx]);
+  }
 
   // Broadcast the two focus levels so page.tsx can route ←/→/↑/↓/Enter/Space
   // appropriately (day-shift vs meeting-nav vs history-nav vs toggle).
@@ -204,13 +211,17 @@ function MeetingsPanel({
 
   const meetingsContainerRef = useRef<HTMLDivElement | null>(null);
   const dayMeetingsRef = useRef(dayMeetings);
-  dayMeetingsRef.current = dayMeetings;
   const focusedIdxRef = useRef(focusedMeetingIdx);
-  focusedIdxRef.current = focusedMeetingIdx;
   const historyFocusedRef = useRef(historyFocusedIdx);
-  historyFocusedRef.current = historyFocusedIdx;
   const onSelectRef = useRef(onSelect);
-  onSelectRef.current = onSelect;
+  // Mirror the latest values so the once-attached event handlers below read
+  // fresh data without needing to re-bind on every change.
+  useEffect(() => {
+    dayMeetingsRef.current = dayMeetings;
+    focusedIdxRef.current = focusedMeetingIdx;
+    historyFocusedRef.current = historyFocusedIdx;
+    onSelectRef.current = onSelect;
+  });
 
   useEffect(() => {
     function onNav(e: Event) {
@@ -1321,8 +1332,10 @@ function MeetingBriefCard({
   // Toggle the keyboard-focused history item (only when this card is the
   // one with focus). Listener attaches/detaches with the focused state so
   // we never accidentally toggle on an off-screen card.
-  const focusedHistoryRef = useRef(historyFocusedIdx ?? null);
-  focusedHistoryRef.current = historyFocusedIdx ?? null;
+  const focusedHistoryRef = useRef<number | null>(historyFocusedIdx ?? null);
+  useEffect(() => {
+    focusedHistoryRef.current = historyFocusedIdx ?? null;
+  });
   useEffect(() => {
     if (!isFocused) return;
     function onToggle() {
@@ -1430,7 +1443,6 @@ function MeetingBriefCard({
             >
               {deal.companyName}
             </button>
-            <RiskPill level={deal.riskLevel} />
           </div>
           <div
             style={{

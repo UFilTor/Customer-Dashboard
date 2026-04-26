@@ -278,7 +278,7 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
         );
         if (!assocRes.ok) return [];
         const assocData = await assocRes.json();
-        let ids: string[] = assocData.results?.map((r: { id: string }) => r.id) || [];
+        const ids: string[] = assocData.results?.map((r: { id: string }) => r.id) || [];
         if (ids.length === 0) return [];
 
         // Batch read in chunks of 100 (HubSpot limit per batch)

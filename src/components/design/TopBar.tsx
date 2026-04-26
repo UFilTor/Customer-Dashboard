@@ -220,9 +220,13 @@ function FilterTypePill({ filter, setFilter, isDefault, setAsDefault, clearDefau
     setFocusedIdx(i >= 0 ? i : 0);
   }, [open, filter.kind]);
 
-  // Keyboard navigation while the dropdown is open.
+  // Keyboard navigation while the dropdown is open. The ref mirrors
+  // focusedIdx so the once-attached keydown listener always reads the
+  // latest selection without re-binding on every change.
   const focusedRef = useRef(focusedIdx);
-  focusedRef.current = focusedIdx;
+  useEffect(() => {
+    focusedRef.current = focusedIdx;
+  });
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -346,25 +350,39 @@ function FilterValuePill({ filter, setFilter, isDefault, setAsDefault, clearDefa
   // keyboard effect so we don't break hooks order on filter.kind changes.
   const optionsLength = filter.kind === "region" ? REGIONS.length : filter.kind === "person" ? OWNERS.length : 0;
 
-  // Sync focus to active option on open.
-  useEffect(() => {
-    if (!open) return;
-    if (filter.kind === "region") {
-      const i = REGIONS.findIndex((r) => r.key === filter.region);
-      setFocusedIdx(i >= 0 ? i : 0);
-    } else if (filter.kind === "person") {
-      const i = OWNERS.findIndex((o) => o.id === filter.ownerId);
-      setFocusedIdx(i >= 0 ? i : 0);
-    } else {
-      setFocusedIdx(0);
+  // Sync focus to active option on open. Adjust-during-render (using a
+  // composite key of open + filter identity) avoids a setState-in-effect.
+  const syncKey = open
+    ? filter.kind === "region"
+      ? `r:${filter.region}`
+      : filter.kind === "person"
+        ? `p:${filter.ownerId}`
+        : "all"
+    : null;
+  const [prevSyncKey, setPrevSyncKey] = useState<string | null>(null);
+  if (prevSyncKey !== syncKey) {
+    setPrevSyncKey(syncKey);
+    if (open) {
+      if (filter.kind === "region") {
+        const i = REGIONS.findIndex((r) => r.key === filter.region);
+        setFocusedIdx(i >= 0 ? i : 0);
+      } else if (filter.kind === "person") {
+        const i = OWNERS.findIndex((o) => o.id === filter.ownerId);
+        setFocusedIdx(i >= 0 ? i : 0);
+      } else {
+        setFocusedIdx(0);
+      }
     }
-  }, [open, filter]);
+  }
 
-  // Keyboard nav while the dropdown is open.
+  // Keyboard nav while the dropdown is open. Refs mirror focusedIdx +
+  // filter so the once-attached keydown listener reads fresh values.
   const focusedRef = useRef(focusedIdx);
-  focusedRef.current = focusedIdx;
   const filterRef = useRef(filter);
-  filterRef.current = filter;
+  useEffect(() => {
+    focusedRef.current = focusedIdx;
+    filterRef.current = filter;
+  });
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {

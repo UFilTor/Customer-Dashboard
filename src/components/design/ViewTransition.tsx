@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useState } from "react";
 import type { Variant, DashboardKey } from "./VariantPicker";
 
 const VARIANT_ORDER: Variant[] = ["briefing", "split", "kanban"];
@@ -27,35 +27,29 @@ interface Props {
 // control's left-to-right order. First render is a no-op so initial paint
 // stays snappy.
 export function ViewTransition({ dashboard, variant, children }: Props) {
-  const prevRef = useRef<{ dashboard: DashboardKey; variant: Variant } | null>(null);
-  const [mode, setMode] = useState<AnimMode>("none");
-  const [tick, setTick] = useState(0);
+  // Track the previous render's identity in state and adjust it during
+  // render — React's recommended pattern for "react to a prop change without
+  // useEffect". Computes the animation mode in the same pass.
+  const [prev, setPrev] = useState<{ dashboard: DashboardKey; variant: Variant } | null>(null);
 
-  useEffect(() => {
-    const prev = prevRef.current;
-    prevRef.current = { dashboard, variant };
-    if (!prev) return;
-
-    let next: AnimMode = "none";
+  let mode: AnimMode = "none";
+  if (prev) {
     if (prev.dashboard !== dashboard) {
-      next = "fade";
+      mode = "fade";
     } else if (prev.variant !== variant) {
       const a = VARIANT_ORDER.indexOf(prev.variant);
       const b = VARIANT_ORDER.indexOf(variant);
-      if (a !== -1 && b !== -1) {
-        next = b > a ? "slide-from-right" : "slide-from-left";
-      } else {
-        next = "fade";
-      }
-    } else {
-      return;
+      mode = a !== -1 && b !== -1 ? (b > a ? "slide-from-right" : "slide-from-left") : "fade";
     }
-    setMode(next);
-    setTick((t) => t + 1);
-  }, [dashboard, variant]);
+  }
+
+  // Convergent — only fires when the inputs actually changed.
+  if (!prev || prev.dashboard !== dashboard || prev.variant !== variant) {
+    setPrev({ dashboard, variant });
+  }
 
   return (
-    <div key={tick} className={classFor(mode)}>
+    <div key={`${dashboard}/${variant}`} className={classFor(mode)}>
       {children}
     </div>
   );

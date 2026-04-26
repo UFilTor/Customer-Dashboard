@@ -52,9 +52,11 @@ export function KanbanView({ companies, onSelect }: KanbanViewProps) {
   // page.tsx's "scroll to top on prev" semantics apply via the hook (we just
   // do nothing here — the hook only fires on ud-list-nav).
   const groupsRef = useRef(groups);
-  groupsRef.current = groups;
   const focusedIdxRef = useRef(focusedIdx);
-  focusedIdxRef.current = focusedIdx;
+  useEffect(() => {
+    groupsRef.current = groups;
+    focusedIdxRef.current = focusedIdx;
+  });
   useEffect(() => {
     function onColumnJump(e: Event) {
       const dir = (e as CustomEvent<"prev" | "next">).detail;

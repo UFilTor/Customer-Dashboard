@@ -19,11 +19,15 @@ export function useListKeyboardNav<T>(items: T[], onOpen: (item: T) => void) {
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const itemsRef = useRef(items);
-  itemsRef.current = items;
   const focusedRef = useRef(focusedIdx);
-  focusedRef.current = focusedIdx;
   const onOpenRef = useRef(onOpen);
-  onOpenRef.current = onOpen;
+  // Mirror the latest values so the once-attached listeners always read fresh
+  // data without re-binding on every render.
+  useEffect(() => {
+    itemsRef.current = items;
+    focusedRef.current = focusedIdx;
+    onOpenRef.current = onOpen;
+  });
 
   useEffect(() => {
     function onNav(e: Event) {
@@ -60,10 +64,13 @@ export function useListKeyboardNav<T>(items: T[], onOpen: (item: T) => void) {
   }, []);
 
   // Filter changes that resize the list invalidate any held index. Resetting
-  // on length-change is good enough — same-length swaps are rare.
-  useEffect(() => {
+  // on length-change is good enough — same-length swaps are rare. Uses
+  // adjust-during-render (React's recommended alternative to a reset effect).
+  const [prevLen, setPrevLen] = useState(items.length);
+  if (prevLen !== items.length) {
+    setPrevLen(items.length);
     setFocusedIdx(null);
-  }, [items.length]);
+  }
 
   // Centre the focused row in the viewport on every change.
   useEffect(() => {

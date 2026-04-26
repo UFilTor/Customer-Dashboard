@@ -153,7 +153,7 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
               <span style={{ height: 1, flex: "0 0 32px", background: "rgba(241,249,126,0.4)" }} />
               <span
                 style={{
-                  fontSize: 12,
+                  fontSize: 14,
                   color: "rgba(255,255,255,0.6)",
                   fontStyle: "italic",
                   fontFamily: "var(--font-editorial)",

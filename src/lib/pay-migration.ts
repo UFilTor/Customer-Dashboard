@@ -100,6 +100,46 @@ interface RawDeal {
   properties: Record<string, string>;
 }
 
+// HubSpot intermittently 429s or 5xx's individual page requests. The previous
+// pattern of `if (!res.ok) break` silently truncated the dataset (e.g. 200 of
+// 600 deals) and the partial result then got cached for 15 minutes. We retry
+// transient failures and throw on terminal failure so the cache rejects it.
+async function searchDealsPage(body: Record<string, unknown>): Promise<{
+  results: RawDeal[];
+  nextAfter: string | undefined;
+}> {
+  const RETRIES = 3;
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt <= RETRIES; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
+        method: "POST",
+        headers: hubspotHeaders(),
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      lastErr = e;
+      if (attempt === RETRIES) break;
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      continue;
+    }
+    if (res.ok) {
+      const data = await res.json();
+      return { results: data.results || [], nextAfter: data.paging?.next?.after };
+    }
+    // Retry on rate-limits and server errors. 4xx other than 429 are terminal.
+    if (res.status === 429 || res.status >= 500) {
+      lastErr = new Error(`HubSpot deal search ${res.status}`);
+      if (attempt === RETRIES) break;
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      continue;
+    }
+    throw new Error(`HubSpot deal search ${res.status}`);
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("HubSpot deal search failed");
+}
+
 async function fetchAllPayDeals(): Promise<RawDeal[]> {
   const allDeals: RawDeal[] = [];
   let after: string | undefined;
@@ -121,15 +161,9 @@ async function fetchAllPayDeals(): Promise<RawDeal[]> {
     };
     if (after) body.after = after;
 
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
-      method: "POST",
-      headers: hubspotHeaders(),
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) break;
-    const data = await res.json();
-    allDeals.push(...(data.results || []));
-    after = data.paging?.next?.after;
+    const { results, nextAfter } = await searchDealsPage(body);
+    allDeals.push(...results);
+    after = nextAfter;
   } while (after);
 
   return allDeals;

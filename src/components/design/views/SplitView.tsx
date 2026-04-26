@@ -66,15 +66,21 @@ export function SplitView({
     }
   }, [selectedId]);
 
-  // Auto-select first company only when nothing is selected.
-  // We deliberately do NOT auto-revert when the selection isn't in the queue,
-  // so picking a company via ⌘K (which may not match the current filter) is preserved.
+  // Auto-select the first company once on mount — fires when the list
+  // arrives, even if it was empty on the very first render. The ref guard
+  // ensures we never re-select after the user explicitly cleared the
+  // selection (Esc) and never thrash if companies updates more than once.
+  const didAutoSelectRef = useRef(false);
   useEffect(() => {
-    if (!selectedId && companies.length > 0) {
-      onSelect(companies[0]);
+    if (didAutoSelectRef.current) return;
+    if (selectedId) {
+      didAutoSelectRef.current = true;
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, companies.length]);
+    if (companies.length === 0) return;
+    didAutoSelectRef.current = true;
+    onSelect(companies[0]);
+  }, [selectedId, companies, onSelect]);
 
   // Sidebar buckets follow the canonical SECTION_ORDER and sort each bucket
   // with the same per-signal rules as BriefingView (days overdue / silent /

@@ -362,8 +362,9 @@ function MeetingsPanel({
                   )}
                 </>
               )}
-              . {meetings.length} meetings booked across the next 5 work days. Combined ACV in
-              onboarding: {fmtMrr(totalAcv)}.
+              . {meetings.length} meetings booked across the next 5 work days.
+              <br />
+              Combined ACV in onboarding: {fmtMrr(totalAcv)}.
             </>
           }
         />

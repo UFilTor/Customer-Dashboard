@@ -66,22 +66,6 @@ export function SplitView({
     }
   }, [selectedId]);
 
-  // Auto-select the first company once on mount — fires when the list
-  // arrives, even if it was empty on the very first render. The ref guard
-  // ensures we never re-select after the user explicitly cleared the
-  // selection (Esc) and never thrash if companies updates more than once.
-  const didAutoSelectRef = useRef(false);
-  useEffect(() => {
-    if (didAutoSelectRef.current) return;
-    if (selectedId) {
-      didAutoSelectRef.current = true;
-      return;
-    }
-    if (companies.length === 0) return;
-    didAutoSelectRef.current = true;
-    onSelect(companies[0]);
-  }, [selectedId, companies, onSelect]);
-
   // Sidebar buckets follow the canonical SECTION_ORDER and sort each bucket
   // with the same per-signal rules as BriefingView (days overdue / silent /
   // health drop, then revenue tie-break). Companies on signals not in
@@ -104,6 +88,24 @@ export function SplitView({
   // Flat order used by the next/prev pager — mirrors the bucketed order so
   // arrow navigation walks the sidebar from top to bottom.
   const flat = useMemo(() => grouped.flatMap((g) => g.items), [grouped]);
+
+  // Auto-select the first sidebar item once on mount — fires when the list
+  // arrives, even if it was empty on the very first render. Uses flat[0]
+  // (bucketed + sorted) rather than companies[0] (raw parent order) so the
+  // detail pane matches the visually-first row in the sidebar. The ref guard
+  // ensures we never re-select after the user explicitly cleared the
+  // selection (Esc) and never thrash if companies updates more than once.
+  const didAutoSelectRef = useRef(false);
+  useEffect(() => {
+    if (didAutoSelectRef.current) return;
+    if (selectedId) {
+      didAutoSelectRef.current = true;
+      return;
+    }
+    if (flat.length === 0) return;
+    didAutoSelectRef.current = true;
+    onSelect(flat[0]);
+  }, [selectedId, flat, onSelect]);
   const currentIdx = flat.findIndex((c) => c.id === selectedId);
   const next = () => flat[(currentIdx + 1) % flat.length] && onSelect(flat[(currentIdx + 1) % flat.length]);
   const prev = () =>

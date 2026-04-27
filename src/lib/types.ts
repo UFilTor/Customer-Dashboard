@@ -232,6 +232,10 @@ export interface OnboardingObNotes {
 export interface OnboardingObNotesExtended extends OnboardingObNotes {
   // From `enable_understory_pay` — true / false / null when not set.
   understoryPayEnabled: boolean | null;
+  contactName: string | null;
+  companyDomain: string | null;
+  storefrontLink: string | null;
+  payStatus: string | null;
 }
 
 export interface OnboardingCommercial {

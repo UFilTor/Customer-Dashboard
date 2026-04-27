@@ -69,6 +69,10 @@ const STEP_LABELS: Record<string, string> = {
   Adopted: "In progress",
 };
 
+function toWebUrl(domain: string): string {
+  return /^https?:\/\//i.test(domain) ? domain : `https://${domain}`;
+}
+
 function stepLabel(step: string): string {
   return STEP_LABELS[step] ?? step;
 }
@@ -1526,18 +1530,33 @@ function MeetingBriefCard({
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
         <div style={{ padding: "22px 24px", borderRight: "1px solid var(--hairline)" }}>
+          <BriefSectionTitle>Customer</BriefSectionTitle>
+          <BriefDL>
+            <BriefRow label="Contact" value={obNotes.contactName} optional />
+            <BriefRow
+              label="Website"
+              value={obNotes.companyDomain}
+              link={obNotes.companyDomain ? toWebUrl(obNotes.companyDomain) : null}
+              optional
+            />
+            <BriefRow
+              label="Storefront"
+              value={obNotes.storefrontLink}
+              link={obNotes.storefrontLink}
+              optional
+            />
+            {obNotes.understoryPayEnabled === true && (
+              <BriefRow label="Pay status" value={obNotes.payStatus ?? "Enabled"} />
+            )}
+            {obNotes.understoryPayEnabled === false && (
+              <BriefRow label="Understory Pay" value="No" />
+            )}
+          </BriefDL>
+
+          <div style={{ height: 22 }} />
+
           <BriefSectionTitle>OB Notes</BriefSectionTitle>
           <BriefDL>
-            <BriefRow
-              label="Understory Pay"
-              value={
-                obNotes.understoryPayEnabled === true
-                  ? "Yes"
-                  : obNotes.understoryPayEnabled === false
-                    ? "No"
-                    : null
-              }
-            />
             <BriefRow
               label="Experiences to create"
               value={obNotes.experiencesLink}

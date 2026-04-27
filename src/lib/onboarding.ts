@@ -154,6 +154,8 @@ const LIFECYCLE_DEAL_PROPS = [
   "self_onboarding",
   // OB Notes (Lookup 2)
   "enable_understory_pay",
+  "understory_pay_status__customer",
+  "storefront",
   "ob_note___customer_needs_",
   "ob_note___promises_made",
   "ob_note___link_to_experience_s__that_need_to_be_created_",
@@ -753,6 +755,7 @@ interface CompanyInfo {
   companyId: string;
   name: string;
   country: string | null;
+  domain: string | null;
 }
 
 async function fetchCompaniesForDeals(
@@ -766,6 +769,7 @@ async function fetchCompaniesForDeals(
   const companyProps = await fetchObjectsBatch("companies", uniqueCompanyIds, [
     "name",
     "understory_company_country",
+    "domain",
   ]);
 
   const out = new Map<string, CompanyInfo>();
@@ -776,6 +780,37 @@ async function fetchCompaniesForDeals(
       companyId,
       name: props.name || "Unknown",
       country: nullable(props.understory_company_country),
+      domain: nullable(props.domain),
+    });
+  }
+  return out;
+}
+
+interface ContactInfo {
+  firstName: string | null;
+  lastName: string | null;
+}
+
+async function fetchPrimaryContactsForDeals(
+  dealIds: string[]
+): Promise<Map<string, ContactInfo>> {
+  const dealAssocs = await fetchAssociations("deals", "contacts", dealIds);
+  const dealToContact = new Map<string, string>();
+  for (const a of dealAssocs) if (a.toIds[0]) dealToContact.set(a.fromId, a.toIds[0]);
+
+  const uniqueContactIds = Array.from(new Set(dealToContact.values()));
+  const contactProps = await fetchObjectsBatch("contacts", uniqueContactIds, [
+    "firstname",
+    "lastname",
+  ]);
+
+  const out = new Map<string, ContactInfo>();
+  for (const [dealId, contactId] of dealToContact) {
+    const props = contactProps.get(contactId);
+    if (!props) continue;
+    out.set(dealId, {
+      firstName: nullable(props.firstname),
+      lastName: nullable(props.lastname),
     });
   }
   return out;
@@ -808,9 +843,10 @@ export async function buildOnboardingPayload(
   // (used for upcoming bucket AND meeting-history). Calls and emails come from
   // /api/onboarding/history on demand — they're the expensive per-deal fetches
   // and the list never renders them.
-  const [companyMap, meetingsByDeal] = await Promise.all([
+  const [companyMap, meetingsByDeal, contactMap] = await Promise.all([
     fetchCompaniesForDeals(dealIds),
     fetchMeetingsForDeals(dealIds),
+    fetchPrimaryContactsForDeals(dealIds),
   ]);
 
   const companyIds = Array.from(
@@ -856,15 +892,23 @@ export async function buildOnboardingPayload(
     if (productHoldNote) blockers.push(`Product hold: ${productHoldNote}`);
     if (hibernationNote) blockers.push(`Hibernation: ${hibernationNote}`);
 
+    const company = companyMap.get(d.id);
+    const contact = contactMap.get(d.id);
+    const contactName = contact
+      ? [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim() || null
+      : null;
+
     const obNotes: OnboardingObNotesExtended = {
       understoryPayEnabled: parseEnableUnderstoryPay(p.enable_understory_pay),
       customerNeeds: nullable(p["ob_note___customer_needs_"]),
       promisesMade: nullable(p["ob_note___promises_made"]),
       experiencesLink: nullable(p["ob_note___link_to_experience_s__that_need_to_be_created_"]),
       growNotes: nullable(p["ob_note___grow_notes__if_booked_"]),
+      contactName,
+      companyDomain: company?.domain ?? null,
+      storefrontLink: nullable(p.storefront),
+      payStatus: nullable(p.understory_pay_status__customer),
     };
-
-    const company = companyMap.get(d.id);
 
     // Commercial — Lookup 2 lifecycle deal first.
     let firstBilling = formatFirstBilling(p.test_billing_start_date);
@@ -1000,6 +1044,7 @@ export async function buildOnboardingPayload(
       const orphanCompanyProps = await fetchObjectsBatch("companies", orphanCompanyIds, [
         "name",
         "understory_company_country",
+        "domain",
       ]);
 
       const orphanMeetings = dedupMeetings(
@@ -1060,6 +1105,10 @@ export async function buildOnboardingPayload(
             promisesMade: null,
             experiencesLink: null,
             growNotes: null,
+            contactName: null,
+            companyDomain: cprops ? nullable(cprops.domain) : null,
+            storefrontLink: null,
+            payStatus: null,
           },
           commercial: {
             monthlyFee: null,

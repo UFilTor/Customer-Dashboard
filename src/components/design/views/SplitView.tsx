@@ -414,15 +414,13 @@ function SplitRow({ c, active, onClick, showAvatar, index }: { c: FlatCompany; a
           style={{
             display: "flex",
             alignItems: "center",
+            justifyContent: "flex-end",
             gap: 6,
             marginTop: 4,
             fontSize: 12,
             color: "var(--green-100)",
           }}
         >
-          <span className="truncate-line" style={{ maxWidth: 220 }}>
-            {c.detail}
-          </span>
           <SignalValueInline c={c} />
         </div>
       </div>

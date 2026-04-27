@@ -98,9 +98,13 @@ export async function generateRecap(
 
 1. A summary (3-5 sentences): What was last discussed, any commitments or promises made, outstanding follow-ups, and how the relationship is trending.
 2. A suggested next action: A specific, actionable recommendation. Include an action type: "note", "task", "meeting", or "call".
+3. A confidence level for the suggested action: "low", "medium", or "high".
+   - high: clear signal in the activity history (a recent commitment, an explicit follow-up, an unresolved problem with a deadline).
+   - medium: a reasonable inference but not directly stated in the activity.
+   - low: no recent or relevant activity, you are guessing, the data is sparse, or the suggestion is generic.
 
 Respond with ONLY valid JSON in this exact format:
-{"summary": "...", "suggestedAction": {"text": "...", "type": "note|task|meeting|call"}}
+{"summary": "...", "suggestedAction": {"text": "...", "type": "note|task|meeting|call", "confidence": "low|medium|high"}}
 
 COMPANY CONTEXT:
 ${context}
@@ -122,12 +126,15 @@ ${activitySummary}`,
     if (!parsed.summary || !parsed.suggestedAction?.text || !parsed.suggestedAction?.type) {
       return { summary: null, suggestedAction: null, error: true };
     }
+    const rawConf = parsed.suggestedAction.confidence;
+    const confidence = rawConf === "high" || rawConf === "medium" || rawConf === "low" ? rawConf : "medium";
 
     return {
       summary: parsed.summary,
       suggestedAction: {
         text: parsed.suggestedAction.text,
         type: parsed.suggestedAction.type,
+        confidence,
       },
     };
   } catch (err) {

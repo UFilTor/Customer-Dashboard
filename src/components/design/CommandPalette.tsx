@@ -56,18 +56,21 @@ export function CommandPalette({
     }
   }, [open]);
 
-  // Live company search (debounced) when typing
+  // Live company search (debounced) when typing. AbortController cancels any
+  // in-flight request when the query changes, so a slow response for "stau"
+  // can't overwrite the fresh response for "stauning".
   useEffect(() => {
     if (!open) return;
-    if (q.length < 2) {
+    if (q.length < 1) {
       setResults([]);
       return;
     }
     setIsLoading(true);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const ctrl = new AbortController();
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/companies/search?q=${encodeURIComponent(q)}`);
+        const res = await fetch(`/api/companies/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
         if (!res.ok) {
           setResults([]);
           return;
@@ -75,14 +78,16 @@ export function CommandPalette({
         const data = await res.json();
         setResults(Array.isArray(data) ? data : []);
         setIdx(0);
-      } catch {
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setResults([]);
       } finally {
-        setIsLoading(false);
+        if (!ctrl.signal.aborted) setIsLoading(false);
       }
     }, 220);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      ctrl.abort();
     };
   }, [q, open]);
 
@@ -156,6 +161,9 @@ export function CommandPalette({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         className="animate-scaleIn"
         style={{
           width: 640,
@@ -169,6 +177,7 @@ export function CommandPalette({
         <div style={{ position: "relative" }}>
           <input
             ref={inputRef}
+            aria-label="Search companies or run a command"
             placeholder="Search companies or run a command…"
             value={q}
             onChange={(e) => { setQ(e.target.value); setIdx(0); }}
@@ -213,7 +222,7 @@ export function CommandPalette({
                 fontFamily: "var(--font-editorial)",
               }}
             >
-              {q.length >= 2 ? "No matches." : "Type to search, or pick a recent company."}
+              {q.length >= 1 ? "No matches." : "Type to search, or pick a recent company."}
             </div>
           )}
           {items.map((it, i) => {

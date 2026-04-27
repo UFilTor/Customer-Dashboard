@@ -97,7 +97,7 @@ export function RecapCardBig({ recap, companyId }: RecapCardBigProps) {
         )}
       </p>
 
-      {action?.text && (
+      {action?.text && action.confidence !== "low" && (
         <>
           <div style={{ height: 1, background: "var(--hairline)", margin: "18px 0 16px" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -132,7 +132,7 @@ export function RecapCardBig({ recap, companyId }: RecapCardBigProps) {
                 alignItems: "center",
                 gap: 6,
                 textDecoration: "none",
-                transition: "all 160ms ease",
+                transition: "background 160ms ease",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "var(--lichen)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "var(--citrus)"; }}

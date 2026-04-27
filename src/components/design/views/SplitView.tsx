@@ -332,7 +332,7 @@ function SplitGroup({
             padding: "2px 8px",
             borderRadius: 999,
             background: meta.urgent ? "var(--rust)" : "var(--moss)",
-            color: meta.urgent ? "#fff" : "var(--citrus)",
+            color: meta.urgent ? "var(--text-on-moss)" : "var(--citrus)",
             fontWeight: 700,
             letterSpacing: "0.02em",
           }}
@@ -376,7 +376,7 @@ function SplitRow({ c, active, onClick, showAvatar, index }: { c: FlatCompany; a
         padding: "12px 16px 12px 20px",
         textAlign: "left",
         background: active ? "var(--beige-new)" : "transparent",
-        transition: "all 0.2s cubic-bezier(0.8, 0.24, 0.16, 1)",
+        transition: "background 0.2s cubic-bezier(0.8, 0.24, 0.16, 1)",
         borderBottomStyle: "solid",
         borderBottomWidth: 1,
         borderBottomColor: "var(--hairline)",
@@ -545,7 +545,7 @@ function SignalValueInline({ c }: { c: FlatCompany }) {
     return (
       <span
         title={`${local ? `Outstanding ${local}` : "Outstanding"}${eur ? ` (${eur.replace("≈ ", "")})` : ""}${inv ? ` · ${inv} across the company's deals` : ""}`}
-        style={{ color: "#B8761F", fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}
+        style={{ color: "var(--status-warn-fg)", fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}
       >
         · {parts.join(" · ")}
       </span>
@@ -555,7 +555,7 @@ function SignalValueInline({ c }: { c: FlatCompany }) {
     return (
       <span
         title="Days since the most recent activity"
-        style={{ color: "#3D4E5F", fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}
+        style={{ color: "var(--status-info-fg)", fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}
       >
         · {c.daysSilent}d silent
       </span>

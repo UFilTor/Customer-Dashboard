@@ -40,39 +40,36 @@ export function TopBar({
   });
 
   return (
-    <nav
-      style={{
-        background: "var(--moss)",
-        color: "#fff",
-        display: "grid",
-        gridTemplateColumns: "auto 1fr auto",
-        alignItems: "center",
-        gap: 16,
-        padding: "10px 20px",
-        borderBottom: "1px solid #000",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          fontFamily: "var(--font-display)",
-          textTransform: "uppercase",
-          fontWeight: 700,
-          fontSize: 15,
-          letterSpacing: "0.02em",
-        }}
-      >
-        <Image
-          src="/understory-logo.png"
-          alt="Understory"
-          width={26}
-          height={26}
-          style={{ borderRadius: 6 }}
-          priority
-        />
-        <span>Understory</span>
+    <nav className="topbar-nav">
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontFamily: "var(--font-display)",
+            textTransform: "uppercase",
+            fontWeight: 700,
+            fontSize: 15,
+            letterSpacing: "0.02em",
+          }}
+        >
+          <Image
+            src="/understory-logo.png"
+            alt="Understory"
+            width={26}
+            height={26}
+            style={{ borderRadius: 6 }}
+            priority
+          />
+          <span>Understory</span>
+        </div>
+        {showBack && (
+          <button onClick={onBack} title="Back" style={pillStyle(false)}>
+            <Icon.ArrowLeft />
+            <span>Back</span>
+          </button>
+        )}
       </div>
 
       <div style={{ display: "flex", justifyContent: "center" }}>
@@ -114,12 +111,6 @@ export function TopBar({
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {showBack && (
-          <button onClick={onBack} title="Back" style={pillStyle(false)}>
-            <Icon.ArrowLeft />
-            <span>Back</span>
-          </button>
-        )}
         <FilterTypePill
           filter={filter}
           setFilter={setFilter}

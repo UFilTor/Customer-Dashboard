@@ -14,13 +14,12 @@ import { fmtMrr, relDays } from "@/lib/format-design";
 interface Props {
   companyId: string;
   data: CompanyDetailData & { owners: OwnerMap; stages: StageMap };
-  onBack?: () => void;
   embedded?: boolean;
 }
 
 const HUBSPOT_PORTAL = process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID;
 
-export function CompanyDetail({ companyId, data, onBack, embedded = false }: Props) {
+export function CompanyDetail({ companyId, data, embedded = false }: Props) {
   const { company, deal, owners, stages, engagements, recap } = data;
   const [tab, setTab] = useState<"overview" | "activity">("overview");
 
@@ -65,24 +64,6 @@ export function CompanyDetail({ companyId, data, onBack, embedded = false }: Pro
   return (
     <div className="animate-fadeIn" style={wrapperStyle}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 20 }}>
-        {onBack && (
-          <button
-            onClick={onBack}
-            style={{
-              padding: "8px 12px",
-              background: "var(--light-grey)",
-              border: "1px solid var(--beige-gray)",
-              borderRadius: 10,
-              color: "var(--moss)",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Icon.ArrowLeft />
-          </button>
-        )}
         <div style={{ flex: 1 }}>
           {stageLabel && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
@@ -195,7 +176,7 @@ export function CompanyDetail({ companyId, data, onBack, embedded = false }: Pro
               fontWeight: 700,
               color: tab === t ? "var(--moss)" : "var(--green-100)",
               marginBottom: -1,
-              transition: "all 0.2s cubic-bezier(0.8, 0.24, 0.16, 1)",
+              transition: "color 0.2s cubic-bezier(0.8, 0.24, 0.16, 1), border-bottom-color 0.2s cubic-bezier(0.8, 0.24, 0.16, 1)",
               background: "transparent",
               cursor: "pointer",
               borderBottomWidth: 2,
@@ -427,7 +408,7 @@ function PlatformActivityCard({ company }: { company: Record<string, string> }) 
           // eslint-disable-next-line react-hooks/purity -- relative date computed for display only
           ? Math.floor((Date.now() - date.getTime()) / 86400000)
           : null;
-        const tone = days == null ? "var(--green-100)" : days <= 2 ? "#0E7C4C" : days <= 14 ? "#B8761F" : "var(--rust)";
+        const tone = days == null ? "var(--green-100)" : days <= 2 ? "var(--status-good-bold)" : days <= 14 ? "var(--status-warn-bold)" : "var(--rust)";
         return (
           <div
             key={a.label}
@@ -506,7 +487,7 @@ function PayPipelineCard({ company, deal }: { company: Record<string, string>; d
         </div>
       ) : ineligible ? (
         <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#92400E" }}>Ineligible</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--status-warn-fg)" }}>Ineligible</div>
           {company.understory_pay_ineligible_reason && (
             <div style={{ fontSize: 12, color: "var(--green-100)", marginTop: 4 }}>
               {company.understory_pay_ineligible_reason}
@@ -578,7 +559,7 @@ function LifecycleDealCard({ deal, stages }: { deal: Record<string, string> | nu
       headerRight={
         deal.hs_object_id ? (
           <a
-            href={`https://app.hubspot.com/contacts/${HUBSPOT_PORTAL}/deal/${deal.hs_object_id}`}
+            href={`https://app.hubspot.com/contacts/${HUBSPOT_PORTAL}/record/0-3/${deal.hs_object_id}`}
             target="_blank"
             rel="noopener noreferrer"
             style={{ fontSize: 11.5, color: "var(--moss)", textDecoration: "underline" }}
@@ -597,7 +578,7 @@ function LifecycleDealCard({ deal, stages }: { deal: Record<string, string> | nu
 
 function CompanyInfoCard({ company, owners }: { company: Record<string, string>; owners: OwnerMap }) {
   const ownerLocal = OWNER_MAP[company.hubspot_owner_id || ""] || null;
-  const region = ownerLocal?.region || "—";
+  const region = ownerLocal?.region || "Unknown";
   const rows: { label: string; value: string; link?: boolean }[] = [];
   if (company.domain) rows.push({ label: "Domain", value: `https://${company.domain}`, link: true });
   rows.push({ label: "Owner", value: owners[company.hubspot_owner_id || ""] || "Unassigned" });
@@ -1282,8 +1263,8 @@ function ActivityPanel({ engagements, owners }: { engagements: Engagement[]; own
   }
 
   const colors: Record<ActivityViewItem["type"], { bg: string; fg: string }> = {
-    call: { bg: "var(--sky-blue)", fg: "#1E40AF" },
-    meeting: { bg: "var(--lilac)", fg: "#581C87" },
+    call: { bg: "var(--event-call-bg)", fg: "var(--event-call-fg)" },
+    meeting: { bg: "var(--event-meeting-bg)", fg: "var(--event-meeting-fg)" },
     note: { bg: "var(--beige)", fg: "var(--moss)" },
     email: { bg: "var(--lichen)", fg: "var(--moss)" },
   };

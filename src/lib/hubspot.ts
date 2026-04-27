@@ -30,13 +30,21 @@ function computeSearchRevenue(
 
 export async function searchCompanies(query: string): Promise<CompanySearchResult[]> {
   try {
+    // HubSpot's `query` parameter is whole-word + prefix only — partial fragments
+    // like "stau" miss "Stauning". Use CONTAINS_TOKEN with wildcards so any
+    // substring matches, and OR together name + domain to cover both lookups.
+    const wildcard = `*${query}*`;
     const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/search`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({
-        query: query,
+        filterGroups: [
+          { filters: [{ propertyName: "name", operator: "CONTAINS_TOKEN", value: wildcard }] },
+          { filters: [{ propertyName: "domain", operator: "CONTAINS_TOKEN", value: wildcard }] },
+        ],
+        sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
         properties: ["name", "domain", "health_score", "understory_booking_volume_12m", "createdate"],
-        limit: 5,
+        limit: 8,
       }),
     });
     if (!res.ok) return [];

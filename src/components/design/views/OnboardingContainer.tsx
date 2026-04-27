@@ -8,6 +8,7 @@ import type {
   OnboardingResponse,
 } from "@/lib/types";
 import { effectiveOwnerIds, type GlobalFilter } from "@/lib/owners";
+import { apiFetch } from "@/lib/api-fetch";
 import { OnboardingView } from "./OnboardingView";
 import type { OnboardingSubview } from "../VariantPicker";
 
@@ -90,7 +91,12 @@ export function OnboardingContainer({
   const dataRef = useRef<OnboardingResponse | null>(null);
   dataRef.current = data;
 
+  // Drop redundant refresh requests when one is already in flight (R-key spam,
+  // tab focus + manual refresh racing).
+  const inFlightRef = useRef(false);
   const fetchData = useCallback(async (refresh = false) => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     if (dataRef.current === null) setIsFirstLoading(true);
     else setIsRevalidating(true);
     setError(null);
@@ -99,15 +105,17 @@ export function OnboardingContainer({
       if (refresh) params.set("refresh", "true");
       if (key !== "all") params.set("ownerIds", key);
       const url = `/api/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Failed to load onboarding data");
+      const res = await apiFetch(url);
+      if (!res.ok) throw new Error(`Onboarding data unavailable (${res.status})`);
       const json: OnboardingResponse = await res.json();
       setData(json);
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message === "Session expired") return;
       setError("Could not load onboarding data. Try refreshing.");
     } finally {
       setIsFirstLoading(false);
       setIsRevalidating(false);
+      inFlightRef.current = false;
     }
   }, [key]);
 
@@ -138,8 +146,8 @@ export function OnboardingContainer({
     try {
       const params = new URLSearchParams({ date: dateKey });
       if (key !== "all") params.set("ownerIds", key);
-      const res = await fetch(`/api/onboarding/day?${params.toString()}`);
-      if (!res.ok) throw new Error("Failed to load day");
+      const res = await apiFetch(`/api/onboarding/day?${params.toString()}`);
+      if (!res.ok) throw new Error(`Day unavailable (${res.status})`);
       const json: { meetings: OnboardingMeetingEntry[] } = await res.json();
       setData((prev) => {
         if (!prev) return prev;
@@ -285,7 +293,7 @@ export function OnboardingContainer({
             padding: "8px 14px",
             borderRadius: 10,
             background: "var(--moss)",
-            color: "#fff",
+            color: "var(--text-on-moss)",
             cursor: "pointer",
           }}
         >

@@ -83,10 +83,19 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
   })();
   const healthDrops = companies.filter((c) => c.signal === "health_score").length;
 
-  const now = new Date();
-  const hour = now.getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  // Greeting + date depend on the user's local clock. SSR renders empty
+  // strings; client fills them on first paint. The two text nodes below carry
+  // suppressHydrationWarning so React does not flag the intentional swap.
+  const isClient = typeof window !== "undefined";
+  const greeting = isClient
+    ? (() => {
+        const h = new Date().getHours();
+        return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+      })()
+    : "";
+  const dateStr = isClient
+    ? new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+    : "";
 
   const overdueInvoices = urgent.filter((c) => c.signal === "overdue_invoices").length;
 
@@ -103,7 +112,7 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
         <div
           style={{
             background: "var(--moss)",
-            color: "#fff",
+            color: "var(--text-on-moss)",
             borderRadius: 20,
             padding: "36px 40px 32px",
             marginBottom: 28,
@@ -152,6 +161,7 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
               </span>
               <span style={{ height: 1, flex: "0 0 32px", background: "rgba(241,249,126,0.4)" }} />
               <span
+                suppressHydrationWarning
                 style={{
                   fontSize: 14,
                   color: "rgba(255,255,255,0.6)",
@@ -184,6 +194,7 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
             </div>
 
             <h1
+              suppressHydrationWarning
               style={{
                 margin: "0 0 8px",
                 fontFamily: "var(--font-editorial)",
@@ -192,14 +203,15 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
                 fontSize: 44,
                 lineHeight: 1.05,
                 letterSpacing: "-0.01em",
-                color: "#fff",
+                color: "var(--text-on-moss)",
                 maxWidth: 700,
               }}
             >
-              {greeting}.
+              {greeting}{greeting && "."}
             </h1>
 
             <h2
+              aria-live="polite"
               style={{
                 margin: "0 0 20px",
                 fontFamily: "var(--font-display)",
@@ -208,7 +220,7 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
                 fontWeight: 700,
                 lineHeight: 0.95,
                 letterSpacing: 0,
-                color: "#fff",
+                color: "var(--text-on-moss)",
               }}
             >
               <span className="citrus-wipe" style={{ color: "var(--moss)" }}>
@@ -240,7 +252,7 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
                 <>No overdue invoices or tasks today. </>
               )}
               Health scores dropped on{" "}
-              <strong style={{ color: "#fff" }}>{healthDrops}</strong> account
+              <strong style={{ color: "var(--text-on-moss)" }}>{healthDrops}</strong> account
               {healthDrops === 1 ? "" : "s"} this week.
             </p>
 
@@ -388,8 +400,9 @@ function SignalSection({
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: sig.color }} />
-        <span
+        <h3
           style={{
+            margin: 0,
             fontFamily: "var(--font-display)",
             textTransform: "uppercase",
             fontSize: 11,
@@ -399,7 +412,7 @@ function SignalSection({
           }}
         >
           {sig.label}
-        </span>
+        </h3>
         <InfoIcon tooltip={SIGNAL_TOOLTIPS[signal]} />
         <span style={{ fontSize: 12, color: "var(--green-100)", fontVariantNumeric: "tabular-nums" }}>
           {companies.length} account{companies.length === 1 ? "" : "s"}
@@ -445,7 +458,7 @@ function SignalSection({
                 textAlign: "left",
                 background: isFocused ? "var(--beige-new)" : "transparent",
                 boxShadow: isFocused ? "inset 3px 0 0 var(--moss)" : "none",
-                transition: "all 0.15s cubic-bezier(0.8, 0.24, 0.16, 1)",
+                transition: "background 0.15s cubic-bezier(0.8, 0.24, 0.16, 1), box-shadow 0.15s cubic-bezier(0.8, 0.24, 0.16, 1)",
                 cursor: "pointer",
                 animation: `staggerIn 320ms cubic-bezier(0.22, 1, 0.36, 1) ${80 + Math.min(i, 12) * 24}ms both`,
               }}
@@ -498,7 +511,7 @@ function SignalValueChip({ company: c }: { company: FlatCompany }) {
       : null;
     // Local first, then EUR equivalent — mixed-currency companies skip local.
     const parts = [days, local, local ? eur : eur, inv].filter(Boolean);
-    const text = parts.join(" · ") || "—";
+    const text = parts.join(" · ") || "n/a";
     return (
       <span
         title={`Oldest unpaid invoice is ${c.daysOverdue ?? 0}d past its due date · ${local ? `outstanding ${local}` : "outstanding"}${eur ? ` (${eur.replace("≈ ", "")})` : ""}${inv ? ` · ${inv} across the company's deals` : ""}`}
@@ -519,7 +532,7 @@ function SignalValueChip({ company: c }: { company: FlatCompany }) {
     return (
       <span
         title={`${local ? `Outstanding ${local}` : "Outstanding"}${eur ? ` (${eur.replace("≈ ", "")})` : ""}${inv ? ` · ${inv} across the company's deals` : ""}`}
-        style={{ ...baseStyle, background: "rgba(184,118,31,0.10)", color: "#B8761F" }}
+        style={{ ...baseStyle, background: "var(--status-warn-bg)", color: "var(--status-warn-fg)" }}
       >
         {parts.join(" · ")}
       </span>
@@ -530,7 +543,7 @@ function SignalValueChip({ company: c }: { company: FlatCompany }) {
     return (
       <span
         title="Days since the most recent activity"
-        style={{ ...baseStyle, background: "rgba(61,78,95,0.10)", color: "#3D4E5F" }}
+        style={{ ...baseStyle, background: "var(--status-info-bg)", color: "var(--status-info-fg)" }}
       >
         {c.daysSilent}d silent
       </span>

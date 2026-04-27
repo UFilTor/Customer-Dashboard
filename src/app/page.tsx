@@ -20,7 +20,6 @@ import { CommandPalette, type PaletteAction } from "@/components/design/CommandP
 import { ViewTransition } from "@/components/design/ViewTransition";
 import { BriefingView } from "@/components/design/views/BriefingView";
 import { SplitView } from "@/components/design/views/SplitView";
-import { KanbanView } from "@/components/design/views/KanbanView";
 import { CompanyDetail } from "@/components/design/CompanyDetail";
 import { PayMigrationContainer } from "@/components/design/views/PayMigrationContainer";
 import { OnboardingContainer } from "@/components/design/views/OnboardingContainer";
@@ -35,6 +34,7 @@ import {
   type GlobalFilter,
 } from "@/lib/owners";
 import { addRecentCompany, computeRevenueFromDetail } from "@/lib/recent-companies";
+import { apiFetch } from "@/lib/api-fetch";
 
 type DetailData = CompanyDetailData & { owners: OwnerMap; stages: StageMap };
 
@@ -54,7 +54,7 @@ export default function Dashboard() {
   const [isLoadingAttention, setIsLoadingAttention] = useState(true);
   const [errorAttention, setErrorAttention] = useState<string | null>(null);
 
-  // Selection state. Each Status-dashboard variant (briefing/split/kanban) owns
+  // Selection state. Each Status-dashboard variant (briefing/split) owns
   // its own slot — switching variants brings back what was selected there last,
   // so a detail view in split doesn't bleed over into briefing or vice versa.
   // Onboarding/pay_migration use the shared `_other` slot (they don't have
@@ -63,7 +63,6 @@ export default function Dashboard() {
   const [selectionByScope, setSelectionByScope] = useState<Record<SelectionScope, string | null>>({
     briefing: null,
     split: null,
-    kanban: null,
     _other: null,
   });
   const selectionScope: SelectionScope = dashboard === "status" ? variant : "_other";
@@ -85,6 +84,18 @@ export default function Dashboard() {
   const [companyData, setCompanyData] = useState<DetailData | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+
+  // Switching dashboards clears any open detail. Without this the previous
+  // dashboard's detail panel bleeds into the new dashboard until the user
+  // navigates away. "Adjust state during render" pattern keeps the eslint
+  // react-hooks/set-state-in-effect rule happy.
+  const [prevDashboard, setPrevDashboard] = useState(dashboard);
+  if (prevDashboard !== dashboard) {
+    setPrevDashboard(dashboard);
+    setSelectionByScope({ briefing: null, split: null, _other: null });
+    setCompanyData(null);
+    setDetailError(null);
+  }
 
   // UI state
   const [cmdkOpen, setCmdkOpen] = useState(false);
@@ -122,6 +133,7 @@ export default function Dashboard() {
     };
   }, []);
 
+
   // Persist view + filter choices across reloads.
   // Filter resolution order on load: pinned default → last-used → All.
   // Pinned default loads on every refresh; last-used keeps the session sticky
@@ -129,7 +141,7 @@ export default function Dashboard() {
   useEffect(() => {
     try {
       const v = localStorage.getItem("ud-v2-variant");
-      if (v === "briefing" || v === "split" || v === "kanban") setVariant(v);
+      if (v === "briefing" || v === "split") setVariant(v);
       const d = localStorage.getItem("ud-v2-dashboard");
       if (d === "status" || d === "pay_migration" || d === "onboarding") setDashboard(d);
       const pinned = parseFilter(localStorage.getItem("ud-v2-filter-default"));
@@ -176,11 +188,12 @@ export default function Dashboard() {
     setIsLoadingAttention(true);
     setErrorAttention(null);
     try {
-      const res = await fetch("/api/attention");
-      if (!res.ok) throw new Error("Failed to load attention");
+      const res = await apiFetch("/api/attention");
+      if (!res.ok) throw new Error(`Attention unavailable (${res.status})`);
       const json: AttentionResponse = await res.json();
       setAttention(json);
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message === "Session expired") return;
       setErrorAttention("Could not load data. Try refreshing.");
     } finally {
       setIsLoadingAttention(false);
@@ -200,8 +213,8 @@ export default function Dashboard() {
     setDetailError(null);
     (async () => {
       try {
-        const res = await fetch(`/api/companies/${selectedCompanyId}`);
-        if (!res.ok) throw new Error("Failed to load company");
+        const res = await apiFetch(`/api/companies/${selectedCompanyId}`);
+        if (!res.ok) throw new Error(`Company detail unavailable (${res.status})`);
         const data: DetailData = await res.json();
         if (cancelled) return;
         setCompanyData(data);
@@ -419,11 +432,6 @@ export default function Dashboard() {
           setVariant("split");
           return;
         }
-        if (e.key === "3") {
-          e.preventDefault();
-          setVariant("kanban");
-          return;
-        }
       }
 
       // Onboarding subviews: 1 = meeting prep, 2 = needs attention.
@@ -519,30 +527,12 @@ export default function Dashboard() {
         return;
       }
 
-      // Kanban column jump — ← / → moves focus to the previous / next
-      // signal column. Must come before the detail-tab handler since that
-      // also keys on ← / → (but only when a company is selected).
-      if (
-        s.dashboard === "status" &&
-        s.variant === "kanban" &&
-        !s.selectedCompanyId &&
-        (e.key === "ArrowLeft" || e.key === "ArrowRight")
-      ) {
-        e.preventDefault();
-        window.dispatchEvent(
-          new CustomEvent("ud-kanban-column-jump", {
-            detail: e.key === "ArrowLeft" ? "prev" : "next",
-          })
-        );
-        return;
-      }
-
-      // List navigation in full-page views (Briefing, By signal, Onboarding
-      // Needs attention). The active view subscribes to ud-list-nav /
-      // ud-list-open and manages its own focused state.
+      // List navigation in full-page views (Briefing, Onboarding Needs
+      // attention). The active view subscribes to ud-list-nav / ud-list-open
+      // and manages its own focused state.
       const inListView =
         !s.selectedCompanyId &&
-        ((s.dashboard === "status" && (s.variant === "briefing" || s.variant === "kanban")) ||
+        ((s.dashboard === "status" && s.variant === "briefing") ||
           (s.dashboard === "onboarding" && s.onboardingSubview === "attention"));
       if (inListView && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
         e.preventDefault();
@@ -708,7 +698,6 @@ export default function Dashboard() {
         <CompanyDetail
           companyId={selectedCompanyId}
           data={companyData}
-          onBack={back}
         />
       );
     } else if (detailError) {
@@ -751,7 +740,7 @@ export default function Dashboard() {
                   padding: "8px 14px",
                   borderRadius: 10,
                   background: "var(--moss)",
-                  color: "#fff",
+                  color: "var(--text-on-moss)",
                   cursor: "pointer",
                 }}
               >
@@ -771,20 +760,17 @@ export default function Dashboard() {
           />
         );
       }
-      if (variant === "split") {
-        return (
-          <SplitView
-            companies={filteredCompanies}
-            selectedId={null}
-            detailData={null}
-            isLoadingDetail={false}
-            onSelect={(c) => selectCompany(c.id)}
-            updatedAt={attention?.updatedAt || null}
-            showAvatar={globalFilter.kind !== "person"}
-          />
-        );
-      }
-      return <KanbanView companies={filteredCompanies} onSelect={(c) => selectCompany(c.id)} />;
+      return (
+        <SplitView
+          companies={filteredCompanies}
+          selectedId={null}
+          detailData={null}
+          isLoadingDetail={false}
+          onSelect={(c) => selectCompany(c.id)}
+          updatedAt={attention?.updatedAt || null}
+          showAvatar={globalFilter.kind !== "person"}
+        />
+      );
     })();
   }
 
@@ -846,7 +832,7 @@ export default function Dashboard() {
             left: "50%",
             transform: "translateX(-50%)",
             background: "var(--moss)",
-            color: "#fff",
+            color: "var(--text-on-moss)",
             padding: "10px 18px",
             borderRadius: 10,
             fontSize: 13,

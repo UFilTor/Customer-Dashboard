@@ -22,7 +22,7 @@ function ScoreRing({ label, value, size = 64 }: RingProps) {
   const c = 2 * Math.PI * r;
   const pct = Math.max(0, Math.min(100, value));
   const offset = c - (pct / 100) * c;
-  const color = pct >= 65 ? "#0E7C4C" : pct >= 40 ? "#B8761F" : "var(--rust)";
+  const color = pct >= 65 ? "var(--status-good-bold)" : pct >= 40 ? "var(--status-warn-bold)" : "var(--rust)";
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
       <div style={{ position: "relative", width: size, height: size }}>
@@ -116,7 +116,7 @@ export function HealthRings({ company }: { company: Record<string, string> }) {
                 color: "var(--moss)",
               }}
             >
-              {health.num ?? "—"}
+              {health.num ?? "n/a"}
             </span>
             <Chip kind={health.tone}>{health.label}</Chip>
           </div>

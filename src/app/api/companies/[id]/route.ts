@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyDetail, getOwners, getDealStages } from "@/lib/hubspot";
-import { summarizeEngagements, generateRecap } from "@/lib/summarize";
+import { generateRecap } from "@/lib/summarize";
 import { Cache } from "@/lib/cache";
 import { CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
 

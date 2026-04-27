@@ -13,8 +13,37 @@
   --beige-new: #EAE8DD;
   --beige-gray: #D3D1C6;
   --lichen: #D5DFCA;
-  --green-100: #7A8A72;
+  --green-100: #5C6852;
   --green-muted: #B9C2B2;
+
+  /* Semantic status tokens (text + soft fill on cream surfaces).
+     All foregrounds tested ≥4.5:1 on --card-bg (#F8F6ED) and --page-bg (#EAE8DD). */
+  --status-good-fg: #2F5F3D;
+  --status-good-bg: rgba(47, 95, 61, 0.10);
+  --status-warn-fg: #8A4A18;
+  --status-warn-bg: rgba(138, 74, 24, 0.10);
+  --status-info-fg: #2C4A6E;
+  --status-info-bg: rgba(44, 74, 110, 0.10);
+  --status-error-fg: #7E0C04;
+  --status-error-bg: rgba(126, 12, 4, 0.10);
+
+  /* Bold variants of status fg used inline in charts, rings, sparklines, and
+     event-stale dots. Slightly more saturated than the regular *-fg tokens,
+     which target body-text contrast on cream. Reach for these when the colour
+     IS the meaning (a ring stroke, a sparkline, a status dot), not when it's
+     supporting body text. */
+  --status-good-bold: #0E7C4C;
+  --status-warn-bold: #B8761F;
+
+  /* Event-kind chip colours. Used in OnboardingView meeting prep and
+     CompanyDetail history. Foregrounds chosen for ≥4.5:1 on the bg pastel. */
+  --event-meeting-bg: var(--lilac);
+  --event-meeting-fg: #581C87;
+  --event-call-bg: var(--sky-blue);
+  --event-call-fg: #1E40AF;
+
+  /* Foreground for primary moss buttons. Centralised so we can tune cream-on-moss in one place. */
+  --text-on-moss: #FFFFFF;
   --lilac: #D1BEE7;
   --sky-blue: #CFE8FF;
   --rust: #933F29;
@@ -52,6 +81,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   letter-spacing: -0.005em;
+  /* Desktop-first internal tool. Below 1024 we let the page scroll horizontally
+     rather than ship a half-baked mobile layout. */
+  min-width: 1024px;
 }
 
 button, input, select { font-family: inherit; color: inherit; }
@@ -217,4 +249,35 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font-weight: 600;
   background: #fff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* DashboardPicker trigger. Extracted for the same React 19 / Turbopack reason
+   as .seg-light-btn — the browser normalises padding / background / border /
+   transition shorthands to longhands and the hydration validator flags the diff. */
+/* TopBar nav. Extracted for the same React 19 / Turbopack reason as
+   .seg-light-btn — the browser normalises shorthand background / padding /
+   gap / border-bottom to longhand and the hydration validator flags the diff. */
+.topbar-nav {
+  background: var(--moss);
+  color: var(--text-on-moss);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--hairline-strong);
+}
+
+.dashboard-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 14px;
+  border-radius: 10px;
+  background: var(--moss);
+  color: #fff;
+  border: 1px solid var(--moss);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.8, 0.24, 0.16, 1);
+  font-family: inherit;
 }

@@ -13,8 +13,8 @@ const KIND_STYLES: Record<ChipKind, { bg: string; color: string }> = {
   muted: { bg: "#F3F2ED", color: "var(--green-100)" },
   moss: { bg: "rgba(2,44,18,0.06)", color: "var(--moss)" },
   rust: { bg: "rgba(147,63,41,0.10)", color: "var(--rust)" },
-  good: { bg: "#D1FAE5", color: "#065F46" },
-  warn: { bg: "#FEF3C7", color: "#92400E" },
+  good: { bg: "var(--status-good-bg)", color: "var(--status-good-fg)" },
+  warn: { bg: "var(--status-warn-bg)", color: "var(--status-warn-fg)" },
   bad: { bg: "rgba(147,63,41,0.10)", color: "var(--rust)" },
   accent: { bg: "var(--citrus)", color: "var(--moss)" },
 };
@@ -59,8 +59,8 @@ export function HealthChip({ score }: { score: string | number | null | undefine
   if (num == null) return <Chip kind="muted">No score</Chip>;
   const dotColor =
     tone === "bad" ? "var(--rust)" :
-    tone === "warn" ? "#B8761F" :
-    tone === "good" ? "#0E7C4C" : "var(--green-100)";
+    tone === "warn" ? "var(--status-warn-bold)" :
+    tone === "good" ? "var(--status-good-bold)" : "var(--green-100)";
   return (
     <Chip kind={tone} dotColor={dotColor}>
       {label} · {num}

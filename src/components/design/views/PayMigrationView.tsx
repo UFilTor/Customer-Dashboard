@@ -16,16 +16,19 @@ interface Props {
 
 const KEY_OWNER_IDS = new Set(["962517007", "559364799"]); // Anders, Cecilia
 
-// Stage taxonomy + display config
+// Stage taxonomy + display config.
+// Palette is a tonal journey, not a rainbow: deep moss (live) → lichen → warm
+// amber (in motion) → muted lichen/beige (waiting) → cool grey (out of scope).
+// All values tested for ≥3:1 against --card-bg (#F8F6ED).
 const STAGE_ORDER: { key: PayStage; short: string; color: string }[] = [
-  { key: "Live", short: "Live", color: "#1a7a4a" },
-  { key: "Verified", short: "Verified", color: "#27ae60" },
-  { key: "Pending Verification", short: "Pending", color: "#D49545" },
-  { key: "Started Onboarding", short: "Started Onb.", color: "#F2A669" },
-  { key: "Signed - Not Started", short: "Signed", color: "#9CC4F0" },
-  { key: "Not yet enrolled", short: "Not enrolled", color: "#C9D2DD" },
-  { key: "Unwilling", short: "Unwilling", color: "#F4B5B5" },
-  { key: "Ineligible", short: "Ineligible", color: "#BFC3C7" },
+  { key: "Live", short: "Live", color: "#2F5F3D" },
+  { key: "Verified", short: "Verified", color: "#6E9374" },
+  { key: "Pending Verification", short: "Pending", color: "#B07028" },
+  { key: "Started Onboarding", short: "Started Onb.", color: "#9F7E2E" },
+  { key: "Signed - Not Started", short: "Signed", color: "#5F7A95" },
+  { key: "Not yet enrolled", short: "Not enrolled", color: "#7E7864" },
+  { key: "Unwilling", short: "Unwilling", color: "#8C5746" },
+  { key: "Ineligible", short: "Ineligible", color: "#8C8F8B" },
 ];
 
 const STAGE_BY_KEY: Record<string, { color: string; short: string }> = Object.fromEntries(
@@ -214,33 +217,38 @@ export function PayMigrationView({ data, payFilter, isRefreshing, onRefresh, onD
         >
           <KpiCard
             label="BV live / verified"
+            tip="Booking Volume of customers already on Understory Pay (Live or Verified), as a % of all eligible BV."
             big={<CountUpPct value={topline.pctLc} />}
             sub={`${fmtEurShort(topline.liveVerifiedBv)} of ${fmtEurShort(topline.eligibleBv)} eligible`}
-            accent="#1a7a4a"
+            accent="#2F5F3D"
           />
           <KpiCard
             label="BV in progress"
+            tip="Booking Volume of customers signed or started onboarding on Pay but not yet live."
             big={<CountUpPct value={topline.pctProg} />}
             sub={`${fmtEurShort(topline.liveVerifiedBv + topline.inProgressBv)} of ${fmtEurShort(topline.eligibleBv)}`}
-            accent="#27ae60"
+            accent="#6E9374"
           />
           <KpiCard
             label="ARR live / verified"
+            tip="Annual Recurring Revenue from customers already on Pay (Live or Verified), as a % of total ARR."
             big={<CountUpPct value={topline.pctAcv} />}
             sub={`${fmtEurShort(topline.liveVerifiedAcv)} of ${fmtEurShort(topline.totalAcv)}`}
-            accent="#2980b9"
+            accent="var(--moss)"
           />
           <KpiCard
             label="April target"
+            tip="Internal Pay-migration target for end of April."
             big={`${data.aprilTarget}%`}
             sub={`${gapApr.toFixed(1)}pp to go`}
-            accent="#C16E2A"
+            accent="var(--status-warn-fg)"
           />
           <KpiCard
             label="May target"
+            tip="Internal Pay-migration target for end of May."
             big={`${data.mayTarget}%`}
             sub={`${gapMay.toFixed(1)}pp to go`}
-            accent="#C16E2A"
+            accent="var(--status-warn-fg)"
           />
         </Stagger>
 
@@ -303,7 +311,7 @@ export function PayMigrationView({ data, payFilter, isRefreshing, onRefresh, onD
         </div>
 
         {/* PATH TO TARGET */}
-        <SectionTitle title={`Path to ${data.aprilTarget}%`} subtitle="Top deals to close — by owner" />
+        <SectionTitle title={`Path to ${data.aprilTarget}%`} subtitle="Top deals to close, by owner" />
         <div
           style={{
             display: "grid",
@@ -351,7 +359,7 @@ export function PayMigrationView({ data, payFilter, isRefreshing, onRefresh, onD
         </div>
 
         {/* UNWILLING */}
-        <SectionTitle title="Unwilling" subtitle="Customers who declined — with reasons" />
+        <SectionTitle title="Unwilling" subtitle="Customers who declined, with reasons" />
         <UnwillingTable
           deals={data.unwilling.filter((d) =>
             payFilter === "all" || payFilter === "default"
@@ -363,7 +371,7 @@ export function PayMigrationView({ data, payFilter, isRefreshing, onRefresh, onD
         />
 
         {/* NOT YET ENROLLED */}
-        <SectionTitle title="Not yet enrolled" subtitle="Top by BV — no Pay status in HubSpot" />
+        <SectionTitle title="Not yet enrolled" subtitle="Top by BV, no Pay status in HubSpot" />
         <div
           style={{
             display: "grid",
@@ -440,11 +448,13 @@ function KpiCard({
   big,
   sub,
   accent,
+  tip,
 }: {
   label: string;
   big: React.ReactNode;
   sub: string;
   accent: string;
+  tip?: string;
 }) {
   return (
     <div
@@ -471,6 +481,7 @@ function KpiCard({
         {big}
       </div>
       <div
+        title={tip}
         style={{
           fontFamily: "var(--font-display)",
           fontSize: 10,
@@ -479,6 +490,7 @@ function KpiCard({
           color: "var(--green-100)",
           letterSpacing: "0.06em",
           marginTop: 8,
+          cursor: tip ? "help" : "default",
         }}
       >
         {label}
@@ -590,6 +602,7 @@ function PipelineBar({
       <div
         style={{
           display: "flex",
+          gap: 2,
           borderRadius: 6,
           overflow: "hidden",
           height: 28,
@@ -627,7 +640,7 @@ function PipelineBar({
                     verticalAlign: "middle",
                   }}
                 />
-                {s.key} — {fmtEurShort(s.bv)} ({((s.bv / total) * 100).toFixed(1)}%)
+                {s.key}: {fmtEurShort(s.bv)} ({((s.bv / total) * 100).toFixed(1)}%)
               </span>
             )
         )}
@@ -673,7 +686,7 @@ function PipeSeg({
           style={{
             fontSize: 10,
             fontWeight: 700,
-            color: "#fff",
+            color: "var(--text-on-moss)",
             whiteSpace: "nowrap",
             padding: "0 4px",
             opacity: w > 0 ? 1 : 0,
@@ -727,14 +740,14 @@ function OwnerCard({
       <div style={{ fontSize: 11, color: "var(--green-100)", marginBottom: 10 }}>
         Total BV: {fmtEurShort(stats.totalBv)} · Eligible: {fmtEurShort(stats.eligBv)}
       </div>
-      <AnimBar pct={Math.min(stats.pctLc, 100)} color="#27ae60" height={6} radius={3} bg="var(--hairline)" delay={120} />
+      <AnimBar pct={Math.min(stats.pctLc, 100)} color="#2F5F3D" height={6} radius={3} bg="var(--hairline)" delay={120} />
       <div style={{ height: 8 }} />
       <div
         style={{
           fontFamily: "var(--font-display)",
           fontSize: 26,
           fontWeight: 700,
-          color: "#27ae60",
+          color: "#2F5F3D",
           lineHeight: 1,
           fontVariantNumeric: "tabular-nums",
         }}
@@ -870,7 +883,7 @@ function PathCard({
         }}
       >
         <div style={{ position: "absolute", height: "100%", width: "100%", borderRadius: 4, overflow: "hidden" }}>
-          <AnimBar pct={fill} color="#2980b9" height={7} radius={4} bg="transparent" delay={180} />
+          <AnimBar pct={fill} color="var(--moss)" height={7} radius={4} bg="transparent" delay={180} />
         </div>
         <div
           style={{
@@ -879,15 +892,15 @@ function PathCard({
             left: `${marker}%`,
             width: 2,
             height: 15,
-            background: "#C16E2A",
+            background: "var(--status-warn-fg)",
           }}
         />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 12 }}>
-        <span style={{ color: "#2980b9", fontWeight: 600 }}>
+        <span style={{ color: "var(--moss)", fontWeight: 600 }}>
           <CountUpPct value={owner.lcPercent} /> current
         </span>
-        <span style={{ color: "#C16E2A", fontWeight: 600 }}>{targetPct}% target</span>
+        <span style={{ color: "var(--status-warn-fg)", fontWeight: 600 }}>{targetPct}% target</span>
       </div>
 
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -896,9 +909,9 @@ function PathCard({
             <Th>#</Th>
             <Th>Customer</Th>
             <Th>Stage</Th>
-            <Th align="right">BV (% of {fmtEurShort(allEligBv)})</Th>
-            <Th align="right">+PP</Th>
-            <Th align="right">Run %</Th>
+            <Th align="right" tip="Booking Volume of this customer's deal, with its share of the org-wide eligible BV in parentheses.">BV (% of {fmtEurShort(allEligBv)})</Th>
+            <Th align="right" tip="Percentage points this deal would add to the org's BV-live-on-Pay metric if migrated.">+PP</Th>
+            <Th align="right" tip="Running total of org-wide BV-live-on-Pay if every row above this one were migrated.">Run %</Th>
           </tr>
         </thead>
         <tbody>
@@ -944,7 +957,7 @@ function PathCard({
                   key={deal.dealId}
                   style={{
                     background: bg,
-                    borderLeft: highlight ? "3px solid #C16E2A" : undefined,
+                    borderLeft: highlight ? "3px solid var(--status-warn-fg)" : undefined,
                     cursor: "pointer",
                   }}
                   onClick={() => onDealClick(deal)}
@@ -1041,7 +1054,7 @@ function PushCard({
               const days = d.daysSinceActivity ?? 0;
               let dayColor = "var(--green-100)";
               if (days > 30) dayColor = "#C0392B";
-              else if (days > 14) dayColor = "#C16E2A";
+              else if (days > 14) dayColor = "var(--status-warn-fg)";
               else if (days > 7) dayColor = "#D49545";
               return (
                 <tr
@@ -1098,8 +1111,8 @@ function UnwillingTable({
       <div
         style={{
           display: "inline-block",
-          background: "#C16E2A",
-          color: "#fff",
+          background: "var(--status-warn-fg)",
+          color: "var(--text-on-moss)",
           borderRadius: 6,
           padding: "4px 12px",
           fontSize: 11,
@@ -1108,7 +1121,7 @@ function UnwillingTable({
           letterSpacing: "0.04em",
         }}
       >
-        {sorted.length} customers — {fmtEurShort(total)} ({pctOfElig.toFixed(1)}% of eligible BV)
+        {sorted.length} customers, {fmtEurShort(total)} ({pctOfElig.toFixed(1)}% of eligible BV)
       </div>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
@@ -1143,7 +1156,7 @@ function UnwillingTable({
                 </Td>
                 <Td muted>{d.ownerName}</Td>
                 <Td>
-                  <span style={{ fontSize: 12, color: "var(--moss)" }}>{d.unwillingReason || "—"}</span>
+                  <span style={{ fontSize: 12, color: "var(--moss)" }}>{d.unwillingReason || "No reason given"}</span>
                 </Td>
                 <Td align="right">{bvWithPct(d.bv, allEligBv)}</Td>
               </tr>
@@ -1223,11 +1236,11 @@ function NotEnrolledCard({
           ) : (
             deals.slice(0, 20).map((d, i) => {
               const days = d.daysSinceActivity;
-              let act: React.ReactNode = <span style={{ color: "var(--beige-gray)" }}>—</span>;
+              let act: React.ReactNode = <span style={{ color: "var(--beige-gray)" }}>n/a</span>;
               if (days != null) {
                 let color = "var(--moss)";
-                if (days > 90) color = "#C0392B";
-                else if (days > 30) color = "#C16E2A";
+                if (days > 90) color = "var(--status-error-fg)";
+                else if (days > 30) color = "var(--status-warn-fg)";
                 act = (
                   <span style={{ color, fontWeight: days > 30 ? 600 : 400 }}>
                     {days}d ago
@@ -1255,9 +1268,18 @@ function NotEnrolledCard({
 
 /* ---------------- table primitives ---------------- */
 
-function Th({ children, align }: { children: React.ReactNode; align?: "left" | "right" }) {
+function Th({
+  children,
+  align,
+  tip,
+}: {
+  children: React.ReactNode;
+  align?: "left" | "right";
+  tip?: string;
+}) {
   return (
     <th
+      title={tip}
       style={{
         padding: "5px 7px",
         textAlign: align || "left",
@@ -1268,6 +1290,7 @@ function Th({ children, align }: { children: React.ReactNode; align?: "left" | "
         letterSpacing: "0.06em",
         color: "var(--green-100)",
         borderBottom: "1px solid var(--hairline)",
+        cursor: tip ? "help" : "default",
       }}
     >
       {children}

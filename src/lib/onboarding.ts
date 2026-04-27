@@ -13,6 +13,10 @@ import type {
 
 // Pipelines (from the verified mapping spec).
 const LIFECYCLE_PIPELINE = "166333631";
+const RETENTION_PIPELINE = "1072518362";
+// Pipelines we accept when enriching an orphan meeting's brief: the onboarding
+// lifecycle pipeline first, then customer retention for graduated customers.
+const BRIEF_PIPELINES = [LIFECYCLE_PIPELINE, RETENTION_PIPELINE];
 const SALES_PIPELINE = "81267902";
 
 // customer_stage values that count as "still being onboarded".
@@ -1047,6 +1051,53 @@ export async function buildOnboardingPayload(
         "domain",
       ]);
 
+      // Enrich orphan meetings with the linked company's best-available deal.
+      // Many meetings come in via Gong without a deal association even when a
+      // real deal exists on the company (e.g. customer is post-onboarding so
+      // their lifecycle deal isn't in ONBOARDING_STAGES). Pull deals via the
+      // company association and pick one to source the brief from.
+      const companyDealAssocs = orphanCompanyIds.length > 0
+        ? await fetchAssociations("companies", "deals", orphanCompanyIds)
+        : [];
+      const companyToDealIds = new Map<string, string[]>();
+      const allOrphanDealIds = new Set<string>();
+      for (const a of companyDealAssocs) {
+        companyToDealIds.set(a.fromId, a.toIds);
+        for (const id of a.toIds) allOrphanDealIds.add(id);
+      }
+      const orphanDealProps = allOrphanDealIds.size > 0
+        ? await fetchObjectsBatch("deals", Array.from(allOrphanDealIds), LIFECYCLE_DEAL_PROPS)
+        : new Map<string, Record<string, string>>();
+      // Pick the company's lifecycle deal across both the onboarding pipeline
+      // and customer retention pipeline. Onboarding wins when both exist — the
+      // CS team's brief should reflect onboarding context first, retention
+      // second. Tie-break by most-recently created.
+      const briefDealByCompany = new Map<string, { dealId: string; props: Record<string, string> }>();
+      for (const [companyId, dealIds] of companyToDealIds) {
+        const candidates = dealIds
+          .map((id) => ({ id, props: orphanDealProps.get(id) }))
+          .filter((c): c is { id: string; props: Record<string, string> } =>
+            c.props != null && BRIEF_PIPELINES.includes(c.props.pipeline)
+          );
+        if (candidates.length === 0) continue;
+        const pipelineRank = (p: string) => (p === LIFECYCLE_PIPELINE ? 0 : 1);
+        candidates.sort((a, b) => {
+          const r = pipelineRank(a.props.pipeline) - pipelineRank(b.props.pipeline);
+          if (r !== 0) return r;
+          return (b.props.createdate || "").localeCompare(a.props.createdate || "");
+        });
+        briefDealByCompany.set(companyId, { dealId: candidates[0].id, props: candidates[0].props });
+      }
+      // Owner names for any sales/CS owners on the picked deals.
+      const orphanOwnerIds = new Set<string>();
+      for (const { props } of briefDealByCompany.values()) {
+        if (props.hubspot_owner_id) orphanOwnerIds.add(props.hubspot_owner_id);
+      }
+      if (orphanOwnerIds.size > 0) {
+        const more = await fetchOwnerNames(Array.from(orphanOwnerIds));
+        Object.assign(ownerNames, more);
+      }
+
       const orphanMeetings = dedupMeetings(
         orphans
           .map((m) => {
@@ -1080,45 +1131,51 @@ export async function buildOnboardingPayload(
         const companyName = cprops?.name?.trim() || fallbackName || "External meeting";
         const country = cprops ? nullable(cprops.understory_company_country) : null;
 
+        const enriched = companyId ? briefDealByCompany.get(companyId) : null;
+        const dp = enriched?.props ?? null;
+        const salesOwnerId = dp?.hubspot_owner_id || null;
+
         const stubDeal: OnboardingDeal = {
-          dealId: `external-${meeting.id}`,
+          // Use the real deal ID when we found one — this makes "Open in HubSpot"
+          // resolve to the actual deal record instead of a synthetic external- ID.
+          dealId: enriched?.dealId ?? `external-${meeting.id}`,
           companyId: companyId ?? null,
           companyName,
           ownerId: meeting.ownerId,
           ownerName: meeting.ownerName ?? "Unassigned",
           country,
-          plan: null,
-          acv: 0,
+          plan: dp ? nullable(dp.subscription_plan) : null,
+          acv: dp ? Math.round(parseFloat(dp.amount_in_home_currency || "0") || 0) : 0,
           signedAt: null,
           step: "Other",
-          customerStage: "External",
-          customerSubstage: null,
+          customerStage: dp?.customer_stage ?? "External",
+          customerSubstage: dp ? nullable(dp.customer_substage) : null,
           daysInStep: 0,
           expectedDaysInStep: 30,
           riskLevel: "low",
           blockers: [],
-          hibernationNote: null,
-          productHoldNote: null,
+          hibernationNote: dp ? nullable(dp.hibernation_notes) : null,
+          productHoldNote: dp ? nullable(dp.product_hold_note) : null,
           obNotes: {
-            understoryPayEnabled: null,
-            customerNeeds: null,
-            promisesMade: null,
-            experiencesLink: null,
-            growNotes: null,
+            understoryPayEnabled: dp ? parseEnableUnderstoryPay(dp.enable_understory_pay) : null,
+            customerNeeds: dp ? nullable(dp["ob_note___customer_needs_"]) : null,
+            promisesMade: dp ? nullable(dp["ob_note___promises_made"]) : null,
+            experiencesLink: dp ? nullable(dp["ob_note___link_to_experience_s__that_need_to_be_created_"]) : null,
+            growNotes: dp ? nullable(dp["ob_note___grow_notes__if_booked_"]) : null,
             contactName: null,
             companyDomain: cprops ? nullable(cprops.domain) : null,
-            storefrontLink: null,
-            payStatus: null,
+            storefrontLink: dp ? nullable(dp.storefront) : null,
+            payStatus: dp ? nullable(dp.understory_pay_status__customer) : null,
           },
           commercial: {
-            monthlyFee: null,
-            acv: null,
-            bookingFee: null,
-            firstBilling: null,
-            salesOwner: "missing",
+            monthlyFee: dp ? formatMonthlyFee(dp.core_net_price__local_currency, dp.deal_currency_code) : null,
+            acv: dp ? formatAcv(dp.amount_in_home_currency) : null,
+            bookingFee: dp ? formatBookingFee(dp.booking_fee, dp.confirmed_booking_fee) : null,
+            firstBilling: dp ? formatFirstBilling(dp.test_billing_start_date) : null,
+            salesOwner: salesOwnerId ? (ownerNames[salesOwnerId] ?? "missing") : "missing",
           },
-          selfOnboarding: false,
-          lastTouch: null,
+          selfOnboarding: dp?.self_onboarding === "true",
+          lastTouch: dp ? nullable(dp.notes_last_contacted) : null,
           history: [],
         };
 

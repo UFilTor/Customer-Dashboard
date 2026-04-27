@@ -43,7 +43,7 @@ describe("generateRecap", () => {
         type: "text",
         text: JSON.stringify({
           summary: "Last call discussed growth plans.",
-          suggestedAction: { text: "Send demo docs", type: "task" },
+          suggestedAction: { text: "Send demo docs", type: "task", confidence: "high" },
         }),
       }],
     });
@@ -58,7 +58,7 @@ describe("generateRecap", () => {
 
     expect(result).toEqual({
       summary: "Last call discussed growth plans.",
-      suggestedAction: { text: "Send demo docs", type: "task" },
+      suggestedAction: { text: "Send demo docs", type: "task", confidence: "high" },
     });
   });
 

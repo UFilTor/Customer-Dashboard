@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PayMigrationData, PayDeal, CompanySearchResult } from "@/lib/types";
+import { apiFetch } from "@/lib/api-fetch";
 import { PayMigrationView } from "./PayMigrationView";
 
 interface Props {
@@ -14,22 +15,29 @@ export function PayMigrationContainer({ payFilter, onSelectCompany }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Drop redundant refresh requests when one is already in flight (R-key spam,
+  // double-click on the refresh button).
+  const inFlightRef = useRef(false);
 
   const fetchData = useCallback(async (refresh = false) => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     if (!data) setIsLoading(true);
     else setIsRefreshing(true);
     setError(null);
     try {
       const url = refresh ? "/api/pay-migration?refresh=true" : "/api/pay-migration";
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Failed to load Pay migration data");
+      const res = await apiFetch(url);
+      if (!res.ok) throw new Error(`Pay migration data unavailable (${res.status})`);
       const json: PayMigrationData = await res.json();
       setData(json);
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message === "Session expired") return;
       setError("Could not load Pay migration data. Try refreshing.");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      inFlightRef.current = false;
     }
   }, [data]);
 
@@ -103,7 +111,7 @@ export function PayMigrationContainer({ payFilter, onSelectCompany }: Props) {
             padding: "8px 14px",
             borderRadius: 10,
             background: "var(--moss)",
-            color: "#fff",
+            color: "var(--text-on-moss)",
             cursor: "pointer",
           }}
         >

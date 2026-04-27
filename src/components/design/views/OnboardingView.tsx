@@ -57,7 +57,7 @@ function dayKey(d: Date): string {
 }
 
 function fmtTime24(d: Date): string {
-  if (isNaN(d.getTime())) return "—";
+  if (isNaN(d.getTime())) return "n/a";
   const h = String(d.getHours()).padStart(2, "0");
   const m = String(d.getMinutes()).padStart(2, "0");
   return `${h}:${m}`;
@@ -323,15 +323,6 @@ function MeetingsPanel({
   ).length;
   const followUps = meetings.length - newOnboardings;
 
-  const greeting = (() => {
-    const h = new Date().getHours();
-    return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-  })();
-  const dateStr = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
   const isToday = dayKey(selectedDay) === dayKey(today);
 
   return (
@@ -345,9 +336,7 @@ function MeetingsPanel({
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         <Hero
           eyebrow="Onboarding · Meeting prep"
-          dateStr={dateStr}
           filterLabel={filterLabel}
-          greeting={greeting}
           line1Number={total}
           line1Suffix={total === 1 ? "customer" : "customers"}
           line2="on their way to live."
@@ -360,7 +349,7 @@ function MeetingsPanel({
               {meetingsTodayCount > 0 && (
                 <>
                   {" "}
-                  — first at{" "}
+                  , first at{" "}
                   {fmtTime24(
                     new Date((meetingsByDay.get(dayKey(today)) || [])[0].meeting.startsAt)
                   )}
@@ -427,7 +416,7 @@ function MeetingsPanel({
               padding: "6px 12px",
               borderRadius: 8,
               background: "var(--moss)",
-              color: "#fff",
+              color: "var(--text-on-moss)",
               fontSize: 12,
               fontWeight: 600,
               cursor: "pointer",
@@ -443,7 +432,6 @@ function MeetingsPanel({
           selectedIdx={selectedIdx}
           setSelectedIdx={setSelectedIdx}
           today={today}
-          todayIdx={todayIdx}
           fetchedDays={fetchedDays}
         />
 
@@ -549,7 +537,6 @@ function DayStrip({
   selectedIdx,
   setSelectedIdx,
   today,
-  todayIdx,
   fetchedDays,
 }: {
   weekdays: Date[];
@@ -557,7 +544,6 @@ function DayStrip({
   selectedIdx: number;
   setSelectedIdx: (n: number) => void;
   today: Date;
-  todayIdx: number;
   fetchedDays?: Set<string>;
 }) {
   // Visible window: 5 entries, selected centred where possible.
@@ -611,8 +597,8 @@ function DayStrip({
                 display: "flex",
                 flexDirection: "column",
                 gap: 4,
-                color: isActive ? "#fff" : "var(--moss)",
-                transition: "all 160ms ease",
+                color: isActive ? "var(--text-on-moss)" : "var(--moss)",
+                transition: "background 160ms ease, color 160ms ease, opacity 160ms ease",
                 opacity: !isFetched && !isActive ? 0.7 : 1,
               }}
             >
@@ -648,10 +634,10 @@ function DayStrip({
                 }}
               >
                 {!isFetched
-                  ? "fetch"
+                  ? "load"
                   : count > 0
                     ? `${count} mtg${count === 1 ? "" : "s"}`
-                    : "—"}
+                    : "none"}
               </span>
             </button>
           );
@@ -753,16 +739,6 @@ function AttentionPanel({
     (d) => onSelect(d)
   );
 
-  const greeting = (() => {
-    const h = new Date().getHours();
-    return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-  })();
-  const dateStr = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-
   const totalAcv = overdue.reduce((s, d) => s + d.acv, 0);
 
   return (
@@ -776,17 +752,15 @@ function AttentionPanel({
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         <Hero
           eyebrow="Onboarding · Needs attention"
-          dateStr={dateStr}
           filterLabel={filterLabel}
-          greeting={greeting}
           line1Number={overdue.length}
           line1Suffix={`account${overdue.length === 1 ? "" : "s"}`}
           line2={`more than ${ATTENTION_OVERDUE_THRESHOLD_DAYS} days overdue.`}
           body={
             overdue.length === 0 ? (
               <>
-                Nothing past the {ATTENTION_OVERDUE_THRESHOLD_DAYS}-day overdue mark right now —
-                all onboarding accounts are tracking within their expected windows.
+                Nothing past the {ATTENTION_OVERDUE_THRESHOLD_DAYS}-day overdue mark right now.
+                All onboarding accounts are tracking within their expected windows.
               </>
             ) : (
               <>
@@ -825,7 +799,7 @@ function AttentionPanel({
             label="Worst case"
             value={
               overdue.length === 0
-                ? <>—</>
+                ? <>0d</>
                 : <>{overdue[0].daysInStep - overdue[0].expectedDaysInStep}d</>
             }
             sub={overdue.length === 0 ? "" : `${overdue[0].companyName}`}
@@ -876,28 +850,30 @@ function AttentionPanel({
 
 function Hero({
   eyebrow,
-  dateStr,
   filterLabel,
-  greeting,
   line1Number,
   line1Suffix,
   line2,
   body,
 }: {
   eyebrow: string;
-  dateStr: string;
   filterLabel?: string | null;
-  greeting: string;
   line1Number: number;
   line1Suffix: string;
   line2: string;
   body: React.ReactNode;
 }) {
+  // Date depends on the user's local clock. SSR renders an empty string and the
+  // client fills it on first paint; suppressHydrationWarning tells React this
+  // mismatch is intentional and not a real bug.
+  const dateStr = typeof window === "undefined"
+    ? ""
+    : new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   return (
     <div
       style={{
         background: "var(--moss)",
-        color: "#fff",
+        color: "var(--text-on-moss)",
         borderRadius: 20,
         padding: "32px 36px",
         marginBottom: 28,
@@ -946,6 +922,7 @@ function Hero({
           </span>
           <span style={{ height: 1, flex: "0 0 32px", background: "rgba(241,249,126,0.4)" }} />
           <span
+            suppressHydrationWarning
             style={{
               fontSize: 12,
               color: "rgba(255,255,255,0.6)",
@@ -979,28 +956,14 @@ function Hero({
 
         <h1
           style={{
-            margin: "0 0 8px",
-            fontFamily: "var(--font-editorial)",
-            fontWeight: 400,
-            fontStyle: "italic",
-            fontSize: 42,
-            lineHeight: 1.08,
-            letterSpacing: "-0.01em",
-            color: "#fff",
-          }}
-        >
-          {greeting}.
-        </h1>
-        <h2
-          style={{
             margin: "0 0 18px",
             fontFamily: "var(--font-display)",
-            fontSize: 38,
+            fontSize: 42,
             fontWeight: 700,
             lineHeight: 1.05,
             textTransform: "uppercase",
             letterSpacing: "-0.01em",
-            color: "#fff",
+            color: "var(--text-on-moss)",
           }}
         >
           <span className="citrus-wipe" style={{ color: "var(--moss)" }}>
@@ -1008,7 +971,7 @@ function Hero({
           </span>
           <br />
           {line2}
-        </h2>
+        </h1>
 
         <p
           style={{
@@ -1102,11 +1065,11 @@ function KpiTile({
     tone === "bad"
       ? "var(--rust)"
       : tone === "warn"
-        ? "#B8761F"
+        ? "var(--status-warn-bold)"
         : tone === "good"
-          ? "#0E7C4C"
+          ? "var(--status-good-bold)"
           : tone === "accent"
-            ? "#fff"
+            ? "var(--text-on-moss)"
             : "var(--moss)";
   const bg = tone === "accent" ? "var(--moss)" : "var(--light-grey)";
   const labelColor = tone === "accent" ? "var(--citrus)" : "var(--green-100)";
@@ -1163,8 +1126,8 @@ function KpiTile({
 
 function RiskPill({ level, compact }: { level: OnboardingRisk; compact?: boolean }) {
   const map: Record<OnboardingRisk, { label: string; bg: string; fg: string }> = {
-    low: { label: "on track", bg: "rgba(14,124,76,0.1)", fg: "#0E7C4C" },
-    medium: { label: "watch", bg: "rgba(184,118,31,0.12)", fg: "#B8761F" },
+    low: { label: "on track", bg: "rgba(14,124,76,0.1)", fg: "var(--status-good-bold)" },
+    medium: { label: "watch", bg: "rgba(184,118,31,0.12)", fg: "var(--status-warn-bold)" },
     high: { label: "at risk", bg: "rgba(184,74,45,0.1)", fg: "var(--rust)" },
   };
   const m = map[level];
@@ -1280,7 +1243,7 @@ function FetchDayButton({
           padding: "9px 16px",
           borderRadius: 10,
           background: loading ? "var(--green-100)" : "var(--moss)",
-          color: "#fff",
+          color: "var(--text-on-moss)",
           fontSize: 13,
           fontWeight: 600,
           cursor: loading ? "wait" : "pointer",
@@ -1435,6 +1398,7 @@ function MeetingBriefCard({
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
             <button
               onClick={onSelect}
+              title={deal.companyName}
               style={{
                 fontFamily: "var(--font-display)",
                 fontSize: 22,
@@ -1444,6 +1408,11 @@ function MeetingBriefCard({
                 letterSpacing: "-0.005em",
                 textAlign: "left",
                 cursor: "pointer",
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                display: "inline-block",
               }}
             >
               {deal.companyName}
@@ -1501,30 +1470,44 @@ function MeetingBriefCard({
             <Icon.ArrowRight />
             View account
           </button>
-          <a
-            href={`https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/deal/${deal.dealId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              padding: "6px 14px",
-              borderRadius: 10,
-              background: "#fff",
-              color: "var(--moss)",
-              fontSize: 12,
-              fontWeight: 500,
-              border: "1px solid var(--beige-gray)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              cursor: "pointer",
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <Icon.External />
-            Open in HubSpot
-          </a>
+          {(() => {
+            // Stub deals (no HubSpot deal linked to the meeting) carry an
+            // `external-…` ID that doesn't resolve to a deal record. Fall back
+            // to the company record when we have one; otherwise hide the link.
+            const isStub = deal.dealId.startsWith("external-");
+            const href = isStub
+              ? deal.companyId
+                ? `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-2/${deal.companyId}`
+                : null
+              : `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-3/${deal.dealId}`;
+            if (!href) return null;
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 10,
+                  background: "#fff",
+                  color: "var(--moss)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  border: "1px solid var(--beige-gray)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  cursor: "pointer",
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <Icon.External />
+                Open in HubSpot
+              </a>
+            );
+          })()}
         </div>
       </div>
 
@@ -1532,18 +1515,16 @@ function MeetingBriefCard({
         <div style={{ padding: "22px 24px", borderRight: "1px solid var(--hairline)" }}>
           <BriefSectionTitle>Customer</BriefSectionTitle>
           <BriefDL>
-            <BriefRow label="Contact" value={obNotes.contactName} optional />
+            <BriefRow label="Contact" value={obNotes.contactName} />
             <BriefRow
               label="Website"
               value={obNotes.companyDomain}
               link={obNotes.companyDomain ? toWebUrl(obNotes.companyDomain) : null}
-              optional
             />
             <BriefRow
               label="Storefront"
               value={obNotes.storefrontLink}
               link={obNotes.storefrontLink}
-              optional
             />
             {obNotes.understoryPayEnabled === true && (
               <BriefRow label="Pay status" value={obNotes.payStatus ?? "Enabled"} />
@@ -1564,7 +1545,7 @@ function MeetingBriefCard({
             />
             <BriefRow label="Customer needs" value={obNotes.customerNeeds} />
             <BriefRow label="Promises made" value={obNotes.promisesMade} />
-            <BriefRow label="Grow notes" value={obNotes.growNotes} optional />
+            <BriefRow label="Grow notes" value={obNotes.growNotes} />
           </BriefDL>
 
           <div style={{ height: 22 }} />
@@ -1987,8 +1968,8 @@ function kindLabel(kind: OnboardingHistoryEntry["kind"]): string {
 }
 
 function kindStyles(kind: OnboardingHistoryEntry["kind"]): { bg: string; fg: string } {
-  if (kind === "meeting") return { bg: "var(--lilac)", fg: "#581C87" };
-  if (kind === "call") return { bg: "var(--sky-blue)", fg: "#1E40AF" };
+  if (kind === "meeting") return { bg: "var(--event-meeting-bg)", fg: "var(--event-meeting-fg)" };
+  if (kind === "call") return { bg: "var(--event-call-bg)", fg: "var(--event-call-fg)" };
   return { bg: "var(--lichen)", fg: "var(--moss)" };
 }
 
@@ -2296,21 +2277,21 @@ function HistoryItem({
 
 function BriefSectionTitle({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
   return (
-    <div
+    <h3
       style={{
+        margin: "0 0 12px",
         fontFamily: "var(--font-display)",
         textTransform: "uppercase",
-        fontSize: 11,
+        fontSize: 13,
         fontWeight: 700,
         letterSpacing: "0.08em",
         color: accent ? "var(--rust)" : "var(--moss)",
-        marginBottom: 10,
         paddingBottom: 6,
-        borderBottom: "1px solid var(--hairline)",
+        borderBottom: "1px solid var(--hairline-strong)",
       }}
     >
       {children}
-    </div>
+    </h3>
   );
 }
 
@@ -2335,12 +2316,10 @@ function BriefDL({ children }: { children: React.ReactNode }) {
 function BriefRow({
   label,
   value,
-  optional,
   link,
 }: {
   label: string;
   value: string | null;
-  optional?: boolean;
   link?: string | null;
 }) {
   const missing = value == null || value === "" || value === "missing";
@@ -2370,7 +2349,7 @@ function BriefRow({
           wordBreak: "break-word",
         }}
       >
-        {missing ? (optional ? "—" : "missing") : link ? (
+        {missing ? "missing" : link ? (
           <a href={link} target="_blank" rel="noopener noreferrer" style={{ color: "var(--moss)", textDecoration: "underline" }}>
             {value}
           </a>

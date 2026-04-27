@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { searchCompanies, getCompanyDetail, getOwners, getDealStages } from "@/lib/hubspot";
+import { searchCompanies, getOwners } from "@/lib/hubspot";
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;

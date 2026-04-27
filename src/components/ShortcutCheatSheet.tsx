@@ -6,7 +6,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   dashboard: "status" | "onboarding" | "pay_migration" | "retention" | "bloom";
-  variant: "briefing" | "split" | "kanban";
+  variant: "briefing" | "split";
   hasSelectedCompany: boolean;
 }
 
@@ -67,7 +67,6 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
       rows: [
         { label: "Daily briefing", keys: "1" },
         { label: "Split view", keys: "2" },
-        { label: "By signal", keys: "3" },
       ],
     });
     if (ctx.variant === "briefing") {
@@ -84,15 +83,6 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
         heading: "Split view",
         rows: [
           { label: "Previous / next account (auto-opens)", keys: "↑ / ↓" },
-        ],
-      });
-    } else if (ctx.variant === "kanban") {
-      out.push({
-        heading: "By signal",
-        rows: [
-          { label: "Previous / next account (within column)", keys: "↑ / ↓" },
-          { label: "Jump to previous / next column", keys: "← / →" },
-          { label: "Open focused account", keys: "Enter" },
         ],
       });
     }

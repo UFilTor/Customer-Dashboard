@@ -86,12 +86,14 @@ export interface StageMap {
 }
 
 export type ActionType = "note" | "task" | "meeting" | "call";
+export type RecapConfidence = "low" | "medium" | "high";
 
 export interface Recap {
   summary: string | null;
   suggestedAction: {
     text: string;
     type: ActionType;
+    confidence: RecapConfidence;
   } | null;
   error?: boolean;
 }

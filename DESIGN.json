@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-04-27T00:00:00Z",
+  "title": "Design System: Understory Customer Dashboard",
+  "extensions": {
+    "colorMeta": {
+      "moss": { "role": "primary", "displayName": "Moss Ink", "canonical": "oklch(20.8% 0.045 150)", "tonalRamp": ["#011608", "#022C12", "#0A3F1F", "#155330", "#2C6B47", "#508862", "#85A38E", "#C5D5C9"] },
+      "citrus": { "role": "primary", "displayName": "Lime Highlight", "canonical": "oklch(95% 0.13 110)", "tonalRamp": ["#5B6326", "#7C8633", "#9DAA45", "#C0CD56", "#DEE672", "#F1F97E", "#F6FAA1", "#FBFDC6"] },
+      "page-bg": { "role": "neutral", "displayName": "Warm Linen", "canonical": "oklch(92.6% 0.018 90)", "tonalRamp": ["#3A372A", "#5A5644", "#7C7864", "#A09D8B", "#C4C2B5", "#D9D7CC", "#EAE8DD", "#F4F3EC"] },
+      "card-bg": { "role": "neutral", "displayName": "Paper Cream", "canonical": "oklch(96.4% 0.018 92)", "tonalRamp": ["#46412C", "#69634A", "#8C866C", "#AFAA92", "#CDC9B8", "#E2DFD0", "#F8F6ED", "#FBFAF4"] },
+      "green-100": { "role": "neutral", "displayName": "Lichen Ink", "canonical": "oklch(58% 0.02 145)", "tonalRamp": ["#2D3329", "#48503F", "#5C6852", "#7A8A72", "#97A48F", "#B6C0AF", "#D2D8CC", "#EBEEE7"] },
+      "focus-blue": { "role": "state", "displayName": "Keyboard Blue", "canonical": "oklch(58% 0.22 270)", "tonalRamp": ["#1A2380", "#2B39B5", "#3D4DDD", "#4D65FF", "#7585FF", "#9DA8FF", "#C5CCFF", "#E2E5FF"] },
+      "rust": { "role": "tertiary", "displayName": "Rust Warning", "canonical": "oklch(48% 0.13 35)", "tonalRamp": ["#3F1A11", "#5D2818", "#7A3520", "#933F29", "#B25C44", "#CF8A75", "#E5B6A8", "#F2DAD2"] },
+      "lichen": { "role": "tertiary", "displayName": "Lichen Tint", "canonical": "oklch(88% 0.03 130)", "tonalRamp": ["#3E4636", "#606B55", "#828F74", "#A4B295", "#C0CCB3", "#D5DFCA", "#E6ECDD", "#F3F6EC"] },
+      "lilac": { "role": "tertiary", "displayName": "Lilac Tint", "canonical": "oklch(81% 0.05 305)", "tonalRamp": ["#403852", "#5A4F70", "#7A6E8E", "#9C92AB", "#BAB1C8", "#D1BEE7", "#E0D3EE", "#EFE7F6"] },
+      "sky-blue": { "role": "tertiary", "displayName": "Sky Tint", "canonical": "oklch(91% 0.04 235)", "tonalRamp": ["#2D4257", "#4A6580", "#7088A4", "#94A8C0", "#B3C5D9", "#CFE8FF", "#DDEEFF", "#EEF6FF"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Big condensed numbers in metric strips and hero counts. Oswald only." },
+      "headline": { "displayName": "Headline", "purpose": "Recap card titles and section headers." },
+      "title": { "displayName": "Title", "purpose": "Row primary text, button labels, chip labels." },
+      "body": { "displayName": "Body", "purpose": "Default reading at 13px. The whole app sits here." },
+      "label": { "displayName": "Label", "purpose": "10px uppercase eyebrows and chart axis labels." },
+      "editorial": { "displayName": "Editorial Aside", "purpose": "Fraunces italic, max once per view, soft asides only." },
+      "mono": { "displayName": "Mono / kbd", "purpose": "JetBrains Mono inside keyboard pills only." }
+    },
+    "shadows": [
+      { "name": "lift-micro", "value": "0 1px 2px rgba(0, 0, 0, 0.04)", "purpose": "Active segmented-control thumb only. The system has no other drop shadow." }
+    ],
+    "motion": [
+      { "name": "ease-out-quart", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Default ease for view transitions and the citrus wipe." },
+      { "name": "ease-out-soft", "value": "ease-out", "purpose": "Short state transitions (hover, fade). 120-200ms." },
+      { "name": "duration-fast", "value": "120ms", "purpose": "Hover row tint." },
+      { "name": "duration-base", "value": "180ms", "purpose": "Modal in, scale in, default UI feedback." },
+      { "name": "duration-slow", "value": "520ms", "purpose": "Citrus wipe signature animation." }
+    ],
+    "breakpoints": [
+      { "name": "desktop", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Default action button. Moss ink on cream, used sparingly because most actions are keyboard-driven.",
+      "html": "<button class=\"ds-btn-primary\">Refresh data</button>",
+      "css": ".ds-btn-primary { background: #022C12; color: #EAE8DD; padding: 8px 14px; border-radius: 8px; font: 600 13px/1.4 Inter, system-ui, sans-serif; letter-spacing: -0.005em; border: 0; cursor: pointer; transition: background 160ms ease; } .ds-btn-primary:hover { background: #1D261F; } .ds-btn-primary:focus-visible { outline: 2px solid #4D65FF; outline-offset: 2px; }"
+    },
+    {
+      "name": "Filter Chip (active)",
+      "kind": "chip",
+      "refersTo": "chip-active",
+      "description": "Active filter pill. The tonal flip (moss fill, cream text) is the only selected state, no shadow, no icon shift.",
+      "html": "<button class=\"ds-chip ds-chip-active\">All accounts</button>",
+      "css": ".ds-chip { background: #F8F6ED; color: #022C12; padding: 7px 14px; border-radius: 10px; font: 600 13px/1.4 Inter, system-ui, sans-serif; border: 1px solid rgba(2,44,18,0.08); cursor: pointer; transition: background 120ms ease, color 120ms ease; } .ds-chip:hover { background: #EDE8D0; } .ds-chip-active { background: #022C12; color: #EAE8DD; border-color: #022C12; } .ds-chip:focus-visible { outline: 2px solid #4D65FF; outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The base content surface. Warm cream paper on the desk surface, 1px hairline, no shadow.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-eyebrow\">Today</div><div class=\"ds-card-title\">Acme Studios</div><div class=\"ds-card-body\">Three open invoices, oldest 14 days overdue.</div></div>",
+      "css": ".ds-card { background: #F8F6ED; border: 1px solid rgba(2,44,18,0.08); border-radius: 14px; padding: 14px; color: #022C12; font-family: Inter, system-ui, sans-serif; } .ds-card-eyebrow { font: 700 10px/1 Inter, sans-serif; text-transform: uppercase; letter-spacing: 0.06em; color: #7A8A72; margin-bottom: 8px; } .ds-card-title { font: 700 15px/1.3 Inter, sans-serif; letter-spacing: -0.005em; margin-bottom: 4px; } .ds-card-body { font: 400 13px/1.45 Inter, sans-serif; letter-spacing: -0.005em; }"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "Inline search field. Card-bg sits on page-bg, no border by default, blue ring on focus.",
+      "html": "<input class=\"ds-input-search\" type=\"text\" placeholder=\"Search accounts\" />",
+      "css": ".ds-input-search { background: #F8F6ED; color: #022C12; padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(2,44,18,0.08); font: 400 13px/1.45 Inter, system-ui, sans-serif; letter-spacing: -0.005em; width: 280px; } .ds-input-search::placeholder { color: #7A8A72; } .ds-input-search:focus-visible { outline: 2px solid #4D65FF; outline-offset: 2px; border-color: transparent; }"
+    },
+    {
+      "name": "Keyboard Pill (kbd)",
+      "kind": "custom",
+      "refersTo": "kbd",
+      "description": "The signature inline keyboard hint. Mono type, tinted-moss background, hairline border.",
+      "html": "<span class=\"ds-kbd\">⌘K</span>",
+      "css": ".ds-kbd { font: 500 10.5px/1 'JetBrains Mono', ui-monospace, monospace; padding: 2px 5px; border-radius: 4px; background: rgba(2,44,18,0.06); color: #022C12; border: 1px solid rgba(2,44,18,0.08); display: inline-block; }"
+    },
+    {
+      "name": "List Row (focused)",
+      "kind": "custom",
+      "refersTo": "list-row",
+      "description": "Keyboard-focused row state. Light-grey wash plus a 3px moss inset stripe on the leading edge.",
+      "html": "<div class=\"ds-row ds-row-focused\"><div class=\"ds-row-title\">Lumen Workshops</div><div class=\"ds-row-sub\">Owner: Filip · Step 3 of 5</div></div>",
+      "css": ".ds-row { padding: 10px 14px; border-bottom: 1px solid rgba(2,44,18,0.08); transition: background 120ms ease; cursor: pointer; font-family: Inter, system-ui, sans-serif; color: #022C12; } .ds-row:hover { background: #F3F3F3; } .ds-row-focused { background: #F3F3F3; box-shadow: inset 3px 0 0 #022C12; } .ds-row-title { font: 600 13px/1.4 Inter, sans-serif; } .ds-row-sub { font: 400 11.5px/1.3 Inter, sans-serif; color: #7A8A72; margin-top: 2px; }"
+    },
+    {
+      "name": "Citrus Wipe Headline",
+      "kind": "custom",
+      "refersTo": "citrus-wipe",
+      "description": "The brand's only flourish. A 520ms lime swipe paints under a key word once per page load.",
+      "html": "<h1 class=\"ds-wipe-h1\">Today's <span class=\"ds-wipe-mark\">attention</span></h1>",
+      "css": ".ds-wipe-h1 { font: 700 22px/1.1 Oswald, 'National 2 Condensed', Impact, sans-serif; color: #022C12; letter-spacing: -0.005em; margin: 0; } .ds-wipe-mark { background-image: linear-gradient(#F1F97E, #F1F97E); background-repeat: no-repeat; background-size: 0% 100%; background-position: 0 0; padding: 0 0.15em; animation: dsCitrusWipe 520ms cubic-bezier(0.22, 1, 0.36, 1) 120ms forwards; } @keyframes dsCitrusWipe { from { background-size: 0% 100%; } to { background-size: 100% 100%; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Operator's Desk",
+    "overview": "A workshop notebook left open on a warm linen desk: ink, paper, one highlighter, no clutter. The dashboard is dense with information but never feels busy. Color is rare and earned, type does most of the work, and the lime accent speaks once per screen.",
+    "keyCharacteristics": [
+      "Warm cream page (#EAE8DD), warmer cream cards (#F8F6ED). Never pure white.",
+      "One accent: lime citrus, used as a wipe highlight, kbd hint, or single confirmation, never as decoration.",
+      "Three voices in type: Inter for everything, Oswald for big numbers, Fraunces italic for soft asides, JetBrains Mono for keyboard hints.",
+      "Flat by default. 1px hairlines tinted toward moss. One small shadow on the active segmented thumb, nothing else.",
+      "Keyboard is first-class: visible blue focus ring, kbd pills inline in copy, command palette on Cmd+K."
+    ],
+    "rules": [
+      { "name": "The One Lime Rule", "body": "--citrus appears at most once per visible viewport. If you find yourself adding a second citrus surface, remove the first or use a hairline instead.", "section": "colors" },
+      { "name": "The No White Rule", "body": "#FFFFFF is forbidden as a page or card background. The single exception is the active segmented-control thumb.", "section": "colors" },
+      { "name": "The Tinted Hairline Rule", "body": "Every divider tints toward moss (rgba(2,44,18,0.08)). Pure-grey borders are forbidden against cream surfaces.", "section": "colors" },
+      { "name": "The 13px Floor Rule", "body": "Body type sits at 13px. Going smaller is allowed for labels (down to 10px); going bigger requires a deliberate purpose.", "section": "typography" },
+      { "name": "The Letter-Spacing Pull Rule", "body": "Body and headline carry letter-spacing -0.005em. Labels go the other way (+0.06em uppercase).", "section": "typography" },
+      { "name": "The Editorial Sparingly Rule", "body": "Fraunces italic appears at most once per view, as a soft aside. Forbidden as a heading or button face.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. Use a hairline border or a tonal step for separation, never a drop shadow.", "section": "elevation" },
+      { "name": "The No Hover Lift Rule", "body": "Hover states change background tint or text color. They never raise the element with a shadow or transform.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep the page on --page-bg (#EAE8DD) and cards on --card-bg (#F8F6ED).",
+      "Do use moss (#022C12) for all primary text and primary buttons; treat it as the project's black.",
+      "Do reserve --citrus (#F1F97E) for one moment per viewport.",
+      "Do sit body type at 13px Inter with letter-spacing -0.005em.",
+      "Do divide content with 1px hairlines tinted toward moss.",
+      "Do show a visible blue focus ring on every interactive element.",
+      "Do ease motion with cubic-bezier(0.22, 1, 0.36, 1); durations 120-220ms.",
+      "Do respect prefers-reduced-motion.",
+      "Do pair color status with an icon, label, or position."
+    ],
+    "donts": [
+      "Don't use #FFFFFF as a page or card background, and never #000 as text.",
+      "Don't scatter citrus around the screen.",
+      "Don't use a colored side stripe wider than 1px on cards or rows. The 3px moss stripe is reserved for the focused list row.",
+      "Don't add gradient text, gradient buttons, or gradient surfaces.",
+      "Don't apply drop shadows to cards, dialogs, popovers, or hover states.",
+      "Don't build the heavy enterprise-CRM look: stacked colored badges, modal-everywhere, busy chrome.",
+      "Don't drift toward the toy-like consumer aesthetic: oversized type, candy colors, illustrations, gamification.",
+      "Don't ship the generic SaaS hero-metric template.",
+      "Don't use identical card grids where every row is the same shape.",
+      "Don't introduce a new font family beyond Inter, Oswald, Fraunces italic, JetBrains Mono.",
+      "Don't open a modal where an inline disclosure or detail panel works.",
+      "Don't use em dashes in UI copy."
+    ]
+  }
+}

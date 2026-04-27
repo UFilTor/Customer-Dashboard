@@ -44,7 +44,7 @@ export function Sparkline({ data, width = 64, height = 20, tone }: SparklineProp
   const auto = last >= first ? "good" : "bad";
   const t = tone === "neutral" ? "neutral" : tone || auto;
   const stroke =
-    t === "good" ? "#0E7C4C" :
+    t === "good" ? "var(--status-good-bold)" :
     t === "bad" ? "var(--rust)" :
     "var(--moss)";
 

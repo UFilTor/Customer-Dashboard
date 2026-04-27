@@ -93,7 +93,7 @@ export function VolumeChart({ company }: VolumeChartProps) {
                 style={{
                   fontSize: 13,
                   fontWeight: 600,
-                  color: recentChange >= 0 ? "#0E7C4C" : "var(--rust)",
+                  color: recentChange >= 0 ? "var(--status-good-bold)" : "var(--rust)",
                 }}
               >
                 {recentChange >= 0 ? "↑" : "↓"} {Math.abs(recentChange)}%

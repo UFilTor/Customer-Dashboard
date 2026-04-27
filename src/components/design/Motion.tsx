@@ -66,11 +66,14 @@ export function AnimBar({ pct, color = "var(--moss)", height = 7, bg = "var(--ha
     <div style={{ height, borderRadius: radius, background: bg, overflow: "hidden" }}>
       <div
         style={{
-          width: `${w}%`,
+          width: "100%",
           height: "100%",
           background: color,
           borderRadius: radius,
-          transition: `width 700ms ${EASE}`,
+          transformOrigin: "left center",
+          transform: `scaleX(${w / 100})`,
+          transition: `transform 700ms ${EASE}`,
+          willChange: "transform",
         }}
       />
     </div>

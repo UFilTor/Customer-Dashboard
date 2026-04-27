@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fmtEur } from "@/lib/format-design";
 
-export type Variant = "briefing" | "split" | "kanban";
+export type Variant = "briefing" | "split";
 export type DashboardKey = "status" | "onboarding" | "retention" | "pay_migration" | "bloom";
 
 interface DashboardDef {
@@ -40,7 +40,6 @@ interface VariantPickerProps {
 const VARIANTS: { key: Variant; label: string }[] = [
   { key: "briefing", label: "Daily briefing" },
   { key: "split", label: "Split view" },
-  { key: "kanban", label: "By signal" },
 ];
 
 export function VariantPicker({
@@ -223,18 +222,7 @@ function DashboardPicker({
     <div ref={ref} style={{ position: "relative" }}>
       <button
         onClick={() => setOpen((o) => !o)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "6px 12px 6px 14px",
-          borderRadius: 10,
-          background: "var(--moss)",
-          color: "#fff",
-          border: "1px solid var(--moss)",
-          cursor: "pointer",
-          transition: "all 0.2s cubic-bezier(0.8, 0.24, 0.16, 1)",
-        }}
+        className="dashboard-picker-btn"
       >
         <span
           style={{

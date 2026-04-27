@@ -3,7 +3,7 @@
 import { ReactNode, useState } from "react";
 import type { Variant, DashboardKey } from "./VariantPicker";
 
-const VARIANT_ORDER: Variant[] = ["briefing", "split", "kanban"];
+const VARIANT_ORDER: Variant[] = ["briefing", "split"];
 
 type AnimMode = "none" | "fade" | "slide-from-right" | "slide-from-left";
 

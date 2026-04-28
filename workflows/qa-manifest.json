@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "created": "2026-04-28T14:15:00Z",
+  "base_url": "http://localhost:3000",
+  "screens": [
+    {
+      "url": "/",
+      "name": "Dashboard root (Status / Onboarding / Pay Migration)",
+      "auth_required": false,
+      "source_file": "src/app/page.tsx",
+      "discovered_from": ["codebase"],
+      "workflow_refs": [],
+      "params": {},
+      "example_url": "/",
+      "notes": "Single-page client root. Dashboard, variant, and global filter all live here. Hosts: Status (briefing/split/kanban), Onboarding, Pay Migration."
+    },
+    {
+      "url": "/auth/signin",
+      "name": "Sign-in page",
+      "auth_required": false,
+      "source_file": "src/app/auth/signin/page.tsx",
+      "discovered_from": ["codebase"],
+      "workflow_refs": [],
+      "params": {},
+      "example_url": "/auth/signin",
+      "notes": "HubSpot OAuth entry. Unused on localhost (no auth gate)."
+    }
+  ]
+}

@@ -46,3 +46,7 @@ next-env.d.ts
 
 # claude code workspace state
 .claude/
+.playwright/profiles/
+.playwright-cli/
+.playwright/profiles.json
+workflows/qa-report-*.md

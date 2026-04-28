@@ -88,3 +88,11 @@ Each Status variant (briefing / split / kanban) has its own selection slot in `s
 ## Deploy
 
 The project is linked to the **Understory vibers** Vercel team (`team_OnEaZzozCh6ohnHaGzM3FIsI`); verify `.vercel/project.json` before any `vercel --prod --yes`. Default branch is `main`; we push directly (no PRs) for solo work.
+
+## Playwright Profiles
+Authenticated browser profiles are available at `.playwright/profiles/`.
+Available profiles:
+- cs: Filip / CS team — localhost has no auth gate, profile captured as anonymous session
+Config: `.playwright/profiles.json`
+To load a profile, use `playwright-cli -s={session} state-load .playwright/profiles/<role>.json` to restore cookies and localStorage.
+Run `/setup-profiles` to refresh profiles. Note: prod requires real HubSpot OAuth — `.env.local` would need `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` for the OAuth flow to work.

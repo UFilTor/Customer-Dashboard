@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Oswald, Fraunces, JetBrains_Mono } from "next/font/google";
-import { Retune } from "retune";
+import RetuneIfDev from "@/components/RetuneIfDev";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import SessionWrapper from "@/components/SessionWrapper";
 
@@ -45,7 +46,8 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-[var(--page-bg)] text-[var(--moss)]">
         <SessionWrapper>{children}</SessionWrapper>
-        <Retune />
+        <RetuneIfDev />
+        <SpeedInsights />
       </body>
     </html>
   );

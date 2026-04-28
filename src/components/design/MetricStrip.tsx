@@ -16,7 +16,7 @@ function Tile({ label, value, tone }: TileProps) {
   if (tone === "bad") { bg = "rgba(147,63,41,0.06)"; ink = "var(--rust)"; labelColor = "rgba(147,63,41,0.75)"; border = "rgba(147,63,41,0.18)"; }
   if (tone === "good") { bg = "rgba(5,100,60,0.05)"; ink = "#065F46"; labelColor = "rgba(5,100,60,0.7)"; border = "rgba(5,100,60,0.18)"; }
   if (tone === "warn") { bg = "rgba(184,118,31,0.07)"; ink = "#92400E"; labelColor = "rgba(184,118,31,0.8)"; border = "rgba(184,118,31,0.22)"; }
-  if (tone === "highlight") { bg = "var(--moss)"; ink = "var(--citrus)"; labelColor = "rgba(241,249,126,0.7)"; border = "var(--moss)"; }
+  if (tone === "highlight") { bg = "var(--moss)"; ink = "var(--citrus)"; labelColor = "var(--citrus)"; border = "var(--moss)"; }
 
   return (
     <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 14, padding: "14px 14px 13px" }}>

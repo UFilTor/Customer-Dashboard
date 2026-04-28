@@ -121,8 +121,8 @@ function formatMonthlyFee(
   if (amount == null || amount === "") return null;
   const n = parseFloat(amount);
   if (isNaN(n) || n === 0) return null;
-  const ccy = (currency || "EUR").toUpperCase();
-  return `${Math.round(n).toLocaleString("en-US")} ${ccy}/mo`;
+  if (!currency || !currency.trim()) return null;
+  return `${Math.round(n).toLocaleString("en-US")} ${currency.trim().toUpperCase()}/mo`;
 }
 
 function formatAcv(amount: string | undefined): string | null {
@@ -490,61 +490,73 @@ async function fetchSalesDealsForCompanies(companyIds: string[]): Promise<Map<st
   if (companyIds.length === 0) return dealsByCompany;
 
   // Search sales-pipeline deals associated with any of the onboarding companies.
-  // HubSpot caps filterGroups at 5 with up to 6 filters each, but `associatedWith`
-  // sits inside a filterGroup with IN operator, so we batch the IDs.
+  // Each 80-id batch is independent — fire them in parallel. Pagination
+  // within a batch stays sequential (next-cursor is opaque).
+  const batches: string[][] = [];
   for (let i = 0; i < companyIds.length; i += 80) {
-    const batch = companyIds.slice(i, i + 80);
-    let after: string | undefined;
-    do {
-      const body: Record<string, unknown> = {
-        filterGroups: [
-          {
-            filters: [
-              { propertyName: "pipeline", operator: "EQ", value: SALES_PIPELINE },
-            ],
-            associatedWith: [
-              {
-                objectType: "companies",
-                operator: "IN",
-                objectIdValues: batch.map((id) => parseInt(id, 10)).filter((n) => !isNaN(n)),
-              },
-            ],
-          },
-        ],
-        properties: SALES_DEAL_PROPS,
-        sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
-        limit: 200,
-      };
-      if (after) body.after = after;
+    batches.push(companyIds.slice(i, i + 80));
+  }
 
-      try {
-        const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
-          method: "POST",
-          headers: hubspotHeaders(),
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) break;
-        const data = await res.json();
-        const dealIds = (data.results || []).map((d: RawObject) => d.id);
-        if (dealIds.length === 0) break;
+  const batchResults = await Promise.all(
+    batches.map(async (batch) => {
+      const collected: RawObject[] = [];
+      let after: string | undefined;
+      do {
+        const body: Record<string, unknown> = {
+          filterGroups: [
+            {
+              filters: [
+                { propertyName: "pipeline", operator: "EQ", value: SALES_PIPELINE },
+              ],
+              associatedWith: [
+                {
+                  objectType: "companies",
+                  operator: "IN",
+                  objectIdValues: batch.map((id) => parseInt(id, 10)).filter((n) => !isNaN(n)),
+                },
+              ],
+            },
+          ],
+          properties: SALES_DEAL_PROPS,
+          sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
+          limit: 200,
+        };
+        if (after) body.after = after;
 
-        // Fetch associations to figure out which company each deal belongs to.
-        const assocs = await fetchAssociations("deals", "companies", dealIds);
-        const dealToCompany = new Map<string, string>();
-        for (const a of assocs) if (a.toIds[0]) dealToCompany.set(a.fromId, a.toIds[0]);
-
-        for (const d of data.results || []) {
-          const companyId = dealToCompany.get(d.id);
-          if (!companyId) continue;
-          const arr = dealsByCompany.get(companyId) || [];
-          arr.push(d);
-          dealsByCompany.set(companyId, arr);
+        try {
+          const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
+            method: "POST",
+            headers: hubspotHeaders(),
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) break;
+          const data = await res.json();
+          const results = data.results || [];
+          if (results.length === 0) break;
+          collected.push(...results);
+          after = data.paging?.next?.after;
+        } catch {
+          break;
         }
-        after = data.paging?.next?.after;
-      } catch {
-        break;
-      }
-    } while (after);
+      } while (after);
+      return collected;
+    })
+  );
+
+  const allDeals = batchResults.flat();
+  if (allDeals.length > 0) {
+    const dealIds = allDeals.map((d) => d.id);
+    const assocs = await fetchAssociations("deals", "companies", dealIds);
+    const dealToCompany = new Map<string, string>();
+    for (const a of assocs) if (a.toIds[0]) dealToCompany.set(a.fromId, a.toIds[0]);
+
+    for (const d of allDeals) {
+      const companyId = dealToCompany.get(d.id);
+      if (!companyId) continue;
+      const arr = dealsByCompany.get(companyId) || [];
+      arr.push(d);
+      dealsByCompany.set(companyId, arr);
+    }
   }
 
   // Sort each company's deal list by createdate DESC.
@@ -834,29 +846,45 @@ interface OnboardingPayload {
  *   endpoint to fetch a single day outside the default window.
  */
 export async function buildOnboardingPayload(
-  opts: { ownerIds?: string[]; meetingFromIso?: string; meetingToIso?: string } = {}
+  opts: {
+    ownerIds?: string[];
+    meetingFromIso?: string;
+    meetingToIso?: string;
+    spans?: import("./perf").Spans;
+  } = {}
 ): Promise<OnboardingPayload> {
-  const lifecycleDeals = await fetchLifecycleDeals(opts.ownerIds);
+  const spans = opts.spans;
+  const time = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
+    if (!spans) return fn();
+    const t0 = performance.now();
+    try {
+      return await fn();
+    } finally {
+      spans.push({ label, ms: performance.now() - t0 });
+    }
+  };
+
+  const lifecycleDeals = await time("hubspot.lifecycleDeals", () =>
+    fetchLifecycleDeals(opts.ownerIds)
+  );
   if (lifecycleDeals.length === 0) {
     return { deals: [], meetings: [] };
   }
 
   const dealIds = lifecycleDeals.map((d) => d.id);
 
-  // List payload only fetches what the list view shows: company info + meetings
-  // (used for upcoming bucket AND meeting-history). Calls and emails come from
-  // /api/onboarding/history on demand — they're the expensive per-deal fetches
-  // and the list never renders them.
   const [companyMap, meetingsByDeal, contactMap] = await Promise.all([
-    fetchCompaniesForDeals(dealIds),
-    fetchMeetingsForDeals(dealIds),
-    fetchPrimaryContactsForDeals(dealIds),
+    time("hubspot.companies", () => fetchCompaniesForDeals(dealIds)),
+    time("hubspot.meetings", () => fetchMeetingsForDeals(dealIds)),
+    time("hubspot.contacts", () => fetchPrimaryContactsForDeals(dealIds)),
   ]);
 
   const companyIds = Array.from(
     new Set(Array.from(companyMap.values()).map((c) => c.companyId))
   );
-  const salesDealsByCompany = await fetchSalesDealsForCompanies(companyIds);
+  const salesDealsByCompany = await time("hubspot.salesDeals", () =>
+    fetchSalesDealsForCompanies(companyIds)
+  );
 
   // Resolve owner names for both lifecycle CS owners and sales owners we'll attribute.
   const lifecycleOwnerIds = lifecycleDeals.map((d) => d.properties.hubspot_owner_id).filter(Boolean);
@@ -935,8 +963,22 @@ export async function buildOnboardingPayload(
     }
     if (salesOwnerName == null) salesOwnerName = "missing";
 
+    // Monthly fee — prefer the priced sales deal as the source of truth, since
+    // lifecycle deals often inherit a default currency (EUR) regardless of the
+    // actual deal currency. Fall back to the lifecycle deal only when no priced
+    // sales deal exists.
+    let feeAmount: string | undefined = p.core_net_price__local_currency;
+    let feeCurrency: string | undefined = p.deal_currency_code;
+    if (company) {
+      const priced = pickSalesFallback(salesDealsByCompany.get(company.companyId) ?? []);
+      if (priced?.isPriced) {
+        feeAmount = priced.deal.properties.core_net_price__local_currency;
+        feeCurrency = priced.deal.properties.deal_currency_code;
+      }
+    }
+
     const commercial: OnboardingCommercial = {
-      monthlyFee: formatMonthlyFee(p.core_net_price__local_currency, p.deal_currency_code),
+      monthlyFee: formatMonthlyFee(feeAmount, feeCurrency),
       acv: formatAcv(p.amount_in_home_currency),
       bookingFee: formatBookingFee(p.booking_fee, p.confirmed_booking_fee),
       firstBilling,
@@ -1025,10 +1067,12 @@ export async function buildOnboardingPayload(
     ? opts.ownerIds
     : Array.from(new Set(lifecycleOwnerIds));
   if (csOwnerIds.length > 0) {
-    const ownerDirect = await fetchUpcomingMeetingsByOwners(
-      csOwnerIds,
-      meetingFrom.toISOString(),
-      meetingHorizon.toISOString()
+    const ownerDirect = await time("hubspot.ownerMeetings", () =>
+      fetchUpcomingMeetingsByOwners(
+        csOwnerIds,
+        meetingFrom.toISOString(),
+        meetingHorizon.toISOString()
+      )
     );
 
     const knownMeetingIds = new Set<string>();
@@ -1038,12 +1082,52 @@ export async function buildOnboardingPayload(
 
     const orphans = ownerDirect.filter((m) => !knownMeetingIds.has(m.id));
     if (orphans.length > 0) {
+      const orphanT0 = performance.now();
       const orphanIds = orphans.map((m) => m.id);
       const meetingCompanyAssocs = await fetchAssociations("meetings", "companies", orphanIds);
       const meetingToCompany = new Map<string, string>();
       for (const a of meetingCompanyAssocs) {
         if (a.toIds[0]) meetingToCompany.set(a.fromId, a.toIds[0]);
       }
+
+      // Fallback: for meetings with no direct company association, walk through
+      // meeting participants (contacts) → their associated companies. Lots of
+      // Gong-imported meetings only carry a contact link, not a company link.
+      const meetingsWithoutCompany = orphanIds.filter((id) => !meetingToCompany.has(id));
+      if (meetingsWithoutCompany.length > 0) {
+        const meetingContactAssocs = await fetchAssociations(
+          "meetings",
+          "contacts",
+          meetingsWithoutCompany
+        );
+        const meetingToContacts = new Map<string, string[]>();
+        const allContactIds = new Set<string>();
+        for (const a of meetingContactAssocs) {
+          meetingToContacts.set(a.fromId, a.toIds);
+          for (const cid of a.toIds) allContactIds.add(cid);
+        }
+        if (allContactIds.size > 0) {
+          const contactCompanyAssocs = await fetchAssociations(
+            "contacts",
+            "companies",
+            Array.from(allContactIds)
+          );
+          const contactToCompany = new Map<string, string>();
+          for (const a of contactCompanyAssocs) {
+            if (a.toIds[0]) contactToCompany.set(a.fromId, a.toIds[0]);
+          }
+          for (const [meetingId, contactIds] of meetingToContacts) {
+            for (const cid of contactIds) {
+              const companyId = contactToCompany.get(cid);
+              if (companyId) {
+                meetingToCompany.set(meetingId, companyId);
+                break;
+              }
+            }
+          }
+        }
+      }
+
       const orphanCompanyIds = Array.from(new Set(meetingToCompany.values()));
       const orphanCompanyProps = await fetchObjectsBatch("companies", orphanCompanyIds, [
         "name",
@@ -1181,6 +1265,7 @@ export async function buildOnboardingPayload(
 
         meetings.push({ meeting, deal: stubDeal });
       }
+      if (spans) spans.push({ label: "hubspot.orphanEnrich", ms: performance.now() - orphanT0 });
     }
   }
 

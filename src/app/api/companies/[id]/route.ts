@@ -14,6 +14,12 @@ export async function GET(
 ) {
   const { id } = await params;
 
+  // Validate ID shape — HubSpot company IDs are positive integers. Reject
+  // anything else with 404 instead of returning a stub payload + owner directory.
+  if (!/^\d+$/.test(id)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const cached = companyCache.get(id);
   if (cached) {
     const [owners, stages] = await Promise.all([
@@ -25,6 +31,11 @@ export async function GET(
 
   try {
     const detail = await getCompanyDetail(id);
+    // 404 when HubSpot has no record for this ID — `fetchCompany` returns an
+    // empty object on a 404 from HubSpot. Don't expose stub data.
+    if (!detail.company || Object.keys(detail.company).length === 0) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
     const [owners, stages] = await Promise.all([
       getCachedOwners(),

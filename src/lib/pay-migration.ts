@@ -236,28 +236,38 @@ async function fetchZeroEventDealIds(): Promise<Set<string>> {
 
   if (companyIds.length === 0) return new Set();
 
+  // Use HubSpot's batch associations endpoint (up to 100 IDs per request,
+  // running batches in parallel) instead of per-company GETs. This collapses
+  // ~zeroEventCompanies/5 sequential calls into ~zeroEventCompanies/100
+  // parallel calls — typically ~99% reduction in wall time.
   const dealIds = new Set<string>();
-  for (let i = 0; i < companyIds.length; i += 5) {
-    const batch = companyIds.slice(i, i + 5);
-    const results = await Promise.all(
-      batch.map(async (companyId) => {
-        try {
-          const res = await fetch(
-            `${HUBSPOT_API}/crm/v3/objects/companies/${companyId}/associations/deals`,
-            { headers: hubspotHeaders(), cache: "no-store" as RequestCache }
-          );
-          if (!res.ok) return [];
-          const data = await res.json();
-          return (data.results || []).map((r: { id: string }) => r.id);
-        } catch {
-          return [];
-        }
-      })
-    );
-    for (const ids of results) {
-      for (const id of ids) dealIds.add(id);
-    }
+  const batches: string[][] = [];
+  for (let i = 0; i < companyIds.length; i += 100) {
+    batches.push(companyIds.slice(i, i + 100));
   }
+  await Promise.all(
+    batches.map(async (batch) => {
+      try {
+        const res = await fetch(
+          `${HUBSPOT_API}/crm/v4/associations/companies/deals/batch/read`,
+          {
+            method: "POST",
+            headers: hubspotHeaders(),
+            body: JSON.stringify({ inputs: batch.map((id) => ({ id })) }),
+          }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const result of data.results || []) {
+          for (const t of result.to || []) {
+            dealIds.add(String(t.toObjectId));
+          }
+        }
+      } catch {
+        // Best-effort — partial result is better than total failure.
+      }
+    })
+  );
 
   return dealIds;
 }
@@ -299,12 +309,24 @@ function buildOwnerSummary(ownerId: string, ownerName: string, deals: PayDeal[])
   };
 }
 
-export async function fetchPayMigrationData(): Promise<PayMigrationData> {
+export async function fetchPayMigrationData(
+  spans?: import("./perf").Spans
+): Promise<PayMigrationData> {
+  const time = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
+    if (!spans) return fn();
+    const t0 = performance.now();
+    try {
+      return await fn();
+    } finally {
+      spans.push({ label, ms: performance.now() - t0 });
+    }
+  };
+
   const [rawDeals, unwillingReasons, zeroEventDealIds, ownerMap] = await Promise.all([
-    fetchAllPayDeals(),
-    fetchUnwillingReasons(),
-    fetchZeroEventDealIds(),
-    getOwners(),
+    time("hubspot.payDeals", () => fetchAllPayDeals()),
+    time("hubspot.unwillingReasons", () => fetchUnwillingReasons()),
+    time("hubspot.zeroEventDeals", () => fetchZeroEventDealIds()),
+    time("hubspot.owners", () => getOwners()),
   ]);
 
   // Deduplicate deals by ID

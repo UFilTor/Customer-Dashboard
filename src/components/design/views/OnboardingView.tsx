@@ -1521,11 +1521,22 @@ function MeetingBriefCard({
               value={obNotes.companyDomain}
               link={obNotes.companyDomain ? toWebUrl(obNotes.companyDomain) : null}
             />
-            <BriefRow
-              label="Storefront"
-              value={obNotes.storefrontLink}
-              link={obNotes.storefrontLink}
-            />
+            {(() => {
+              const raw = obNotes.storefrontLink;
+              const parts = raw
+                ? raw.split(/[\s;,]+/).map((s) => s.trim()).filter(Boolean)
+                : [];
+              if (parts.length > 1) {
+                return <BriefRow label="Storefront" links={parts} />;
+              }
+              return (
+                <BriefRow
+                  label="Storefront"
+                  value={raw}
+                  link={raw}
+                />
+              );
+            })()}
             {obNotes.understoryPayEnabled === true && (
               <BriefRow label="Pay status" value={obNotes.payStatus ?? "Enabled"} />
             )}
@@ -2317,12 +2328,15 @@ function BriefRow({
   label,
   value,
   link,
+  links,
 }: {
   label: string;
-  value: string | null;
+  value?: string | null;
   link?: string | null;
+  links?: string[];
 }) {
-  const missing = value == null || value === "" || value === "missing";
+  const hasLinks = links && links.length > 0;
+  const missing = !hasLinks && (value == null || value === "" || value === "missing");
   return (
     <>
       <dt
@@ -2349,7 +2363,21 @@ function BriefRow({
           wordBreak: "break-word",
         }}
       >
-        {missing ? "missing" : link ? (
+        {missing ? "missing" : hasLinks ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {links!.map((href) => (
+              <a
+                key={href}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--moss)", textDecoration: "underline" }}
+              >
+                {href}
+              </a>
+            ))}
+          </div>
+        ) : link ? (
           <a href={link} target="_blank" rel="noopener noreferrer" style={{ color: "var(--moss)", textDecoration: "underline" }}>
             {value}
           </a>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import type {
   AttentionResponse,
   CompanyDetail as CompanyDetailData,
@@ -21,8 +22,19 @@ import { ViewTransition } from "@/components/design/ViewTransition";
 import { BriefingView } from "@/components/design/views/BriefingView";
 import { SplitView } from "@/components/design/views/SplitView";
 import { CompanyDetail } from "@/components/design/CompanyDetail";
-import { PayMigrationContainer } from "@/components/design/views/PayMigrationContainer";
-import { OnboardingContainer } from "@/components/design/views/OnboardingContainer";
+// Heavy variant containers — code-split so the Status dashboard's first paint
+// doesn't pay the cost of OnboardingView (2.4k lines) + PayMigrationView (1.3k
+// lines). They load on first navigation to their respective dashboard.
+const PayMigrationContainer = dynamic(
+  () =>
+    import("@/components/design/views/PayMigrationContainer").then((m) => m.PayMigrationContainer),
+  { ssr: false }
+);
+const OnboardingContainer = dynamic(
+  () =>
+    import("@/components/design/views/OnboardingContainer").then((m) => m.OnboardingContainer),
+  { ssr: false }
+);
 import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
 import { flattenGroups, SECTION_ORDER, sortBySignal, type FlatCompany } from "@/lib/signals";
 import {
@@ -40,14 +52,108 @@ type DetailData = CompanyDetailData & { owners: OwnerMap; stages: StageMap };
 
 const HUBSPOT_PORTAL = process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID;
 
+// URL ↔ state helpers. Keeping the URL canonical for view state means back /
+// forward / refresh / share-link all work. localStorage stays as a fallback
+// for the very first visit (and for the per-variant selection memory map,
+// which is too noisy for the URL).
+type UrlState = {
+  dashboard: DashboardKey;
+  variant: Variant;
+  filter: GlobalFilter;
+  payFilter: "default" | "all";
+  onboardingSubview: OnboardingSubview;
+  selectedCompanyId: string | null;
+};
+
+function readUrlState(): Partial<UrlState> {
+  if (typeof window === "undefined") return {};
+  const sp = new URLSearchParams(window.location.search);
+  const out: Partial<UrlState> = {};
+  const d = sp.get("d");
+  if (d === "status" || d === "onboarding" || d === "pay_migration") out.dashboard = d;
+  const v = sp.get("v");
+  if (v === "briefing" || v === "split") out.variant = v;
+  const fk = sp.get("f");
+  const fv = sp.get("fv");
+  if (fk === "region" && (fv === "DK" || fv === "SE" || fv === "IT")) {
+    out.filter = { kind: "region", region: fv };
+  } else if (fk === "person" && fv) {
+    out.filter = { kind: "person", ownerId: fv };
+  } else if (fk === "all") {
+    out.filter = { kind: "all" };
+  }
+  const pf = sp.get("pf");
+  if (pf === "default" || pf === "all") out.payFilter = pf;
+  const os = sp.get("os");
+  if (os === "meetings" || os === "attention") out.onboardingSubview = os;
+  const c = sp.get("c");
+  if (c) out.selectedCompanyId = c;
+  return out;
+}
+
+function writeUrlState(state: UrlState): void {
+  if (typeof window === "undefined") return;
+  const sp = new URLSearchParams();
+  if (state.dashboard !== "status") sp.set("d", state.dashboard);
+  if (state.dashboard === "status" && state.variant !== "briefing") sp.set("v", state.variant);
+  if (state.filter.kind !== "all") {
+    sp.set("f", state.filter.kind);
+    if (state.filter.kind === "region") sp.set("fv", state.filter.region);
+    if (state.filter.kind === "person") sp.set("fv", state.filter.ownerId);
+  }
+  if (state.dashboard === "pay_migration" && state.payFilter !== "default") {
+    sp.set("pf", state.payFilter);
+  }
+  if (state.dashboard === "onboarding" && state.onboardingSubview !== "meetings") {
+    sp.set("os", state.onboardingSubview);
+  }
+  if (state.selectedCompanyId) sp.set("c", state.selectedCompanyId);
+  const qs = sp.toString();
+  const next = qs ? `?${qs}` : window.location.pathname;
+  // Use replaceState to avoid spamming the back-button history on every nav.
+  // Pushing once per nav would also work but feels heavy for tabbed UIs.
+  window.history.replaceState(null, "", next);
+}
+
 export default function Dashboard() {
-  // View state
-  const [dashboard, setDashboard] = useState<DashboardKey>("status");
-  const [variant, setVariant] = useState<Variant>("briefing");
-  const [globalFilter, setGlobalFilter] = useState<GlobalFilter>(ALL_FILTER);
-  const [defaultFilter, setDefaultFilter] = useState<GlobalFilter | null>(null);
-  const [payFilter, setPayFilter] = useState<"default" | "all">("default");
-  const [onboardingSubview, setOnboardingSubview] = useState<OnboardingSubview>("meetings");
+  // View state — URL params win, localStorage is the fallback for first-time
+  // visits. Lazy `useState` init runs once on mount, after which `writeUrlState`
+  // keeps the URL in sync with React state.
+  const initial = useMemo(() => readUrlState(), []);
+  const lsGet = (key: string): string | null => {
+    if (typeof window === "undefined") return null;
+    try { return localStorage.getItem(key); } catch { return null; }
+  };
+  const [dashboard, setDashboard] = useState<DashboardKey>(() => {
+    if (initial.dashboard) return initial.dashboard;
+    const d = lsGet("ud-v2-dashboard");
+    return d === "onboarding" || d === "pay_migration" ? d : "status";
+  });
+  const [variant, setVariant] = useState<Variant>(() => {
+    if (initial.variant) return initial.variant;
+    const v = lsGet("ud-v2-variant");
+    return v === "split" ? "split" : "briefing";
+  });
+  const [globalFilter, setGlobalFilter] = useState<GlobalFilter>(() => {
+    if (initial.filter) return initial.filter;
+    const pinned = parseFilter(lsGet("ud-v2-filter-default"));
+    if (pinned) return pinned;
+    const last = parseFilter(lsGet("ud-v2-filter"));
+    return last ?? ALL_FILTER;
+  });
+  const [defaultFilter, setDefaultFilter] = useState<GlobalFilter | null>(() =>
+    parseFilter(lsGet("ud-v2-filter-default"))
+  );
+  const [payFilter, setPayFilter] = useState<"default" | "all">(() => {
+    if (initial.payFilter) return initial.payFilter;
+    const p = lsGet("ud-v2-pay-filter");
+    return p === "all" ? "all" : "default";
+  });
+  const [onboardingSubview, setOnboardingSubview] = useState<OnboardingSubview>(() => {
+    if (initial.onboardingSubview) return initial.onboardingSubview;
+    const ob = lsGet("ud-v2-onboarding-subview");
+    return ob === "attention" ? "attention" : "meetings";
+  });
 
   // Data state
   const [attention, setAttention] = useState<AttentionResponse | null>(null);
@@ -60,10 +166,14 @@ export default function Dashboard() {
   // Onboarding/pay_migration use the shared `_other` slot (they don't have
   // sub-variants today).
   type SelectionScope = Variant | "_other";
-  const [selectionByScope, setSelectionByScope] = useState<Record<SelectionScope, string | null>>({
-    briefing: null,
-    split: null,
-    _other: null,
+  const [selectionByScope, setSelectionByScope] = useState<Record<SelectionScope, string | null>>(() => {
+    const base = { briefing: null as string | null, split: null as string | null, _other: null as string | null };
+    if (initial.selectedCompanyId) {
+      const scope: SelectionScope =
+        (initial.dashboard ?? "status") === "status" ? (initial.variant ?? "briefing") : "_other";
+      base[scope] = initial.selectedCompanyId;
+    }
+    return base;
   });
   const selectionScope: SelectionScope = dashboard === "status" ? variant : "_other";
   const selectedCompanyId = selectionByScope[selectionScope];
@@ -134,28 +244,24 @@ export default function Dashboard() {
   }, []);
 
 
-  // Persist view + filter choices across reloads.
-  // Filter resolution order on load: pinned default → last-used → All.
-  // Pinned default loads on every refresh; last-used keeps the session sticky
-  // for users who haven't pinned anything.
+  // Mirror state into the URL (canonical) and localStorage (fallback for
+  // first-time visits + per-variant selection memory map). Skip the very
+  // first run — the lazy useState initializers already seeded everything
+  // from the URL/localStorage and re-writing immediately would just no-op.
+  const didMountRef = useRef(false);
   useEffect(() => {
-    try {
-      const v = localStorage.getItem("ud-v2-variant");
-      if (v === "briefing" || v === "split") setVariant(v);
-      const d = localStorage.getItem("ud-v2-dashboard");
-      if (d === "status" || d === "pay_migration" || d === "onboarding") setDashboard(d);
-      const pinned = parseFilter(localStorage.getItem("ud-v2-filter-default"));
-      if (pinned) setDefaultFilter(pinned);
-      const last = parseFilter(localStorage.getItem("ud-v2-filter"));
-      const initial = pinned ?? last;
-      if (initial) setGlobalFilter(initial);
-      const p = localStorage.getItem("ud-v2-pay-filter");
-      if (p === "default" || p === "all") setPayFilter(p);
-      const ob = localStorage.getItem("ud-v2-onboarding-subview");
-      if (ob === "meetings" || ob === "attention") setOnboardingSubview(ob);
-    } catch {/* ignore */}
-  }, []);
-  useEffect(() => {
+    writeUrlState({
+      dashboard,
+      variant,
+      filter: globalFilter,
+      payFilter,
+      onboardingSubview,
+      selectedCompanyId: selectionByScope[dashboard === "status" ? variant : "_other"],
+    });
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
     try {
       localStorage.setItem("ud-v2-variant", variant);
       localStorage.setItem("ud-v2-dashboard", dashboard);
@@ -163,7 +269,25 @@ export default function Dashboard() {
       localStorage.setItem("ud-v2-pay-filter", payFilter);
       localStorage.setItem("ud-v2-onboarding-subview", onboardingSubview);
     } catch {/* ignore */}
-  }, [variant, dashboard, globalFilter, payFilter, onboardingSubview]);
+  }, [variant, dashboard, globalFilter, payFilter, onboardingSubview, selectionByScope]);
+
+  // Honor browser back/forward — re-read URL params on popstate and apply.
+  useEffect(() => {
+    function onPop() {
+      const s = readUrlState();
+      if (s.dashboard) setDashboard(s.dashboard);
+      if (s.variant) setVariant(s.variant);
+      if (s.filter) setGlobalFilter(s.filter);
+      if (s.payFilter) setPayFilter(s.payFilter);
+      if (s.onboardingSubview) setOnboardingSubview(s.onboardingSubview);
+      // Selection: drop into the matching scope.
+      const scope: SelectionScope =
+        (s.dashboard ?? "status") === "status" ? (s.variant ?? "briefing") : "_other";
+      setSelectionByScope((prev) => ({ ...prev, [scope]: s.selectedCompanyId ?? null }));
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   // Pin / unpin the current filter as this device's default.
   const setAsDefault = useCallback(() => {

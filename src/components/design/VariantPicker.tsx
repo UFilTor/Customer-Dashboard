@@ -80,10 +80,12 @@ export function VariantPicker({
         }}
       >
         {showLayout ? (
-          <SegLight>
+          <SegLight label="Status view">
             {VARIANTS.map((v) => (
               <button
                 key={v.key}
+                role="tab"
+                aria-selected={variant === v.key}
                 onClick={() => setVariant(v.key)}
                 className={variant === v.key ? "seg-light-btn active" : "seg-light-btn"}
               >
@@ -92,13 +94,15 @@ export function VariantPicker({
             ))}
           </SegLight>
         ) : showPayFilter ? (
-          <SegLight>
+          <SegLight label="Pay migration scope">
             {([
               { key: "default", label: "Default" },
               { key: "all", label: "All" },
             ] as const).map((opt) => (
               <button
                 key={opt.key}
+                role="tab"
+                aria-selected={payFilter === opt.key}
                 onClick={() => setPayFilter!(opt.key)}
                 className={payFilter === opt.key ? "seg-light-btn active" : "seg-light-btn"}
               >
@@ -107,13 +111,15 @@ export function VariantPicker({
             ))}
           </SegLight>
         ) : showOnboardingTabs ? (
-          <SegLight>
+          <SegLight label="Onboarding view">
             {([
               { key: "meetings", label: "Meeting prep" },
               { key: "attention", label: "Needs attention" },
             ] as const).map((opt) => (
               <button
                 key={opt.key}
+                role="tab"
+                aria-selected={onboardingSubview === opt.key}
                 onClick={() => setOnboardingSubview!(opt.key)}
                 className={onboardingSubview === opt.key ? "seg-light-btn active" : "seg-light-btn"}
               >
@@ -170,9 +176,17 @@ export function VariantPicker({
   );
 }
 
-function SegLight({ children }: { children: React.ReactNode }) {
+function SegLight({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
   return (
     <div
+      role="tablist"
+      aria-label={label}
       style={{
         display: "inline-flex",
         background: "var(--beige-new)",

@@ -116,44 +116,16 @@ function writeUrlState(state: UrlState): void {
 }
 
 export default function Dashboard() {
-  // View state — URL params win, localStorage is the fallback for first-time
-  // visits. Lazy `useState` init runs once on mount, after which `writeUrlState`
-  // keeps the URL in sync with React state.
-  const initial = useMemo(() => readUrlState(), []);
-  const lsGet = (key: string): string | null => {
-    if (typeof window === "undefined") return null;
-    try { return localStorage.getItem(key); } catch { return null; }
-  };
-  const [dashboard, setDashboard] = useState<DashboardKey>(() => {
-    if (initial.dashboard) return initial.dashboard;
-    const d = lsGet("ud-v2-dashboard");
-    return d === "onboarding" || d === "pay_migration" ? d : "status";
-  });
-  const [variant, setVariant] = useState<Variant>(() => {
-    if (initial.variant) return initial.variant;
-    const v = lsGet("ud-v2-variant");
-    return v === "split" ? "split" : "briefing";
-  });
-  const [globalFilter, setGlobalFilter] = useState<GlobalFilter>(() => {
-    if (initial.filter) return initial.filter;
-    const pinned = parseFilter(lsGet("ud-v2-filter-default"));
-    if (pinned) return pinned;
-    const last = parseFilter(lsGet("ud-v2-filter"));
-    return last ?? ALL_FILTER;
-  });
-  const [defaultFilter, setDefaultFilter] = useState<GlobalFilter | null>(() =>
-    parseFilter(lsGet("ud-v2-filter-default"))
-  );
-  const [payFilter, setPayFilter] = useState<"default" | "all">(() => {
-    if (initial.payFilter) return initial.payFilter;
-    const p = lsGet("ud-v2-pay-filter");
-    return p === "all" ? "all" : "default";
-  });
-  const [onboardingSubview, setOnboardingSubview] = useState<OnboardingSubview>(() => {
-    if (initial.onboardingSubview) return initial.onboardingSubview;
-    const ob = lsGet("ud-v2-onboarding-subview");
-    return ob === "attention" ? "attention" : "meetings";
-  });
+  // View state — start with hardcoded defaults so server and client first
+  // render agree (no hydration mismatch). The `useEffect` below reads URL
+  // params and localStorage after mount and applies them, so a deep link
+  // like /?d=onboarding lands on Onboarding within a frame of hydration.
+  const [dashboard, setDashboard] = useState<DashboardKey>("status");
+  const [variant, setVariant] = useState<Variant>("briefing");
+  const [globalFilter, setGlobalFilter] = useState<GlobalFilter>(ALL_FILTER);
+  const [defaultFilter, setDefaultFilter] = useState<GlobalFilter | null>(null);
+  const [payFilter, setPayFilter] = useState<"default" | "all">("default");
+  const [onboardingSubview, setOnboardingSubview] = useState<OnboardingSubview>("meetings");
 
   // Data state
   const [attention, setAttention] = useState<AttentionResponse | null>(null);
@@ -166,14 +138,10 @@ export default function Dashboard() {
   // Onboarding/pay_migration use the shared `_other` slot (they don't have
   // sub-variants today).
   type SelectionScope = Variant | "_other";
-  const [selectionByScope, setSelectionByScope] = useState<Record<SelectionScope, string | null>>(() => {
-    const base = { briefing: null as string | null, split: null as string | null, _other: null as string | null };
-    if (initial.selectedCompanyId) {
-      const scope: SelectionScope =
-        (initial.dashboard ?? "status") === "status" ? (initial.variant ?? "briefing") : "_other";
-      base[scope] = initial.selectedCompanyId;
-    }
-    return base;
+  const [selectionByScope, setSelectionByScope] = useState<Record<SelectionScope, string | null>>({
+    briefing: null,
+    split: null,
+    _other: null,
   });
   const selectionScope: SelectionScope = dashboard === "status" ? variant : "_other";
   const selectedCompanyId = selectionByScope[selectionScope];
@@ -244,12 +212,62 @@ export default function Dashboard() {
   }, []);
 
 
-  // Mirror state into the URL (canonical) and localStorage (fallback for
-  // first-time visits + per-variant selection memory map). Skip the very
-  // first run — the lazy useState initializers already seeded everything
-  // from the URL/localStorage and re-writing immediately would just no-op.
+  // On mount, seed state from URL params (highest priority) and localStorage
+  // (fallback for first-time visits). Done in an effect — not a lazy useState
+  // init — so server/client first render agree and we don't trip React's
+  // hydration-mismatch guard. Resolution order: URL → pinned default → last
+  // used → defaults.
   const didMountRef = useRef(false);
   useEffect(() => {
+    if (didMountRef.current) return;
+    didMountRef.current = true;
+    const fromUrl = readUrlState();
+    const ls = (k: string): string | null => {
+      try { return localStorage.getItem(k); } catch { return null; }
+    };
+
+    if (fromUrl.dashboard) {
+      setDashboard(fromUrl.dashboard);
+    } else {
+      const d = ls("ud-v2-dashboard");
+      if (d === "onboarding" || d === "pay_migration") setDashboard(d);
+    }
+    if (fromUrl.variant) {
+      setVariant(fromUrl.variant);
+    } else if (ls("ud-v2-variant") === "split") {
+      setVariant("split");
+    }
+    const pinned = parseFilter(ls("ud-v2-filter-default"));
+    if (pinned) setDefaultFilter(pinned);
+    if (fromUrl.filter) {
+      setGlobalFilter(fromUrl.filter);
+    } else {
+      const last = parseFilter(ls("ud-v2-filter"));
+      const initialFilter = pinned ?? last;
+      if (initialFilter) setGlobalFilter(initialFilter);
+    }
+    if (fromUrl.payFilter) {
+      setPayFilter(fromUrl.payFilter);
+    } else if (ls("ud-v2-pay-filter") === "all") {
+      setPayFilter("all");
+    }
+    if (fromUrl.onboardingSubview) {
+      setOnboardingSubview(fromUrl.onboardingSubview);
+    } else if (ls("ud-v2-onboarding-subview") === "attention") {
+      setOnboardingSubview("attention");
+    }
+    if (fromUrl.selectedCompanyId) {
+      const scope: SelectionScope =
+        (fromUrl.dashboard ?? "status") === "status" ? (fromUrl.variant ?? "briefing") : "_other";
+      setSelectionByScope((prev) => ({ ...prev, [scope]: fromUrl.selectedCompanyId! }));
+    }
+  }, []);
+
+  // Mirror state into the URL (canonical) and localStorage (for first-load
+  // restoration). Runs after the mount-init effect above, so the first sync
+  // writes the seeded state back to the URL in canonical form.
+  useEffect(() => {
+    if (!didMountRef.current) return;
     writeUrlState({
       dashboard,
       variant,
@@ -258,10 +276,6 @@ export default function Dashboard() {
       onboardingSubview,
       selectedCompanyId: selectionByScope[dashboard === "status" ? variant : "_other"],
     });
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      return;
-    }
     try {
       localStorage.setItem("ud-v2-variant", variant);
       localStorage.setItem("ud-v2-dashboard", dashboard);

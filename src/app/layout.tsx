@@ -3,7 +3,6 @@ import { Inter, Oswald, Fraunces, JetBrains_Mono } from "next/font/google";
 import RetuneIfDev from "@/components/RetuneIfDev";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
-import SessionWrapper from "@/components/SessionWrapper";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -45,7 +44,7 @@ export default function RootLayout({
       className={`${inter.variable} ${oswald.variable} ${fraunces.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[var(--page-bg)] text-[var(--moss)]">
-        <SessionWrapper>{children}</SessionWrapper>
+        {children}
         <RetuneIfDev />
         <SpeedInsights />
       </body>

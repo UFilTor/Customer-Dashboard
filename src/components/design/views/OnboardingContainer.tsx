@@ -8,7 +8,7 @@ import type {
   OnboardingResponse,
 } from "@/lib/types";
 import { effectiveOwnerIds, type GlobalFilter } from "@/lib/owners";
-import { apiFetch } from "@/lib/api-fetch";
+import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { OnboardingView } from "./OnboardingView";
 import type { OnboardingSubview } from "../VariantPicker";
 
@@ -106,12 +106,14 @@ export function OnboardingContainer({
       if (key !== "all") params.set("ownerIds", key);
       const url = `/api/onboarding${params.toString() ? `?${params.toString()}` : ""}`;
       const res = await apiFetch(url);
-      if (!res.ok) throw new Error(`Onboarding data unavailable (${res.status})`);
+      if (!res.ok) {
+        setError(friendlyErrorMessage(null, res.status));
+        return;
+      }
       const json: OnboardingResponse = await res.json();
       setData(json);
     } catch (err) {
-      if (err instanceof Error && err.message === "Session expired") return;
-      setError("Could not load onboarding data. Try refreshing.");
+      setError(friendlyErrorMessage(err));
     } finally {
       setIsFirstLoading(false);
       setIsRevalidating(false);

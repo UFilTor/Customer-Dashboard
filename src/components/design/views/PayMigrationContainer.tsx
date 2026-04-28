@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PayMigrationData, PayDeal, CompanySearchResult } from "@/lib/types";
-import { apiFetch } from "@/lib/api-fetch";
+import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { PayMigrationView } from "./PayMigrationView";
 
 interface Props {
@@ -28,12 +28,14 @@ export function PayMigrationContainer({ payFilter, onSelectCompany }: Props) {
     try {
       const url = refresh ? "/api/pay-migration?refresh=true" : "/api/pay-migration";
       const res = await apiFetch(url);
-      if (!res.ok) throw new Error(`Pay migration data unavailable (${res.status})`);
+      if (!res.ok) {
+        setError(friendlyErrorMessage(null, res.status));
+        return;
+      }
       const json: PayMigrationData = await res.json();
       setData(json);
     } catch (err) {
-      if (err instanceof Error && err.message === "Session expired") return;
-      setError("Could not load Pay migration data. Try refreshing.");
+      setError(friendlyErrorMessage(err));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);

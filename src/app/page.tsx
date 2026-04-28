@@ -46,7 +46,7 @@ import {
   type GlobalFilter,
 } from "@/lib/owners";
 import { addRecentCompany, computeRevenueFromDetail } from "@/lib/recent-companies";
-import { apiFetch } from "@/lib/api-fetch";
+import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 
 type DetailData = CompanyDetailData & { owners: OwnerMap; stages: StageMap };
 
@@ -327,12 +327,14 @@ export default function Dashboard() {
     setErrorAttention(null);
     try {
       const res = await apiFetch("/api/attention");
-      if (!res.ok) throw new Error(`Attention unavailable (${res.status})`);
+      if (!res.ok) {
+        setErrorAttention(friendlyErrorMessage(null, res.status));
+        return;
+      }
       const json: AttentionResponse = await res.json();
       setAttention(json);
     } catch (err) {
-      if (err instanceof Error && err.message === "Session expired") return;
-      setErrorAttention("Could not load data. Try refreshing.");
+      setErrorAttention(friendlyErrorMessage(err));
     } finally {
       setIsLoadingAttention(false);
     }
@@ -352,7 +354,16 @@ export default function Dashboard() {
     (async () => {
       try {
         const res = await apiFetch(`/api/companies/${selectedCompanyId}`);
-        if (!res.ok) throw new Error(`Company detail unavailable (${res.status})`);
+        if (!res.ok) {
+          if (!cancelled) {
+            setDetailError(
+              res.status === 404
+                ? "Company not found in HubSpot."
+                : friendlyErrorMessage(null, res.status)
+            );
+          }
+          return;
+        }
         const data: DetailData = await res.json();
         if (cancelled) return;
         setCompanyData(data);
@@ -363,8 +374,8 @@ export default function Dashboard() {
           healthScore: data.company?.health_score,
           domain: data.company?.domain,
         });
-      } catch {
-        if (!cancelled) setDetailError("Could not load company.");
+      } catch (err) {
+        if (!cancelled) setDetailError(friendlyErrorMessage(err));
       } finally {
         if (!cancelled) setIsLoadingDetail(false);
       }
@@ -774,6 +785,27 @@ export default function Dashboard() {
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [showToast]);
+
+  // Refetch on tab refocus — when the user comes back to the tab after >5min,
+  // pull fresh data so they don't stare at stale invoices/health scores. The
+  // 5-min floor prevents quick alt-tab flips from spamming HubSpot.
+  const lastRefreshAtRef = useRef<number>(Date.now());
+  useEffect(() => {
+    function onVisibility() {
+      if (document.visibilityState !== "visible") return;
+      const elapsed = Date.now() - lastRefreshAtRef.current;
+      if (elapsed < 5 * 60 * 1000) return;
+      lastRefreshAtRef.current = Date.now();
+      const s = stateRef.current;
+      if (s.dashboard === "status") {
+        loadAttention();
+      } else {
+        window.dispatchEvent(new Event("ud-refresh-dashboard"));
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [loadAttention]);
 
   // Palette actions
   function handlePaletteAction(action: PaletteAction) {

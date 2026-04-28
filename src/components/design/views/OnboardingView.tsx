@@ -469,7 +469,7 @@ function MeetingsPanel({
                 const isFocused = i === focusedMeetingIdx;
                 return (
                   <div
-                    key={entry.meeting.id}
+                    key={`${entry.deal.dealId}:${entry.meeting.id}`}
                     data-meeting-idx={i}
                     style={{
                       animation: `staggerIn 360ms cubic-bezier(0.22, 1, 0.36, 1) ${100 + Math.min(i, 8) * 60}ms both`,

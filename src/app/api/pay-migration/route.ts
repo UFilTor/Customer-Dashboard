@@ -9,6 +9,9 @@ const payCache = new Cache<PayMigrationData>(15 * 60 * 1000);
 export async function GET(request: NextRequest) {
   const refresh = request.nextUrl.searchParams.get("refresh") === "true";
   const spans = createSpans();
+  const cacheControl = refresh
+    ? "private, no-cache, no-store, max-age=0, must-revalidate"
+    : "public, s-maxage=840, stale-while-revalidate=60";
 
   if (!refresh) {
     const cached = payCache.get("pay-migration");
@@ -16,7 +19,10 @@ export async function GET(request: NextRequest) {
       spans.push({ label: "cache.hit", ms: 0 });
       logSpans("pay-migration", spans);
       return NextResponse.json(cached, {
-        headers: { "Server-Timing": serverTimingHeader(spans) },
+        headers: {
+          "Server-Timing": serverTimingHeader(spans),
+          "Cache-Control": cacheControl,
+        },
       });
     }
   }
@@ -27,7 +33,10 @@ export async function GET(request: NextRequest) {
     );
     logSpans("pay-migration", spans);
     return NextResponse.json(data, {
-      headers: { "Server-Timing": serverTimingHeader(spans) },
+      headers: {
+        "Server-Timing": serverTimingHeader(spans),
+        "Cache-Control": cacheControl,
+      },
     });
   } catch {
     return NextResponse.json(

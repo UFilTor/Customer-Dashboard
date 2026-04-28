@@ -348,26 +348,50 @@ interface RawObject {
   properties: Record<string, string>;
 }
 
+// Process-wide cache for the owner directory. The HubSpot owners endpoint
+// returns the full list (~5-20 names) regardless of the IDs we pass — the
+// `ownerIds` arg here only existed to short-circuit when none were needed.
+// Owners change rarely, and the previous shape made this function get called
+// 4-5 times per `/api/onboarding` request, paying ~150ms each. Cache for
+// 10 minutes; the in-flight promise dedupe collapses concurrent callers.
+let ownerCacheData: Record<string, string> | null = null;
+let ownerCacheAt = 0;
+let ownerInflight: Promise<Record<string, string>> | null = null;
+const OWNER_TTL_MS = 10 * 60 * 1000;
+
 async function fetchOwnerNames(ownerIds: string[]): Promise<Record<string, string>> {
   const unique = Array.from(new Set(ownerIds.filter(Boolean)));
   if (unique.length === 0) return {};
-  try {
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/owners?limit=200`, {
-      headers: hubspotHeaders(),
-      cache: "no-store" as RequestCache,
-    });
-    if (!res.ok) return {};
-    const data = await res.json();
-    const map: Record<string, string> = {};
-    for (const o of data.results || []) {
-      const id = String(o.id);
-      const name = `${o.firstName || ""} ${o.lastName || ""}`.trim() || o.email || "Unknown";
-      map[id] = name;
-    }
-    return map;
-  } catch {
-    return {};
+
+  if (ownerCacheData && Date.now() - ownerCacheAt < OWNER_TTL_MS) {
+    return ownerCacheData;
   }
+  if (ownerInflight) return ownerInflight;
+
+  ownerInflight = (async () => {
+    try {
+      const res = await fetch(`${HUBSPOT_API}/crm/v3/owners?limit=200`, {
+        headers: hubspotHeaders(),
+        cache: "no-store" as RequestCache,
+      });
+      if (!res.ok) return {};
+      const data = await res.json();
+      const map: Record<string, string> = {};
+      for (const o of data.results || []) {
+        const id = String(o.id);
+        const name = `${o.firstName || ""} ${o.lastName || ""}`.trim() || o.email || "Unknown";
+        map[id] = name;
+      }
+      ownerCacheData = map;
+      ownerCacheAt = Date.now();
+      return map;
+    } catch {
+      return {};
+    } finally {
+      ownerInflight = null;
+    }
+  })();
+  return ownerInflight;
 }
 
 async function fetchLifecycleDeals(ownerIds?: string[]): Promise<RawObject[]> {
@@ -486,77 +510,44 @@ async function fetchObjectsBatch(
 
 async function fetchSalesDealsForCompanies(companyIds: string[]): Promise<Map<string, RawObject[]>> {
   // Map companyId → sorted list of sales pipeline deals (most recent first).
+  //
+  // Why associations + batch-read instead of `/deals/search`: the search
+  // endpoint with `associatedWith` is fundamentally slow (1-3s per page,
+  // paginates sequentially within a batch). The associations endpoint is
+  // ~100ms per batch of 100 IDs and parallelizes cleanly. Same pattern as
+  // `fetchZeroEventDealIds` in pay-migration.ts (which dropped that path
+  // from ~11s to ~2s when we switched).
   const dealsByCompany = new Map<string, RawObject[]>();
   if (companyIds.length === 0) return dealsByCompany;
 
-  // Search sales-pipeline deals associated with any of the onboarding companies.
-  // Each 80-id batch is independent — fire them in parallel. Pagination
-  // within a batch stays sequential (next-cursor is opaque).
-  const batches: string[][] = [];
-  for (let i = 0; i < companyIds.length; i += 80) {
-    batches.push(companyIds.slice(i, i + 80));
+  // Step 1: company → deal IDs via batch associations (parallel, fast).
+  const companyDealAssocs = await fetchAssociations("companies", "deals", companyIds);
+  const companyToDealIds = new Map<string, string[]>();
+  const allDealIds = new Set<string>();
+  for (const a of companyDealAssocs) {
+    companyToDealIds.set(a.fromId, a.toIds);
+    for (const id of a.toIds) allDealIds.add(id);
   }
+  if (allDealIds.size === 0) return dealsByCompany;
 
-  const batchResults = await Promise.all(
-    batches.map(async (batch) => {
-      const collected: RawObject[] = [];
-      let after: string | undefined;
-      do {
-        const body: Record<string, unknown> = {
-          filterGroups: [
-            {
-              filters: [
-                { propertyName: "pipeline", operator: "EQ", value: SALES_PIPELINE },
-              ],
-              associatedWith: [
-                {
-                  objectType: "companies",
-                  operator: "IN",
-                  objectIdValues: batch.map((id) => parseInt(id, 10)).filter((n) => !isNaN(n)),
-                },
-              ],
-            },
-          ],
-          properties: SALES_DEAL_PROPS,
-          sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
-          limit: 200,
-        };
-        if (after) body.after = after;
-
-        try {
-          const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
-            method: "POST",
-            headers: hubspotHeaders(),
-            body: JSON.stringify(body),
-          });
-          if (!res.ok) break;
-          const data = await res.json();
-          const results = data.results || [];
-          if (results.length === 0) break;
-          collected.push(...results);
-          after = data.paging?.next?.after;
-        } catch {
-          break;
-        }
-      } while (after);
-      return collected;
-    })
+  // Step 2: batch-read deal properties (parallel, fast). Filter to sales
+  // pipeline in memory — typically a small subset of total deals.
+  const dealProps = await fetchObjectsBatch(
+    "deals",
+    Array.from(allDealIds),
+    SALES_DEAL_PROPS
   );
 
-  const allDeals = batchResults.flat();
-  if (allDeals.length > 0) {
-    const dealIds = allDeals.map((d) => d.id);
-    const assocs = await fetchAssociations("deals", "companies", dealIds);
-    const dealToCompany = new Map<string, string>();
-    for (const a of assocs) if (a.toIds[0]) dealToCompany.set(a.fromId, a.toIds[0]);
-
-    for (const d of allDeals) {
-      const companyId = dealToCompany.get(d.id);
-      if (!companyId) continue;
-      const arr = dealsByCompany.get(companyId) || [];
-      arr.push(d);
-      dealsByCompany.set(companyId, arr);
+  // Step 3: regroup by company, keeping only sales-pipeline deals.
+  for (const [companyId, dealIds] of companyToDealIds) {
+    const sales: RawObject[] = [];
+    for (const did of dealIds) {
+      const props = dealProps.get(did);
+      if (!props) continue;
+      if (props.pipeline !== SALES_PIPELINE) continue;
+      sales.push({ id: did, properties: props });
     }
+    if (sales.length > 0) dealsByCompany.set(companyId, sales);
   }
 
   // Sort each company's deal list by createdate DESC.
@@ -872,22 +863,67 @@ export async function buildOnboardingPayload(
   }
 
   const dealIds = lifecycleDeals.map((d) => d.id);
-
-  const [companyMap, meetingsByDeal, contactMap] = await Promise.all([
-    time("hubspot.companies", () => fetchCompaniesForDeals(dealIds)),
-    time("hubspot.meetings", () => fetchMeetingsForDeals(dealIds)),
-    time("hubspot.contacts", () => fetchPrimaryContactsForDeals(dealIds)),
-  ]);
-
-  const companyIds = Array.from(
-    new Set(Array.from(companyMap.values()).map((c) => c.companyId))
-  );
-  const salesDealsByCompany = await time("hubspot.salesDeals", () =>
-    fetchSalesDealsForCompanies(companyIds)
-  );
-
-  // Resolve owner names for both lifecycle CS owners and sales owners we'll attribute.
+  // CS owner IDs are knowable as soon as lifecycle deals land. Compute now so
+  // we can fire the orphan-meetings calendar fetch in parallel with the main
+  // companies/meetings/contacts block instead of waiting for it.
   const lifecycleOwnerIds = lifecycleDeals.map((d) => d.properties.hubspot_owner_id).filter(Boolean);
+  const csOwnerIds = opts.ownerIds && opts.ownerIds.length > 0
+    ? opts.ownerIds
+    : Array.from(new Set(lifecycleOwnerIds));
+
+  // Meetings window: today + the next 4 work days (5 work days total) by
+  // default. Days outside this window are fetched on-demand via the per-day
+  // endpoint. Defining bounds early so the parallel fetches can use them.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const meetingFrom = opts.meetingFromIso ? new Date(opts.meetingFromIso) : today;
+  const meetingHorizon = opts.meetingToIso
+    ? new Date(opts.meetingToIso)
+    : endOfNthWorkDay(today, 5);
+
+  // Kick the four independent fetches concurrently. The fifth — salesDeals —
+  // depends on `companyMap` for its company-id list, but we don't need to
+  // wait for the whole parallel block before starting it. Chain salesDeals
+  // off the companies promise so it begins ~800ms earlier than it would if
+  // we awaited the whole block first.
+  const companiesPromise = time("hubspot.companies", () =>
+    fetchCompaniesForDeals(dealIds)
+  );
+  const meetingsPromise = time("hubspot.meetings", () =>
+    fetchMeetingsForDeals(dealIds)
+  );
+  const contactsPromise = time("hubspot.contacts", () =>
+    fetchPrimaryContactsForDeals(dealIds)
+  );
+  const ownerMeetingsPromise =
+    csOwnerIds.length > 0
+      ? time("hubspot.ownerMeetings", () =>
+          fetchUpcomingMeetingsByOwners(
+            csOwnerIds,
+            meetingFrom.toISOString(),
+            meetingHorizon.toISOString()
+          )
+        )
+      : Promise.resolve([]);
+  const salesDealsPromise = companiesPromise.then((companyMap) => {
+    const companyIds = Array.from(
+      new Set(Array.from(companyMap.values()).map((c) => c.companyId))
+    );
+    return time("hubspot.salesDeals", () => fetchSalesDealsForCompanies(companyIds));
+  });
+
+  const [companyMap, meetingsByDeal, contactMap, ownerDirect, salesDealsByCompany] =
+    await Promise.all([
+      companiesPromise,
+      meetingsPromise,
+      contactsPromise,
+      ownerMeetingsPromise,
+      salesDealsPromise,
+    ]);
+
+  // Owner names — fetchOwnerNames is now request-cached so we only pay this
+  // once per request. Subsequent callers (e.g. inside the orphan flow) hit
+  // the cache instantly.
   const salesOwnerIds: string[] = [];
   for (const list of salesDealsByCompany.values()) {
     for (const d of list) if (d.properties.hubspot_owner_id) salesOwnerIds.push(d.properties.hubspot_owner_id);
@@ -895,16 +931,8 @@ export async function buildOnboardingPayload(
   const ownerNames = await fetchOwnerNames([...lifecycleOwnerIds, ...salesOwnerIds]);
 
   // Build deals with full brief.
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  // Meetings window: today + the next 4 work days (5 work days total) by
-  // default. Days outside this window are fetched on-demand via the per-day
-  // endpoint, which calls back into this function with custom bounds.
-  const meetingFrom = opts.meetingFromIso ? new Date(opts.meetingFromIso) : today;
-  const meetingHorizon = opts.meetingToIso
-    ? new Date(opts.meetingToIso)
-    : endOfNthWorkDay(today, 5);
-
+  // (today / meetingFrom / meetingHorizon were defined earlier so they could
+  // be used by the parallel ownerMeetings fetch above.)
   const meetings: OnboardingMeetingEntry[] = [];
 
   const deals: OnboardingDeal[] = lifecycleDeals.map((d) => {
@@ -1062,19 +1090,9 @@ export async function buildOnboardingPayload(
   // We render these with a stub deal so they still appear on the day strip.
   // When the caller supplied an owner filter, restrict the orphan-meeting
   // sweep to those owners too — otherwise we'd undo the speedup by pulling
-  // every CS owner's calendar.
-  const csOwnerIds = opts.ownerIds && opts.ownerIds.length > 0
-    ? opts.ownerIds
-    : Array.from(new Set(lifecycleOwnerIds));
+  // every CS owner's calendar. (csOwnerIds + ownerDirect were computed
+  // earlier so the calendar fetch could overlap with the main parallel block.)
   if (csOwnerIds.length > 0) {
-    const ownerDirect = await time("hubspot.ownerMeetings", () =>
-      fetchUpcomingMeetingsByOwners(
-        csOwnerIds,
-        meetingFrom.toISOString(),
-        meetingHorizon.toISOString()
-      )
-    );
-
     const knownMeetingIds = new Set<string>();
     for (const list of meetingsByDeal.values()) {
       for (const m of list) knownMeetingIds.add(m.id);
@@ -1084,65 +1102,64 @@ export async function buildOnboardingPayload(
     if (orphans.length > 0) {
       const orphanT0 = performance.now();
       const orphanIds = orphans.map((m) => m.id);
-      const meetingCompanyAssocs = await fetchAssociations("meetings", "companies", orphanIds);
+
+      // Fire meetings→companies and meetings→contacts in parallel. Many
+      // Gong-imported meetings only carry a contact link, not a company link,
+      // so we always need the contact path. Doing them concurrently overlaps
+      // ~150-200ms vs the previous "do A, then maybe do B" sequence.
+      const [meetingCompanyAssocs, meetingContactAssocs] = await Promise.all([
+        fetchAssociations("meetings", "companies", orphanIds),
+        fetchAssociations("meetings", "contacts", orphanIds),
+      ]);
+
       const meetingToCompany = new Map<string, string>();
       for (const a of meetingCompanyAssocs) {
         if (a.toIds[0]) meetingToCompany.set(a.fromId, a.toIds[0]);
       }
 
-      // Fallback: for meetings with no direct company association, walk through
-      // meeting participants (contacts) → their associated companies. Lots of
-      // Gong-imported meetings only carry a contact link, not a company link.
-      const meetingsWithoutCompany = orphanIds.filter((id) => !meetingToCompany.has(id));
-      if (meetingsWithoutCompany.length > 0) {
-        const meetingContactAssocs = await fetchAssociations(
-          "meetings",
+      // Contact → company fallback for meetings still missing a company link.
+      const meetingToContacts = new Map<string, string[]>();
+      const allContactIds = new Set<string>();
+      for (const a of meetingContactAssocs) {
+        if (meetingToCompany.has(a.fromId)) continue; // already covered
+        meetingToContacts.set(a.fromId, a.toIds);
+        for (const cid of a.toIds) allContactIds.add(cid);
+      }
+      if (allContactIds.size > 0) {
+        const contactCompanyAssocs = await fetchAssociations(
           "contacts",
-          meetingsWithoutCompany
+          "companies",
+          Array.from(allContactIds)
         );
-        const meetingToContacts = new Map<string, string[]>();
-        const allContactIds = new Set<string>();
-        for (const a of meetingContactAssocs) {
-          meetingToContacts.set(a.fromId, a.toIds);
-          for (const cid of a.toIds) allContactIds.add(cid);
+        const contactToCompany = new Map<string, string>();
+        for (const a of contactCompanyAssocs) {
+          if (a.toIds[0]) contactToCompany.set(a.fromId, a.toIds[0]);
         }
-        if (allContactIds.size > 0) {
-          const contactCompanyAssocs = await fetchAssociations(
-            "contacts",
-            "companies",
-            Array.from(allContactIds)
-          );
-          const contactToCompany = new Map<string, string>();
-          for (const a of contactCompanyAssocs) {
-            if (a.toIds[0]) contactToCompany.set(a.fromId, a.toIds[0]);
-          }
-          for (const [meetingId, contactIds] of meetingToContacts) {
-            for (const cid of contactIds) {
-              const companyId = contactToCompany.get(cid);
-              if (companyId) {
-                meetingToCompany.set(meetingId, companyId);
-                break;
-              }
+        for (const [meetingId, contactIds] of meetingToContacts) {
+          for (const cid of contactIds) {
+            const companyId = contactToCompany.get(cid);
+            if (companyId) {
+              meetingToCompany.set(meetingId, companyId);
+              break;
             }
           }
         }
       }
 
       const orphanCompanyIds = Array.from(new Set(meetingToCompany.values()));
-      const orphanCompanyProps = await fetchObjectsBatch("companies", orphanCompanyIds, [
-        "name",
-        "understory_company_country",
-        "domain",
-      ]);
 
-      // Enrich orphan meetings with the linked company's best-available deal.
-      // Many meetings come in via Gong without a deal association even when a
-      // real deal exists on the company (e.g. customer is post-onboarding so
-      // their lifecycle deal isn't in ONBOARDING_STAGES). Pull deals via the
-      // company association and pick one to source the brief from.
-      const companyDealAssocs = orphanCompanyIds.length > 0
-        ? await fetchAssociations("companies", "deals", orphanCompanyIds)
-        : [];
+      // Company props and companies→deals are independent (both keyed on the
+      // same id list). Run them concurrently — saves ~150ms.
+      const [orphanCompanyProps, companyDealAssocs] = await Promise.all([
+        fetchObjectsBatch("companies", orphanCompanyIds, [
+          "name",
+          "understory_company_country",
+          "domain",
+        ]),
+        orphanCompanyIds.length > 0
+          ? fetchAssociations("companies", "deals", orphanCompanyIds)
+          : Promise.resolve([]),
+      ]);
       const companyToDealIds = new Map<string, string[]>();
       const allOrphanDealIds = new Set<string>();
       for (const a of companyDealAssocs) {

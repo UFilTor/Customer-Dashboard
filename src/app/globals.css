@@ -296,9 +296,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   gap: 10px;
   padding: 6px 12px 6px 14px;
   border-radius: 10px;
-  background: var(--moss);
+  /* Same citrus outline + faint tint as the active filter pills so the
+     selector reads as interactive on the dark TopBar instead of blending
+     into the moss background. */
+  background: rgba(241, 249, 126, 0.12);
   color: #fff;
-  border: 1px solid var(--moss);
+  border: 1px solid var(--citrus);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.8, 0.24, 0.16, 1);
   font-family: inherit;

@@ -9,15 +9,33 @@ import { RecapCardBig } from "./RecapCardBig";
 import { HealthRings } from "./HealthRings";
 import { VolumeChart } from "./VolumeChart";
 import { OWNER_MAP } from "@/lib/owners";
-import { fmtMrr, relDays } from "@/lib/format-design";
+import { fmtMrr, fmtHealth, relDays } from "@/lib/format-design";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 import { isBookmarked, toggleBookmark } from "@/lib/bookmarks";
+import { composeEmailUrl, companySummaryLine } from "@/lib/quick-actions";
 
 interface Props {
   companyId: string;
   data: CompanyDetailData & { owners: OwnerMap; stages: StageMap };
   embedded?: boolean;
 }
+
+// Shared style for the row of header action buttons (Email / Copy / Open
+// in HubSpot). Keeps the cluster visually consistent without lifting the
+// styling into globals.css.
+const quickActionBtn: React.CSSProperties = {
+  padding: "8px 14px",
+  borderRadius: 10,
+  fontSize: 12.5,
+  fontWeight: 500,
+  color: "var(--moss)",
+  border: "1px solid var(--hairline)",
+  background: "var(--card-bg)",
+  textDecoration: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+};
 
 
 export function CompanyDetail({ companyId, data, embedded = false }: Props) {
@@ -77,6 +95,34 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
   }, [tab]);
   const ownerName = owners[company.hubspot_owner_id || ""] || "Unassigned";
   const ownerLocal = OWNER_MAP[company.hubspot_owner_id || ""] || null;
+
+  // Quick-action wiring. Without write APIs to HubSpot, the dashboard makes
+  // itself actionable by handing off context to the user's mail client /
+  // phone / clipboard so they finish the task in one click instead of three.
+  const health = fmtHealth(company.health_score);
+  const actionCtx = {
+    companyName: company.name || "",
+    domain: company.domain,
+    healthScoreLabel: health.label,
+    healthScoreNum: health.num != null ? String(health.num) : null,
+    mrr: deal?.confirmed__contract_mrr
+      ? fmtMrr(parseFloat(deal.confirmed__contract_mrr))
+      : null,
+    payStatus: deal?.understory_pay_status__customer || null,
+    primaryContact: data.primaryContact,
+  };
+  const emailUrl = composeEmailUrl(actionCtx);
+  const summaryLine = companySummaryLine(actionCtx);
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onCopySummary = () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    navigator.clipboard.writeText(summaryLine).then(() => {
+      setCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    });
+  };
 
   const stageLabel = deal?.dealstage ? stages[deal.dealstage] || deal.dealstage : null;
 
@@ -223,23 +269,33 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
           >
             {bookmarked ? "★" : "☆"}
           </button>
+          {emailUrl && (
+            <a
+              href={emailUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Compose in Gmail (recipient prefilled)"
+              style={quickActionBtn}
+            >
+              ✉ Email
+            </a>
+          )}
+          <button
+            onClick={onCopySummary}
+            title={`Copy summary to clipboard\n\n${summaryLine}`}
+            style={{
+              ...quickActionBtn,
+              cursor: "pointer",
+              background: copied ? "var(--citrus)" : "var(--card-bg)",
+            }}
+          >
+            {copied ? "✓ Copied" : "⧉ Copy"}
+          </button>
           <a
             href={hubspotCompanyUrl(companyId) ?? "#"}
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-              padding: "8px 14px",
-              borderRadius: 10,
-              fontSize: 12.5,
-              fontWeight: 500,
-              color: "var(--moss)",
-              border: "1px solid var(--hairline)",
-              background: "var(--card-bg)",
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
+            style={quickActionBtn}
           >
             <Icon.External />
             Open in HubSpot

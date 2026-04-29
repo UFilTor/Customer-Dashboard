@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { fmtEur } from "@/lib/format-design";
+import {
+  prefetchAttention,
+  prefetchOnboarding,
+  prefetchPayMigration,
+} from "@/lib/prefetch";
 
 export type Variant = "briefing" | "split";
 export type DashboardKey = "status" | "onboarding" | "retention" | "pay_migration" | "bloom";
@@ -27,10 +31,6 @@ interface VariantPickerProps {
   variant: Variant;
   setVariant: (v: Variant) => void;
   dashboard: DashboardKey;
-  setDashboard: (d: DashboardKey) => void;
-  totalCount: number;
-  urgentCount: number;
-  revenueAtRisk: number;
   payFilter?: "default" | "all";
   setPayFilter?: (v: "default" | "all") => void;
   onboardingSubview?: OnboardingSubview;
@@ -46,10 +46,6 @@ export function VariantPicker({
   variant,
   setVariant,
   dashboard,
-  setDashboard,
-  totalCount,
-  urgentCount,
-  revenueAtRisk,
   payFilter,
   setPayFilter,
   onboardingSubview,
@@ -148,28 +144,11 @@ export function VariantPicker({
             gap: 16,
           }}
         >
-          {dashboard === "status" && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                fontSize: 12,
-                color: "var(--green-100)",
-              }}
-            >
-              <span>
-                <strong style={{ color: "var(--moss)" }}>{totalCount}</strong> needing attention
-              </span>
-              <span style={{ opacity: 0.5 }}>·</span>
-              <span>
-                <strong style={{ color: "var(--rust)" }}>{urgentCount}</strong> urgent
-              </span>
-              <span style={{ opacity: 0.5 }}>·</span>
-              <span>{fmtEur(revenueAtRisk)} at risk</span>
-            </div>
-          )}
-          <DashboardPicker dashboard={dashboard} setDashboard={setDashboard} />
+          {/* Status: count summary intentionally omitted here. The same
+              numbers live in the Briefing morning band + StatTile band, and
+              in Split's sidebar header. Showing them three times was noise.
+              DashboardPicker lives in the dark TopBar; this sub-bar carries
+              only view-specific tabs on the left. */}
         </div>
       </div>
     </div>
@@ -201,7 +180,7 @@ function SegLight({
   );
 }
 
-function DashboardPicker({
+export function DashboardPicker({
   dashboard,
   setDashboard,
 }: {
@@ -284,7 +263,7 @@ function DashboardPicker({
             borderRadius: 12,
             padding: 6,
             zIndex: 100,
-            boxShadow: "0 12px 40px rgba(2,44,18,0.18)",
+            boxShadow: "var(--shadow-modal)",
           }}
         >
           {DASHBOARDS.map((d) => {
@@ -311,7 +290,16 @@ function DashboardPicker({
                   opacity: disabled ? 0.55 : 1,
                 }}
                 onMouseEnter={(e) => {
-                  if (!isActive && !disabled) e.currentTarget.style.background = "var(--beige-new)";
+                  if (!isActive && !disabled) {
+                    e.currentTarget.style.background = "var(--beige-new)";
+                    // Prefetch the bulk endpoint + dynamic chunk so the click
+                    // resolves with both code and data already in flight.
+                    // Onboarding: skip the per-scope data prefetch (filter
+                    // unknown here) — chunk import is the larger win anyway.
+                    if (d.key === "status") prefetchAttention();
+                    else if (d.key === "pay_migration") prefetchPayMigration();
+                    else if (d.key === "onboarding") prefetchOnboarding();
+                  }
                 }}
                 onMouseLeave={(e) => {
                   if (!isActive) e.currentTarget.style.background = "transparent";

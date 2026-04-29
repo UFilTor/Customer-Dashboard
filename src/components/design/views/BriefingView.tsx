@@ -1,15 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { FlatCompany } from "@/lib/signals";
 import { SIGNAL_MAP, SECTION_ORDER, sortBySignal } from "@/lib/signals";
 import { OWNER_MAP } from "@/lib/owners";
-import { fmtEur, fmtHealth } from "@/lib/format-design";
+import { fmtEur, fmtHealth, relDays } from "@/lib/format-design";
 import { Avatar } from "../Avatar";
-import { Sparkline } from "../Sparkline";
+import { RowContextStrip } from "../RowContextStrip";
 import { CountUpInt, CountUpEur, Stagger } from "../Motion";
-import { synthesizeMonthlyTrend, smoothTrend } from "@/lib/synth-trend";
 import { useListKeyboardNav } from "../useListKeyboardNav";
+import { prefetchCompany } from "@/lib/prefetch";
 import type { AttentionSignal } from "@/lib/types";
 
 // Plain-English explanation per signal. Used as the tooltip on the
@@ -43,16 +43,6 @@ interface BriefingViewProps {
   showAvatar?: boolean;
 }
 
-function buildTrend(c: FlatCompany): number[] {
-  return smoothTrend(
-    synthesizeMonthlyTrend({
-      volume12m: c.volume12m,
-      volume6m: c.volume6m,
-      volume3m: c.volume3m,
-    })
-  );
-}
-
 export function BriefingView({ companies, onSelect, filterLabel, showAvatar = true }: BriefingViewProps) {
   // Flat list in the same order rows are rendered (sections in SECTION_ORDER,
   // each section sorted by sortBySignal). Drives keyboard nav so arrows + Enter
@@ -83,18 +73,29 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
   })();
   const healthDrops = companies.filter((c) => c.signal === "health_score").length;
 
-  // Greeting + date depend on the user's local clock. SSR renders empty
-  // strings; client fills them on first paint. The two text nodes below carry
-  // suppressHydrationWarning so React does not flag the intentional swap.
-  const isClient = typeof window !== "undefined";
-  const greeting = isClient
+  // Greeting + date depend on the user's local clock and locale, so the
+  // server can't render the right value. We render empty on SSR + first
+  // client render, then adjust state during render once we've confirmed
+  // we're on the client (the project's `react-hooks/set-state-in-effect`
+  // rule blocks the equivalent useEffect — this is the convergent
+  // "adjust state during render" pattern instead).
+  const [mounted, setMounted] = useState(false);
+  const onClient = typeof window !== "undefined";
+  if (onClient && !mounted) {
+    setMounted(true);
+  }
+  const greeting = mounted
     ? (() => {
         const h = new Date().getHours();
         return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
       })()
     : "";
-  const dateStr = isClient
-    ? new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+  const dateStr = mounted
+    ? new Date().toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      })
     : "";
 
   const overdueInvoices = urgent.filter((c) => c.signal === "overdue_invoices").length;
@@ -108,155 +109,81 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
       }}
     >
       <div style={{ maxWidth: 1080, margin: "0 auto" }}>
-        {/* HERO */}
+        {/* MORNING BAND — distilled per critique. One editorial line carrying
+            date + greeting + counts; no hero theatre, no decorative drift
+            circles, no citrus wipe on the count (that moment now lives on the
+            Refreshed toast). The first overdue row should land within the
+            first viewport on a 900px display. */}
         <div
+          suppressHydrationWarning
           style={{
-            background: "var(--moss)",
-            color: "var(--text-on-moss)",
-            borderRadius: 20,
-            padding: "36px 40px 32px",
-            marginBottom: 28,
-            position: "relative",
-            overflow: "hidden",
+            display: "flex",
+            alignItems: "baseline",
+            flexWrap: "wrap",
+            gap: 10,
+            margin: "0 0 18px",
+            color: "var(--moss)",
           }}
         >
-          <div
-            className="drift-slow"
+          <span
             style={{
-              position: "absolute",
-              top: -80,
-              right: -80,
-              width: 260,
-              height: 260,
-              borderRadius: "50%",
-              background: "var(--citrus)",
-              opacity: 0.1,
+              fontFamily: "var(--font-display)",
+              textTransform: "uppercase",
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              color: "var(--green-100)",
             }}
-          />
-          <div
-            className="drift-slower"
+          >
+            Daily briefing
+          </span>
+          <span aria-hidden="true" style={{ color: "var(--green-100)", opacity: 0.5 }}>·</span>
+          <span
+            suppressHydrationWarning
             style={{
-              position: "absolute",
-              top: -40,
-              right: -40,
-              width: 180,
-              height: 180,
-              borderRadius: "50%",
-              border: "1px solid rgba(241,249,126,0.22)",
+              fontFamily: "var(--font-editorial)",
+              fontStyle: "italic",
+              fontSize: 13,
+              color: "var(--moss)",
             }}
-          />
-          <div style={{ position: "relative" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+          >
+            {greeting}{greeting && ", "}{dateStr}
+          </span>
+          {filterLabel && (
+            <>
+              <span aria-hidden="true" style={{ color: "var(--green-100)", opacity: 0.5 }}>·</span>
               <span
                 style={{
                   fontFamily: "var(--font-display)",
                   textTransform: "uppercase",
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: 700,
-                  letterSpacing: "0.12em",
-                  color: "var(--citrus)",
+                  letterSpacing: "0.08em",
+                  color: "var(--moss)",
+                  background: "var(--hairline)",
+                  padding: "2px 7px",
+                  borderRadius: 6,
                 }}
               >
-                Daily briefing
+                {filterLabel}
               </span>
-              <span style={{ height: 1, flex: "0 0 32px", background: "rgba(241,249,126,0.4)" }} />
-              <span
-                suppressHydrationWarning
-                style={{
-                  fontSize: 14,
-                  color: "rgba(255,255,255,0.6)",
-                  fontStyle: "italic",
-                  fontFamily: "var(--font-editorial)",
-                }}
-              >
-                {dateStr}
-              </span>
-              {filterLabel && (
-                <>
-                  <span style={{ height: 1, flex: "0 0 24px", background: "rgba(241,249,126,0.4)" }} />
-                  <span
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      textTransform: "uppercase",
-                      fontSize: 10.5,
-                      fontWeight: 700,
-                      letterSpacing: "0.08em",
-                      color: "var(--citrus)",
-                      background: "rgba(241,249,126,0.10)",
-                      padding: "3px 8px",
-                      borderRadius: 6,
-                    }}
-                  >
-                    {filterLabel}
-                  </span>
-                </>
-              )}
-            </div>
-
-            <h1
-              suppressHydrationWarning
-              style={{
-                margin: "0 0 8px",
-                fontFamily: "var(--font-editorial)",
-                fontWeight: 400,
-                fontStyle: "italic",
-                fontSize: 44,
-                lineHeight: 1.05,
-                letterSpacing: "-0.01em",
-                color: "var(--text-on-moss)",
-                maxWidth: 700,
-              }}
-            >
-              {greeting}{greeting && "."}
-            </h1>
-
-            <h2
-              aria-live="polite"
-              style={{
-                margin: "0 0 20px",
-                fontFamily: "var(--font-display)",
-                textTransform: "uppercase",
-                fontSize: 44,
-                fontWeight: 700,
-                lineHeight: 0.95,
-                letterSpacing: 0,
-                color: "var(--text-on-moss)",
-              }}
-            >
-              <span className="citrus-wipe" style={{ color: "var(--moss)" }}>
-                <CountUpInt value={companies.length} duration={700} /> account{companies.length === 1 ? "" : "s"}
-              </span>{" "}
-              {urgent.length > 0 ? "need" : "to"}
-              <br />
-              {urgent.length > 0 ? "you first" : "handle today"}
-            </h2>
-
-            <p
-              style={{
-                margin: "0 0 24px",
-                fontSize: 17,
-                lineHeight: 1.55,
-                color: "rgba(255,255,255,0.82)",
-                maxWidth: 680,
-                letterSpacing: "-0.0125em",
-              }}
-            >
-              {urgent.length > 0 ? (
-                <>
-                  <strong style={{ color: "var(--citrus)" }}>{urgent.length}</strong> are genuinely time-sensitive
-                  {overdueInvoices > 0
-                    ? `, including ${overdueInvoices} overdue invoice${overdueInvoices === 1 ? "" : "s"}.`
-                    : "."}{" "}
-                </>
-              ) : (
-                <>No overdue invoices or tasks today. </>
-              )}
-              Health scores dropped on{" "}
-              <strong style={{ color: "var(--text-on-moss)" }}>{healthDrops}</strong> account
-              {healthDrops === 1 ? "" : "s"} this week.
-            </p>
-
-          </div>
+            </>
+          )}
+          <span aria-live="polite" style={{ marginLeft: "auto", fontSize: 12, color: "var(--green-100)" }}>
+            {urgent.length > 0 ? (
+              <>
+                <strong style={{ color: "var(--moss)" }}>{urgent.length}</strong> urgent
+                {overdueInvoices > 0 && (
+                  <> · <strong style={{ color: "var(--moss)" }}>{overdueInvoices}</strong> overdue invoice{overdueInvoices === 1 ? "" : "s"}</>
+                )}
+                {healthDrops > 0 && (
+                  <> · <strong style={{ color: "var(--moss)" }}>{healthDrops}</strong> health drop{healthDrops === 1 ? "" : "s"}</>
+                )}
+              </>
+            ) : (
+              <>Nothing time-sensitive today.</>
+            )}
+          </span>
         </div>
 
         {/* STAT BAND */}
@@ -340,12 +267,18 @@ function StatTile({
   sub: string;
   tone?: "bad";
 }) {
-  const ink = tone === "bad" ? "var(--rust)" : "var(--moss)";
+  // Moss-on-cream: tiles take the moss banner colour from the other dashboards
+  // so the briefing's KPI strip reads as a single anchored band. Label uses
+  // citrus (the brand accent does the work the cream label couldn't), big
+  // number stays clean white, sub-line drops to a warm white at 70%.
+  // The `tone="bad"` variant promotes the value to citrus so a high health-
+  // drop count catches the eye without breaking the moss surface.
+  const ink = tone === "bad" ? "var(--citrus)" : "var(--text-on-moss)";
   return (
     <div
       style={{
-        background: "var(--light-grey)",
-        border: "1px solid var(--beige-gray)",
+        background: "var(--moss)",
+        border: "1px solid var(--moss)",
         borderRadius: 14,
         padding: "18px 18px 16px",
       }}
@@ -357,7 +290,7 @@ function StatTile({
           fontSize: 10.5,
           fontWeight: 700,
           letterSpacing: "0.06em",
-          color: "var(--green-100)",
+          color: "var(--citrus)",
           marginBottom: 10,
         }}
       >
@@ -375,7 +308,7 @@ function StatTile({
       >
         {value}
       </div>
-      <div style={{ fontSize: 12, color: "var(--green-100)", marginTop: 8, letterSpacing: "-0.005em" }}>{sub}</div>
+      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 8, letterSpacing: "-0.005em" }}>{sub}</div>
     </div>
   );
 }
@@ -396,6 +329,25 @@ function SignalSection({
   idxById: Map<string, number>;
 }) {
   const sig = SIGNAL_MAP[signal];
+  // Single dwell timer per section — drag-throughs cancel before the prefetch
+  // fires, but a real hover (>120ms) kicks off `/api/companies/[id]` so the
+  // click that follows resolves from HTTP cache.
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverIdRef = useRef<string | null>(null);
+  const handleHoverEnter = (id: string) => {
+    hoverIdRef.current = id;
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => {
+      if (hoverIdRef.current) prefetchCompany(hoverIdRef.current);
+      hoverTimerRef.current = null;
+    }, 120);
+  };
+  const handleHoverLeave = () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
@@ -426,18 +378,14 @@ function SignalSection({
           overflow: "hidden",
         }}
       >
+        {/* Grid is name+detail / right-cluster / optional avatar. The
+            right-cluster groups revenue + signal pill together so a narrow
+            signal ("Weak · 6") doesn't float far away from the revenue
+            chip. Cluster sits at the right of the row, hugging its content. */}
         {companies.map((c, i) => {
           const owner = c.ownerId ? OWNER_MAP[c.ownerId] : null;
-          // Invoice rows already carry their value in the chip, so the
-          // generated-revenue column AND the booking-volume sparkline are
-          // hidden for those signals — both convey revenue context that
-          // doesn't apply to the invoice numbers shown.
           const isInvoice = c.signal === "overdue_invoices" || c.signal === "open_invoices";
-          const trend = isInvoice ? null : buildTrend(c);
-          // Build the grid columns dynamically based on what we're rendering.
-          const cols = ["1.5fr", "auto"]; // name+detail, chip
-          if (!isInvoice) cols.push("auto", "auto"); // revenue, sparkline
-          if (showAvatar) cols.push("auto");
+          const cols = showAvatar ? "1fr auto 28px" : "1fr auto";
           const globalIdx = idxById.get(c.id) ?? -1;
           const isFocused = globalIdx === focusedIdx;
           return (
@@ -445,11 +393,13 @@ function SignalSection({
               key={`${c.signal}-${c.id}`}
               data-list-idx={globalIdx}
               onClick={() => onSelect(c)}
+              onMouseEnter={() => handleHoverEnter(c.id)}
+              onMouseLeave={handleHoverLeave}
               className="hrow"
               style={{
                 position: "relative",
                 display: "grid",
-                gridTemplateColumns: cols.join(" "),
+                gridTemplateColumns: cols,
                 alignItems: "center",
                 gap: 16,
                 width: "100%",
@@ -458,9 +408,9 @@ function SignalSection({
                 textAlign: "left",
                 background: isFocused ? "var(--beige-new)" : "transparent",
                 boxShadow: isFocused ? "inset 3px 0 0 var(--moss)" : "none",
-                transition: "background 0.15s cubic-bezier(0.8, 0.24, 0.16, 1), box-shadow 0.15s cubic-bezier(0.8, 0.24, 0.16, 1)",
+                transition: "background 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out)",
                 cursor: "pointer",
-                animation: `staggerIn 320ms cubic-bezier(0.22, 1, 0.36, 1) ${80 + Math.min(i, 12) * 24}ms both`,
+                animation: `staggerIn 320ms var(--ease-out) ${80 + Math.min(i, 12) * 24}ms both`,
               }}
             >
               <div style={{ minWidth: 0 }}>
@@ -477,10 +427,16 @@ function SignalSection({
                 <div style={{ fontSize: 12, color: "var(--green-100)", marginTop: 2 }} className="truncate-line">
                   {c.detail}
                 </div>
+                <RowContextStrip
+                  payStatus={c.payStatus}
+                  plan={c.plan}
+                  lastContactedAt={c.lastContactedAt}
+                />
               </div>
-              <SignalValueChip company={c} />
-              {!isInvoice && <RevenueChip revenue={c.revenue} />}
-              {!isInvoice && trend && <Sparkline data={trend} width={52} height={14} />}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {!isInvoice && <RevenueChip revenue={c.revenue} />}
+                <SignalValueChip company={c} />
+              </div>
               {showAvatar && <Avatar owner={owner} size={22} />}
             </button>
           );
@@ -492,32 +448,51 @@ function SignalSection({
 
 // Per-signal chip showing the metric that matters in this section.
 // Tooltip on hover explains what the value represents.
+// Two-line value chip — top line is a labelled pill (status-tinted), bottom
+// line carries the amount/details in a smaller secondary tone. Splits the
+// "due-age" badge from the amount so the chip is readable without hover, per
+// the impeccable critique on Recognition vs Recall.
 function SignalValueChip({ company: c }: { company: FlatCompany }) {
-  const baseStyle: React.CSSProperties = {
+  const pillStyle: React.CSSProperties = {
     fontSize: 11,
-    padding: "3px 8px",
+    padding: "2px 7px",
     borderRadius: 6,
     fontWeight: 600,
     fontVariantNumeric: "tabular-nums",
     textAlign: "center",
     whiteSpace: "nowrap",
+    display: "inline-block",
   };
+  const subStyle: React.CSSProperties = {
+    fontSize: 11,
+    color: "var(--green-100)",
+    fontVariantNumeric: "tabular-nums",
+    whiteSpace: "nowrap",
+    marginTop: 2,
+    textAlign: "right",
+  };
+  const wrap: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+  };
+
   if (c.signal === "overdue_invoices") {
     const local = fmtLocal(c.outstandingLocal, c.outstandingCurrency);
     const eur = fmtEurInline(c.outstandingEur);
-    const days = c.daysOverdue != null ? `${c.daysOverdue}d overdue` : null;
     const inv = c.openInvoiceCount && c.openInvoiceCount > 0
       ? `${c.openInvoiceCount} inv`
       : null;
-    // Local first, then EUR equivalent — mixed-currency companies skip local.
-    const parts = [days, local, local ? eur : eur, inv].filter(Boolean);
-    const text = parts.join(" · ") || "n/a";
+    const sub = [local, local && eur ? eur : eur, inv].filter(Boolean).join(" · ");
     return (
       <span
-        title={`Oldest unpaid invoice is ${c.daysOverdue ?? 0}d past its due date · ${local ? `outstanding ${local}` : "outstanding"}${eur ? ` (${eur.replace("≈ ", "")})` : ""}${inv ? ` · ${inv} across the company's deals` : ""}`}
-        style={{ ...baseStyle, background: "rgba(184,74,45,0.10)", color: "var(--rust)" }}
+        style={wrap}
+        title={`Oldest unpaid invoice is ${c.daysOverdue ?? 0}d past its due date${local ? ` · outstanding ${local}` : ""}${eur ? ` (${eur.replace("≈ ", "")})` : ""}${inv ? ` · ${inv}` : ""}`}
       >
-        {text}
+        <span style={{ ...pillStyle, background: "rgba(184,74,45,0.10)", color: "var(--rust)" }}>
+          {c.daysOverdue != null ? `${c.daysOverdue}d overdue` : "Overdue"}
+        </span>
+        {sub && <span style={subStyle}>{sub}</span>}
       </span>
     );
   }
@@ -527,42 +502,84 @@ function SignalValueChip({ company: c }: { company: FlatCompany }) {
     const inv = c.openInvoiceCount && c.openInvoiceCount > 0
       ? `${c.openInvoiceCount} inv`
       : null;
-    const parts = [local, local ? eur : eur, inv].filter(Boolean);
-    if (parts.length === 0) return <span style={baseStyle} />;
     return (
       <span
-        title={`${local ? `Outstanding ${local}` : "Outstanding"}${eur ? ` (${eur.replace("≈ ", "")})` : ""}${inv ? ` · ${inv} across the company's deals` : ""}`}
-        style={{ ...baseStyle, background: "var(--status-warn-bg)", color: "var(--status-warn-fg)" }}
+        style={wrap}
+        title={`${local ? `Outstanding ${local}` : "Outstanding"}${eur ? ` (${eur.replace("≈ ", "")})` : ""}${inv ? ` · ${inv}` : ""}`}
       >
-        {parts.join(" · ")}
+        <span style={{ ...pillStyle, background: "var(--status-warn-bg)", color: "var(--status-warn-fg)" }}>
+          Open invoice
+        </span>
+        {(local || eur || inv) && (
+          <span style={subStyle}>
+            {[local, local && eur ? eur : eur, inv].filter(Boolean).join(" · ")}
+          </span>
+        )}
       </span>
     );
   }
   if (c.signal === "no_future_events") {
-    if (c.daysSilent == null) return <span style={baseStyle} />;
+    // Pill shows when the customer last *created* an event in their
+    // booking system — that's the actual product-usage signal, distinct
+    // from the "last contacted" line on the left (which is when CS
+    // reached out). Falls back to "No events" if we don't have the date.
+    const eventLabel = c.latestEventAt ? relDays(c.latestEventAt) : null;
+    const pillText = eventLabel
+      ? /^\d{4}-\d{2}-\d{2}$/.test(eventLabel)
+        ? `Last event ${eventLabel}`
+        : /^\d/.test(eventLabel)
+          ? `Last event ${eventLabel}`
+          : `Last event ${eventLabel.toLowerCase()}`
+      : "No events on record";
     return (
       <span
-        title="Days since the most recent activity"
-        style={{ ...baseStyle, background: "var(--status-info-bg)", color: "var(--status-info-fg)" }}
+        style={wrap}
+        title={
+          c.latestEventAt
+            ? `Most recent event added: ${c.latestEventAt.split("T")[0]}`
+            : "No event has ever been created on this account"
+        }
       >
-        {c.daysSilent}d silent
+        <span style={{ ...pillStyle, background: "var(--status-info-bg)", color: "var(--status-info-fg)" }}>
+          {pillText}
+        </span>
       </span>
     );
   }
   if (c.signal === "health_score") {
     const prev = fmtHealth(c.previousCategory);
     const cur = fmtHealth(c.healthScore);
-    if (prev.num == null || cur.num == null) return <span style={baseStyle} />;
+    const haveBoth = prev.num != null && cur.num != null;
+    // Single labelled pill: "Weak · 6" / "At risk · 55" so the user knows
+    // what the number is. When a previous score is available, surface the
+    // trend on the sub-line: "↓ from 8".
+    const pillLabel =
+      cur.num != null
+        ? `${cur.label} · ${cur.num}`
+        : "Health score";
     return (
       <span
-        title={`Health score: was ${prev.num} (${prev.label}), now ${cur.num} (${cur.label})`}
-        style={{ ...baseStyle, background: "rgba(47,92,62,0.10)", color: "var(--moss)" }}
+        style={wrap}
+        title={
+          haveBoth
+            ? `Health score was ${prev.num} (${prev.label}), now ${cur.num} (${cur.label})`
+            : cur.num != null
+              ? `Health score: ${cur.num} (${cur.label})`
+              : "Health score"
+        }
       >
-        {prev.num} → {cur.num}
+        <span style={{ ...pillStyle, background: "rgba(47,92,62,0.10)", color: "var(--moss)" }}>
+          {pillLabel}
+        </span>
+        {haveBoth && (
+          <span style={subStyle}>
+            ↓ from {prev.num}
+          </span>
+        )}
       </span>
     );
   }
-  return <span style={baseStyle} />;
+  return <span style={wrap} />;
 }
 
 // Pill rendering for the per-row generated-revenue figure.

@@ -28,6 +28,9 @@ function fmtEurInline(amount?: number): string | null {
 import { Avatar } from "../Avatar";
 import { Icon } from "../Icon";
 import { CompanyDetail } from "../CompanyDetail";
+import { RowContextStrip } from "../RowContextStrip";
+import { prefetchCompany } from "@/lib/prefetch";
+import { useHoverPrefetch } from "@/lib/use-hover-prefetch";
 
 interface SplitViewProps {
   companies: FlatCompany[];
@@ -257,7 +260,7 @@ const ghostButton: React.CSSProperties = {
   fontWeight: 500,
   color: "var(--moss)",
   border: "1px solid var(--hairline)",
-  background: "#fff",
+  background: "var(--card-bg)",
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
@@ -346,7 +349,7 @@ function SplitGroup({
             marginLeft: "auto",
             color: "var(--green-100)",
             transform: open ? "rotate(90deg)" : "none",
-            transition: "transform 0.3s cubic-bezier(0.8, 0.24, 0.16, 1)",
+            transition: "transform 0.3s var(--ease-out)",
           }}
         >
           <Icon.Chevron />
@@ -363,10 +366,14 @@ function SplitRow({ c, active, onClick, showAvatar, index }: { c: FlatCompany; a
   // Stagger capped at 10 rows so long sections don't drag the last items in
   // half a second after the first.
   const delay = 60 + Math.min(index, 10) * 22;
+  // 120ms dwell prefetch — drag-throughs cancel before firing, real hovers
+  // kick off `/api/companies/[id]` so the click resolves from HTTP cache.
+  const hoverHandlers = useHoverPrefetch(() => prefetchCompany(c.id));
   return (
     <button
       onClick={onClick}
       data-row-id={c.id}
+      {...hoverHandlers}
       className="hrow"
       style={{
         position: "relative",
@@ -378,12 +385,12 @@ function SplitRow({ c, active, onClick, showAvatar, index }: { c: FlatCompany; a
         padding: "12px 16px 12px 20px",
         textAlign: "left",
         background: active ? "var(--beige-new)" : "transparent",
-        transition: "background 0.2s cubic-bezier(0.8, 0.24, 0.16, 1)",
+        transition: "background 0.2s var(--ease-out)",
         borderBottomStyle: "solid",
         borderBottomWidth: 1,
         borderBottomColor: "var(--hairline)",
         cursor: "pointer",
-        animation: `staggerIn 320ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms both`,
+        animation: `staggerIn 320ms var(--ease-out) ${delay}ms both`,
       }}
     >
       <span
@@ -423,6 +430,11 @@ function SplitRow({ c, active, onClick, showAvatar, index }: { c: FlatCompany; a
         >
           <SignalValueInline c={c} />
         </div>
+        <RowContextStrip
+          payStatus={c.payStatus}
+          plan={c.plan}
+          lastContactedAt={c.lastContactedAt}
+        />
       </div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
         {c.signal !== "overdue_invoices" && c.signal !== "open_invoices" && (

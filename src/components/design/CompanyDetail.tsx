@@ -10,6 +10,8 @@ import { HealthRings } from "./HealthRings";
 import { VolumeChart } from "./VolumeChart";
 import { OWNER_MAP } from "@/lib/owners";
 import { fmtMrr, relDays } from "@/lib/format-design";
+import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
+import { isBookmarked, toggleBookmark } from "@/lib/bookmarks";
 
 interface Props {
   companyId: string;
@@ -17,11 +19,38 @@ interface Props {
   embedded?: boolean;
 }
 
-const HUBSPOT_PORTAL = process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID;
 
 export function CompanyDetail({ companyId, data, embedded = false }: Props) {
   const { company, deal, owners, stages, engagements, recap } = data;
   const [tab, setTab] = useState<"overview" | "activity">("overview");
+  // Bookmark state — starts as false so server and client first render agree
+  // (no hydration mismatch). The "adjust state during render" pattern
+  // initialises from localStorage on the client without violating
+  // react-hooks/set-state-in-effect, and a popcorn-listener bumps a counter
+  // when bookmarks change elsewhere so this panel re-evaluates.
+  const [bookmarkTick, setBookmarkTick] = useState(0);
+  const [prevTick, setPrevTick] = useState(-1);
+  const [prevCompanyId, setPrevCompanyId] = useState<string | null>(null);
+  const [bookmarked, setBookmarked] = useState(false);
+  if (prevTick !== bookmarkTick || prevCompanyId !== companyId) {
+    setPrevTick(bookmarkTick);
+    setPrevCompanyId(companyId);
+    setBookmarked(isBookmarked(companyId));
+  }
+  useEffect(() => {
+    function onChange() {
+      setBookmarkTick((t) => t + 1);
+    }
+    window.addEventListener("ud-bookmarks-changed", onChange);
+    return () => window.removeEventListener("ud-bookmarks-changed", onChange);
+  }, []);
+  const onToggleBookmark = () => {
+    toggleBookmark({
+      id: companyId,
+      name: company?.name || "Unknown",
+      domain: company?.domain || undefined,
+    });
+  };
 
   // Page-level Left/Right shortcuts dispatch a custom event so we can swap tabs
   // without lifting the tab state up.
@@ -133,10 +162,69 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
               </>
             )}
           </div>
+          {data.primaryContact && (
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--green-100)",
+                marginTop: 6,
+                display: "flex",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <span style={{ color: "var(--moss)" }}>{data.primaryContact.name ?? "Primary contact"}</span>
+              {data.primaryContact.email && (
+                <>
+                  <span style={{ opacity: 0.5 }}>·</span>
+                  <a
+                    href={`mailto:${data.primaryContact.email}`}
+                    style={{ color: "var(--moss)", textDecoration: "underline" }}
+                  >
+                    {data.primaryContact.email}
+                  </a>
+                </>
+              )}
+              {data.primaryContact.phone && (
+                <>
+                  <span style={{ opacity: 0.5 }}>·</span>
+                  <a
+                    href={`tel:${data.primaryContact.phone.replace(/\s/g, "")}`}
+                    style={{ color: "var(--moss)", textDecoration: "underline" }}
+                  >
+                    {data.primaryContact.phone}
+                  </a>
+                </>
+              )}
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={onToggleBookmark}
+            aria-label={bookmarked ? "Remove bookmark" : "Bookmark this company"}
+            aria-pressed={bookmarked}
+            title={bookmarked ? "Remove bookmark" : "Bookmark this company"}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              fontSize: 16,
+              border: "1px solid var(--hairline)",
+              background: bookmarked ? "var(--citrus)" : "var(--card-bg)",
+              color: "var(--moss)",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "background 0.15s",
+            }}
+          >
+            {bookmarked ? "★" : "☆"}
+          </button>
           <a
-            href={`https://app.hubspot.com/contacts/${HUBSPOT_PORTAL}/record/0-2/${companyId}`}
+            href={hubspotCompanyUrl(companyId) ?? "#"}
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -146,7 +234,7 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
               fontWeight: 500,
               color: "var(--moss)",
               border: "1px solid var(--hairline)",
-              background: "#fff",
+              background: "var(--card-bg)",
               textDecoration: "none",
               display: "inline-flex",
               alignItems: "center",
@@ -176,7 +264,7 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
               fontWeight: 700,
               color: tab === t ? "var(--moss)" : "var(--green-100)",
               marginBottom: -1,
-              transition: "color 0.2s cubic-bezier(0.8, 0.24, 0.16, 1), border-bottom-color 0.2s cubic-bezier(0.8, 0.24, 0.16, 1)",
+              transition: "color 0.2s var(--ease-out), border-bottom-color 0.2s var(--ease-out)",
               background: "transparent",
               cursor: "pointer",
               borderBottomWidth: 2,
@@ -215,7 +303,9 @@ function OverviewPanel({
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <PayPipelineCard company={company} deal={deal} />
-        <ObNotesCard deal={deal} />
+        {/* OB Notes intentionally omitted from the company overview — they're
+            relevant only inside the Onboarding meeting brief, not on the
+            general company detail panel. */}
         <LifecycleDealCard deal={deal} stages={stages} />
         <CompanyInfoCard company={company} owners={owners} />
       </div>
@@ -223,156 +313,9 @@ function OverviewPanel({
   );
 }
 
-function ObNotesCard({ deal }: { deal: Record<string, string> | null }) {
-  if (!deal) return null;
-  const customerNeeds = deal.ob_note___customer_needs_?.trim();
-  const promisesMade = deal.ob_note___promises_made?.trim();
-  const experiencesLink = deal.ob_note___link_to_experience_s__that_need_to_be_created_?.trim();
-  const growNotes = deal.ob_note___grow_notes__if_booked_?.trim();
-  const hibernation = deal.hibernation_notes?.trim();
-  const productHold = deal.product_hold_note?.trim();
-
-  // Hide the whole card if nothing was filled in.
-  const hasAny =
-    customerNeeds || promisesMade || experiencesLink || growNotes || hibernation || productHold;
-  if (!hasAny) return null;
-
-  return (
-    <div
-      style={{
-        background: "var(--light-grey)",
-        border: "1px solid var(--beige-gray)",
-        borderRadius: 16,
-        padding: "16px 20px 18px",
-      }}
-    >
-      <div
-        style={{
-          fontFamily: "var(--font-display)",
-          textTransform: "uppercase",
-          fontSize: 10.5,
-          fontWeight: 700,
-          letterSpacing: "0.06em",
-          color: "var(--green-100)",
-          marginBottom: 10,
-        }}
-      >
-        Onboarding notes
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {customerNeeds && <ObRow label="Customer needs" value={customerNeeds} />}
-        {promisesMade && <ObRow label="Promises made" value={promisesMade} />}
-        {experiencesLink && (
-          <ObRow
-            label="Experiences to create"
-            value={experiencesLink}
-            link={/^https?:\/\//i.test(experiencesLink) ? experiencesLink : undefined}
-          />
-        )}
-        {growNotes && <ObRow label="Grow notes" value={growNotes} />}
-        {(hibernation || productHold) && (
-          <div
-            style={{
-              borderTop: "1px solid var(--hairline)",
-              paddingTop: 10,
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
-          >
-            {productHold && (
-              <Blocker label="Product hold" value={productHold} />
-            )}
-            {hibernation && (
-              <Blocker label="Hibernation" value={hibernation} />
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ObRow({
-  label,
-  value,
-  link,
-}: {
-  label: string;
-  value: string;
-  link?: string;
-}) {
-  return (
-    <div>
-      <div
-        style={{
-          fontFamily: "var(--font-display)",
-          textTransform: "uppercase",
-          fontSize: 9.5,
-          fontWeight: 700,
-          letterSpacing: "0.06em",
-          color: "var(--green-100)",
-          marginBottom: 4,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 13,
-          color: "var(--moss)",
-          lineHeight: 1.5,
-          fontFamily: "var(--font-editorial)",
-        }}
-      >
-        {link ? (
-          <a
-            href={link}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: "var(--moss)", textDecoration: "underline" }}
-          >
-            {value}
-          </a>
-        ) : (
-          value
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Blocker({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        background: "rgba(184,74,45,0.06)",
-        border: "1px solid rgba(184,74,45,0.18)",
-        borderRadius: 8,
-        padding: "8px 12px",
-        display: "flex",
-        gap: 8,
-        alignItems: "flex-start",
-      }}
-    >
-      <span
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 9,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          color: "var(--rust)",
-          marginTop: 2,
-          flexShrink: 0,
-        }}
-      >
-        {label}
-      </span>
-      <span style={{ fontSize: 12.5, color: "var(--dark-moss)", lineHeight: 1.5 }}>{value}</span>
-    </div>
-  );
-}
+// ObNotesCard / ObRow / Blocker were removed — onboarding notes belong on
+// the Onboarding meeting brief, not the general company-detail panel. See
+// `MeetingBriefCard` in `src/components/design/views/OnboardingView.tsx`.
 
 function PlatformActivityCard({ company }: { company: Record<string, string> }) {
   const items = [
@@ -545,7 +488,6 @@ function LifecycleDealCard({ deal, stages }: { deal: Record<string, string> | nu
     );
   }
   const rows: { label: string; value: string }[] = [];
-  if (deal.dealname) rows.push({ label: "Deal name", value: deal.dealname });
   if (deal.dealstage) rows.push({ label: "Stage", value: stages[deal.dealstage] || deal.dealstage });
   if (deal.confirmed__contract_mrr) rows.push({ label: "Monthly fee", value: fmtMrr(parseFloat(deal.confirmed__contract_mrr)) });
   if (deal.confirmed_booking_fee || deal.booking_fee) {
@@ -559,7 +501,7 @@ function LifecycleDealCard({ deal, stages }: { deal: Record<string, string> | nu
       headerRight={
         deal.hs_object_id ? (
           <a
-            href={`https://app.hubspot.com/contacts/${HUBSPOT_PORTAL}/record/0-3/${deal.hs_object_id}`}
+            href={hubspotDealUrl(deal.hs_object_id) ?? "#"}
             target="_blank"
             rel="noopener noreferrer"
             style={{ fontSize: 11.5, color: "var(--moss)", textDecoration: "underline" }}

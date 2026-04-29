@@ -2,6 +2,7 @@
 
 import type { Recap } from "@/lib/types";
 import { Icon } from "./Icon";
+import { hubspotCompanyUrl } from "@/lib/hubspot-links";
 
 interface RecapCardBigProps {
   recap: Recap | null;
@@ -9,8 +10,6 @@ interface RecapCardBigProps {
   companyName?: string;
   onAction?: (type: string) => void;
 }
-
-const HUBSPOT_PORTAL = process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID;
 
 function actionIcon(type: string | undefined) {
   switch (type) {
@@ -35,7 +34,7 @@ function actionLabel(type: string | undefined): string {
 function deepLink(type: string | undefined, companyId: string): string {
   // Best-effort: open the company record in HubSpot. The record page lets the user
   // create the right engagement type from there.
-  return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL}/record/0-2/${companyId}`;
+  return hubspotCompanyUrl(companyId) ?? "#";
 }
 
 export function RecapCardBig({ recap, companyId }: RecapCardBigProps) {

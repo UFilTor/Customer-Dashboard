@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -28,4 +29,21 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withBundleAnalyzer(nextConfig);
+const wrapped = withBundleAnalyzer(nextConfig);
+
+// Only apply Sentry wrapper when SENTRY_DSN is set — otherwise the wrap is a
+// noop overhead. Source-map upload requires SENTRY_AUTH_TOKEN; without it
+// errors still capture but stack traces will reference minified code.
+const sentryEnabled = !!(process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN);
+
+export default sentryEnabled
+  ? withSentryConfig(wrapped, {
+      silent: true,
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      // Tunnel option avoids ad-blockers swallowing Sentry events.
+      tunnelRoute: "/api/monitoring",
+      disableLogger: true,
+    })
+  : wrapped;

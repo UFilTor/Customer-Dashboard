@@ -8,7 +8,7 @@ import type {
   OnboardingRisk,
 } from "@/lib/types";
 
-const HUBSPOT_PORTAL_ID = process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID;
+import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 const ONBOARDING_ACTIVITY_TYPES = new Set([
   "Onboarding",
   "Bloom Onboarding",
@@ -34,6 +34,10 @@ interface Props {
   fetchedDays?: Set<string>;
   fetchingDays?: Set<string>;
   onFetchDay?: (dayKey: string) => void;
+  // True while /api/onboarding/history is in flight on first paint. Drives
+  // a skeleton row in the brief's Previous activity section so the lazy
+  // calls/emails don't pop in silently.
+  historyLoading?: boolean;
 }
 
 // Tightened "Needs attention" rule per design ask:
@@ -92,6 +96,7 @@ export function OnboardingView({
   fetchedDays,
   fetchingDays,
   onFetchDay,
+  historyLoading,
 }: Props) {
   if (subview === "attention") {
     return (
@@ -111,6 +116,7 @@ export function OnboardingView({
       fetchedDays={fetchedDays}
       fetchingDays={fetchingDays}
       onFetchDay={onFetchDay}
+      historyLoading={historyLoading}
     />
   );
 }
@@ -127,6 +133,7 @@ function MeetingsPanel({
   fetchedDays,
   fetchingDays,
   onFetchDay,
+  historyLoading,
 }: {
   deals: OnboardingDeal[];
   meetings: OnboardingMeetingEntry[];
@@ -135,6 +142,7 @@ function MeetingsPanel({
   fetchedDays?: Set<string>;
   fetchingDays?: Set<string>;
   onFetchDay?: (dayKey: string) => void;
+  historyLoading?: boolean;
 }) {
   const total = deals.length;
   const totalAcv = deals.reduce((s, d) => s + d.acv, 0);
@@ -472,7 +480,7 @@ function MeetingsPanel({
                     key={`${entry.deal.dealId}:${entry.meeting.id}`}
                     data-meeting-idx={i}
                     style={{
-                      animation: `staggerIn 360ms cubic-bezier(0.22, 1, 0.36, 1) ${100 + Math.min(i, 8) * 60}ms both`,
+                      animation: `staggerIn 360ms var(--ease-out) ${100 + Math.min(i, 8) * 60}ms both`,
                       borderRadius: 16,
                       outline: isFocused ? "2px solid var(--moss)" : "2px solid transparent",
                       outlineOffset: 2,
@@ -484,6 +492,7 @@ function MeetingsPanel({
                       onSelect={() => onSelect(entry.deal)}
                       isFocused={isFocused}
                       historyFocusedIdx={isFocused ? historyFocusedIdx : null}
+                      historyLoading={historyLoading}
                     />
                   </div>
                 );
@@ -1183,6 +1192,30 @@ function Italic({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Placeholder shown while /api/onboarding/history backfills calls + emails.
+// Matches HistoryItem's row shape so the swap to real content is seamless.
+function HistorySkeleton({ compact }: { compact?: boolean }) {
+  const rows = compact ? 1 : 2;
+  return (
+    <div
+      className="animate-pulse"
+      style={{ display: "flex", flexDirection: "column", gap: 10 }}
+      aria-label="Loading recent activity"
+    >
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            height: 44,
+            background: "var(--hairline)",
+            borderRadius: 10,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function EmptyState({ text }: { text: string }) {
   return (
     <div
@@ -1264,11 +1297,13 @@ function MeetingBriefCard({
   onSelect,
   isFocused,
   historyFocusedIdx,
+  historyLoading,
 }: {
   entry: OnboardingMeetingEntry;
   onSelect: () => void;
   isFocused?: boolean;
   historyFocusedIdx?: number | null;
+  historyLoading?: boolean;
 }) {
   const { meeting, deal } = entry;
   const ownerLocal = OWNER_MAP[deal.ownerId] || null;
@@ -1476,10 +1511,8 @@ function MeetingBriefCard({
             // to the company record when we have one; otherwise hide the link.
             const isStub = deal.dealId.startsWith("external-");
             const href = isStub
-              ? deal.companyId
-                ? `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-2/${deal.companyId}`
-                : null
-              : `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-3/${deal.dealId}`;
+              ? hubspotCompanyUrl(deal.companyId)
+              : hubspotDealUrl(deal.dealId);
             if (!href) return null;
             return (
               <a
@@ -1489,7 +1522,7 @@ function MeetingBriefCard({
                 style={{
                   padding: "6px 14px",
                   borderRadius: 10,
-                  background: "#fff",
+                  background: "var(--card-bg)",
                   color: "var(--moss)",
                   fontSize: 12,
                   fontWeight: 500,
@@ -1515,7 +1548,32 @@ function MeetingBriefCard({
         <div style={{ padding: "22px 24px", borderRight: "1px solid var(--hairline)" }}>
           <BriefSectionTitle>Customer</BriefSectionTitle>
           <BriefDL>
-            <BriefRow label="Contact" value={obNotes.contactName} />
+            {(() => {
+              // Contact name + email + phone, stacked. Each line is its own
+              // link when present so the user can click straight into mail
+              // or phone from the brief.
+              const lines: string[] = [];
+              const linkLines: { value: string; link: string }[] = [];
+              if (obNotes.contactName) lines.push(obNotes.contactName);
+              if (obNotes.contactEmail) {
+                linkLines.push({ value: obNotes.contactEmail, link: `mailto:${obNotes.contactEmail}` });
+              }
+              if (obNotes.contactPhone) {
+                linkLines.push({ value: obNotes.contactPhone, link: `tel:${obNotes.contactPhone.replace(/\s/g, "")}` });
+              }
+              if (lines.length === 0 && linkLines.length === 0) {
+                return <BriefRow label="Contact" value={null} />;
+              }
+              return (
+                <BriefRow
+                  label="Contact"
+                  multiline={[
+                    ...lines.map((v) => ({ value: v, link: null })),
+                    ...linkLines,
+                  ]}
+                />
+              );
+            })()}
             <BriefRow
               label="Website"
               value={obNotes.companyDomain}
@@ -1574,7 +1632,9 @@ function MeetingBriefCard({
         <div style={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 22 }}>
           <div>
             <BriefSectionTitle>Previous activity</BriefSectionTitle>
-            {visibleHistory.length === 0 ? (
+            {visibleHistory.length === 0 && historyLoading ? (
+              <HistorySkeleton />
+            ) : visibleHistory.length === 0 ? (
               <Italic>No prior meetings logged.</Italic>
             ) : (
               <ul
@@ -1595,6 +1655,9 @@ function MeetingBriefCard({
                     />
                   </li>
                 ))}
+                {historyLoading && (
+                  <li><HistorySkeleton compact /></li>
+                )}
               </ul>
             )}
           </div>
@@ -2329,14 +2392,19 @@ function BriefRow({
   value,
   link,
   links,
+  multiline,
 }: {
   label: string;
   value?: string | null;
   link?: string | null;
   links?: string[];
+  // Stacked rows where each line may or may not have its own link (used by
+  // the Contact row to render name + mailto + tel together).
+  multiline?: { value: string; link: string | null }[];
 }) {
   const hasLinks = links && links.length > 0;
-  const missing = !hasLinks && (value == null || value === "" || value === "missing");
+  const hasMultiline = multiline && multiline.length > 0;
+  const missing = !hasLinks && !hasMultiline && (value == null || value === "" || value === "missing");
   return (
     <>
       <dt
@@ -2363,7 +2431,23 @@ function BriefRow({
           wordBreak: "break-word",
         }}
       >
-        {missing ? "missing" : hasLinks ? (
+        {missing ? "missing" : hasMultiline ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {multiline!.map((line, i) =>
+              line.link ? (
+                <a
+                  key={`${line.value}-${i}`}
+                  href={line.link}
+                  style={{ color: "var(--moss)", textDecoration: "underline" }}
+                >
+                  {line.value}
+                </a>
+              ) : (
+                <span key={`${line.value}-${i}`}>{line.value}</span>
+              )
+            )}
+          </div>
+        ) : hasLinks ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {links!.map((href) => (
               <a
@@ -2397,6 +2481,13 @@ function StuckCard({ deal: d, onClick, index = 0, listIdx, isFocused }: { deal: 
   const ownerLocal = OWNER_MAP[d.ownerId] || null;
   const overBy = d.daysInStep - d.expectedDaysInStep;
   const delay = 80 + Math.min(index, 10) * 24;
+  // Blocker pills: split each blocker on its first ":" so "Hibernation: ..."
+  // becomes a {Hibernation} pill with the long-form note moved to title.
+  const blockerTags = d.blockers.map((b) => {
+    const i = b.indexOf(":");
+    if (i === -1) return { label: b, detail: "" };
+    return { label: b.slice(0, i).trim(), detail: b.slice(i + 1).trim() };
+  });
   return (
     <button
       onClick={onClick}
@@ -2413,7 +2504,7 @@ function StuckCard({ deal: d, onClick, index = 0, listIdx, isFocused }: { deal: 
         alignItems: "center",
         textAlign: "left",
         cursor: "pointer",
-        animation: `staggerIn 320ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms both`,
+        animation: `staggerIn 320ms var(--ease-out) ${delay}ms both`,
       }}
     >
       <div style={{ minWidth: 0 }}>
@@ -2421,27 +2512,45 @@ function StuckCard({ deal: d, onClick, index = 0, listIdx, isFocused }: { deal: 
           <span style={{ fontSize: 14, fontWeight: 700, color: "var(--moss)" }}>{d.companyName}</span>
           <RiskPill level={d.riskLevel} compact />
         </div>
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--green-100)",
-            fontFamily: "var(--font-editorial)",
-            fontStyle: "italic",
-          }}
-        >
-          {d.blockers.length > 0
-            ? d.blockers[0]
-            : `In ${stepLabel(d.step)} for ${d.daysInStep}d (expected ${d.expectedDaysInStep}d)`}
-        </div>
+        {blockerTags.length > 0 ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
+            {blockerTags.map((b, i) => (
+              <span
+                key={`${b.label}-${i}`}
+                title={b.detail || undefined}
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  background: "var(--status-warn-bg)",
+                  color: "var(--status-warn-fg)",
+                  fontFamily: "var(--font-display)",
+                }}
+              >
+                {b.label}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--green-100)",
+              fontFamily: "var(--font-editorial)",
+              fontStyle: "italic",
+            }}
+          >
+            In {stepLabel(d.step)} for {d.daysInStep}d (expected {d.expectedDaysInStep}d)
+          </div>
+        )}
       </div>
       <div>
         <Eyebrow>Stuck at</Eyebrow>
-        <div style={{ fontSize: 13, color: "var(--moss)", fontWeight: 600 }}>{stepLabel(d.step)}</div>
-        {overBy > 0 && (
-          <div style={{ fontSize: 11, color: "var(--rust)", marginTop: 2 }}>
-            {overBy}d over expected
-          </div>
-        )}
+        <div style={{ fontSize: 13, color: "var(--moss)", fontWeight: 600, marginBottom: 4 }}>{stepLabel(d.step)}</div>
+        <PacingBar daysInStep={d.daysInStep} expected={d.expectedDaysInStep} />
       </div>
       <div>
         <Eyebrow>Last touch</Eyebrow>
@@ -2452,5 +2561,66 @@ function StuckCard({ deal: d, onClick, index = 0, listIdx, isFocused }: { deal: 
         <span style={{ fontSize: 12, color: "var(--green-100)" }}>{d.ownerName.split(" ")[0]}</span>
       </div>
     </button>
+  );
+  // overBy is consumed indirectly via PacingBar's derived ratio; the pill
+  // would be redundant alongside the bar, so we omit the standalone "+Xd"
+  // line that used to live here.
+  void overBy;
+}
+
+// Step-pacing bar. Fills cream → moss up to expected, then turns rust beyond.
+// 100% bar width = expected; capped at 200% so the eye still gets a useful
+// reading on extreme overruns.
+function PacingBar({ daysInStep, expected }: { daysInStep: number; expected: number }) {
+  if (expected <= 0) return null;
+  const pct = Math.min(2, daysInStep / expected);
+  const overflow = pct > 1;
+  const overBy = daysInStep - expected;
+  return (
+    <div
+      title={`${daysInStep}d in step · expected ${expected}d${overflow ? ` · ${overBy}d over` : ""}`}
+      style={{ width: "100%", display: "flex", flexDirection: "column", gap: 3 }}
+    >
+      <div
+        style={{
+          width: "100%",
+          height: 4,
+          background: "var(--hairline)",
+          borderRadius: 2,
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${Math.min(100, (pct * 100) / 2)}%`,
+            background: overflow ? "var(--rust)" : "var(--moss)",
+            borderRadius: 2,
+          }}
+        />
+        {overflow && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: -2,
+              bottom: -2,
+              width: 1,
+              background: "rgba(2,44,18,0.3)",
+            }}
+          />
+        )}
+      </div>
+      {overflow && (
+        <span style={{ fontSize: 10.5, color: "var(--rust)", fontVariantNumeric: "tabular-nums" }}>
+          +{overBy}d over expected
+        </span>
+      )}
+    </div>
   );
 }

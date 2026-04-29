@@ -197,13 +197,23 @@ const DEAL_PROPERTIES = [
 ];
 
 export async function getCompanyDetail(companyId: string): Promise<CompanyDetail> {
-  const [companyRes, dealResult, engagementsRes] = await Promise.all([
-    fetchCompany(companyId),
-    fetchLifecycleDeal(companyId),
-    fetchEngagements(companyId),
-  ]);
+  // Tasks need dealIds from the lifecycle deal but nothing else, so chain it
+  // off the deal promise — that way it overlaps with the company / engagements
+  // / primary-contact fetches instead of running serially after the parallel
+  // block. Saves ~300-500ms on cold detail clicks.
+  const dealResultPromise = fetchLifecycleDeal(companyId);
+  const tasksPromise = dealResultPromise.then((d) =>
+    fetchTasks(companyId, d?.dealIds || [])
+  );
 
-  const tasksRes = await fetchTasks(companyId, dealResult?.dealIds || []);
+  const [companyRes, dealResult, engagementsRes, primaryContact, tasksRes] =
+    await Promise.all([
+      fetchCompany(companyId),
+      dealResultPromise,
+      fetchEngagements(companyId),
+      fetchPrimaryContact(companyId),
+      tasksPromise,
+    ]);
 
   return {
     company: companyRes,
@@ -211,7 +221,38 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
     engagements: engagementsRes,
     tasks: tasksRes,
     recap: null,
+    primaryContact,
   };
+}
+
+async function fetchPrimaryContact(
+  companyId: string
+): Promise<CompanyDetail["primaryContact"]> {
+  try {
+    // Walk: company → primary contact id → contact properties.
+    const assocRes = await fetch(
+      `${HUBSPOT_API}/crm/v3/objects/companies/${companyId}/associations/contacts?limit=1`,
+      { headers: headers(), cache: "no-store" }
+    );
+    if (!assocRes.ok) return null;
+    const assocData = await assocRes.json();
+    const contactId = assocData.results?.[0]?.id;
+    if (!contactId) return null;
+    const res = await fetch(
+      `${HUBSPOT_API}/crm/v3/objects/contacts/${contactId}?properties=firstname,lastname,email,mobilephone,phone`,
+      { headers: headers(), cache: "no-store" }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const p = data.properties || {};
+    const name = [p.firstname, p.lastname].filter(Boolean).join(" ").trim() || null;
+    const email = p.email?.trim() || null;
+    const phone = (p.mobilephone || p.phone)?.trim() || null;
+    if (!name && !email && !phone) return null;
+    return { name, email, phone };
+  } catch {
+    return null;
+  }
 }
 
 async function fetchCompany(id: string): Promise<Record<string, string>> {

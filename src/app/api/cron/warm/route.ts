@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { OWNERS } from "@/lib/owners";
 
 // Vercel cron-triggered cache warming. Hits the three main API routes so
 // the in-memory caches + edge `s-maxage` cache stay populated, meaning real
@@ -11,6 +12,27 @@ import { NextRequest, NextResponse } from "next/server";
 //
 // Schedule: see vercel.json. Runs every 14 min so it stays just inside the
 // 15-min in-memory TTL and the 14-min edge `s-maxage`.
+
+// Per-region ownerIds for `/api/onboarding`. The other two routes
+// (`/api/attention`, `/api/pay-migration`) cache a single global scope and
+// filter client-side, so they don't need region warms.
+function ownerIdsForRegion(region: "DK" | "SE" | "IT"): string {
+  return [...OWNERS.filter((o) => o.region === region).map((o) => o.id)]
+    .sort()
+    .join(",");
+}
+
+// Optional: a comma-separated list of "VIP" company IDs to keep their detail
+// payload warm. Pulled from env so we can change the list without redeploying.
+// Empty / unset → skip the per-company warm step entirely.
+function companyWarmIds(): string[] {
+  const raw = process.env.WARM_COMPANY_IDS || "";
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => /^\d+$/.test(s));
+}
+
 export async function GET(request: NextRequest) {
   const expected = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
@@ -19,10 +41,18 @@ export async function GET(request: NextRequest) {
   }
 
   const origin = request.nextUrl.origin;
-  const targets = [
+  const targets: string[] = [
     "/api/onboarding?refresh=true",
     "/api/attention?refresh=true",
     "/api/pay-migration?refresh=true",
+    // Per-region onboarding scopes — the only route whose cache key includes
+    // ownerIds. Filter switches in CS happen often enough that paying the
+    // first-cold cost there is the most visible source of "still slow".
+    `/api/onboarding?refresh=true&ownerIds=${ownerIdsForRegion("DK")}`,
+    `/api/onboarding?refresh=true&ownerIds=${ownerIdsForRegion("SE")}`,
+    `/api/onboarding?refresh=true&ownerIds=${ownerIdsForRegion("IT")}`,
+    // VIP company detail payloads — env-driven so we can rotate the list.
+    ...companyWarmIds().map((id) => `/api/companies/${id}`),
   ];
 
   const t0 = performance.now();

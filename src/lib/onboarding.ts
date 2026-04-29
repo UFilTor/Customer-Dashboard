@@ -796,6 +796,8 @@ async function fetchCompaniesForDeals(
 interface ContactInfo {
   firstName: string | null;
   lastName: string | null;
+  email: string | null;
+  phone: string | null;
 }
 
 async function fetchPrimaryContactsForDeals(
@@ -806,9 +808,15 @@ async function fetchPrimaryContactsForDeals(
   for (const a of dealAssocs) if (a.toIds[0]) dealToContact.set(a.fromId, a.toIds[0]);
 
   const uniqueContactIds = Array.from(new Set(dealToContact.values()));
+  // Email + phone surface on the meeting brief and detail header so the CS
+  // owner has the customer-side contact at a click. Mobile-phone preferred,
+  // fall back to landline below.
   const contactProps = await fetchObjectsBatch("contacts", uniqueContactIds, [
     "firstname",
     "lastname",
+    "email",
+    "mobilephone",
+    "phone",
   ]);
 
   const out = new Map<string, ContactInfo>();
@@ -818,6 +826,8 @@ async function fetchPrimaryContactsForDeals(
     out.set(dealId, {
       firstName: nullable(props.firstname),
       lastName: nullable(props.lastname),
+      email: nullable(props.email),
+      phone: nullable(props.mobilephone) ?? nullable(props.phone),
     });
   }
   return out;
@@ -960,6 +970,8 @@ export async function buildOnboardingPayload(
 
     const obNotes: OnboardingObNotesExtended = {
       understoryPayEnabled: parseEnableUnderstoryPay(p.enable_understory_pay),
+      contactEmail: contact?.email ?? null,
+      contactPhone: contact?.phone ?? null,
       customerNeeds: nullable(p["ob_note___customer_needs_"]),
       promisesMade: nullable(p["ob_note___promises_made"]),
       experiencesLink: nullable(p["ob_note___link_to_experience_s__that_need_to_be_created_"]),
@@ -1264,6 +1276,8 @@ export async function buildOnboardingPayload(
             experiencesLink: dp ? nullable(dp["ob_note___link_to_experience_s__that_need_to_be_created_"]) : null,
             growNotes: dp ? nullable(dp["ob_note___grow_notes__if_booked_"]) : null,
             contactName: null,
+            contactEmail: null,
+            contactPhone: null,
             companyDomain: cprops ? nullable(cprops.domain) : null,
             storefrontLink: dp ? nullable(dp.storefront) : null,
             payStatus: dp ? nullable(dp.understory_pay_status__customer) : null,

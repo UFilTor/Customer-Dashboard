@@ -2,7 +2,7 @@
 
 import { Children, ReactNode, useEffect, useState, type CSSProperties } from "react";
 
-const EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+const EASE = "var(--ease-out)";
 
 function useCountUp(end: number, duration = 600): number {
   const [value, setValue] = useState(0);

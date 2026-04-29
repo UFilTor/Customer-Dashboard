@@ -60,6 +60,28 @@
   --hairline: rgba(2, 44, 18, 0.08);
   --hairline-strong: rgba(2, 44, 18, 0.14);
 
+  /* Pay-migration stage swatch palette. Used by the bar charts, stage chips,
+     and timeline rows in PayMigrationView. Saturation kept low to live calmly
+     on cream surfaces; meaning carried by the labels next to each swatch. */
+  --pay-stage-live: #2F5F3D;
+  --pay-stage-verified: #6E9374;
+  --pay-stage-pending: #B07028;
+  --pay-stage-onboarding: #9F7E2E;
+  --pay-stage-signed: #5F7A95;
+  --pay-stage-none: #7E7864;
+  --pay-stage-unwilling: #8C5746;
+  --pay-stage-ineligible: #8C8F8B;
+
+  /* Easing — DESIGN.md §6 specifies the ease-out-quart family. Centralised
+     so component code references the name, not the bezier. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Modal / popover lift. DESIGN.md §4 calls this out as the third elevation
+     moment (alongside the focus ring and the segmented-control thumb). Used
+     for the cmd palette, cheat sheet, dropdown menus, and toasts — anywhere
+     a transient surface needs to read as floating above the desk. */
+  --shadow-modal: 0 8px 24px rgba(2, 44, 18, 0.12);
+
   /* Type stack — wired through next/font in layout.tsx */
   --font-body: var(--font-inter), system-ui, Arial, sans-serif;
   --font-display: var(--font-oswald), 'National 2 Condensed', Impact, sans-serif;

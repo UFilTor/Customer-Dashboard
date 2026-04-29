@@ -26,7 +26,7 @@ export function Sparkline({ data, width = 64, height = 20, tone }: SparklineProp
     el.style.strokeDasharray = String(len);
     el.style.strokeDashoffset = String(len);
     void el.getBoundingClientRect();
-    el.style.transition = "stroke-dashoffset 720ms cubic-bezier(0.22, 1, 0.36, 1)";
+    el.style.transition = "stroke-dashoffset 720ms var(--ease-out)";
     el.style.strokeDashoffset = "0";
   }, [data]);
 

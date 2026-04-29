@@ -32,6 +32,7 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
     rows: [
       { label: "Open command palette", keys: `${modLabel} + K` },
       { label: "Open filter pill", keys: "F" },
+      { label: "Cycle filter (All → Region → Person)", keys: "Shift + F" },
       { label: "Refresh active dashboard", keys: "R" },
       { label: "Toggle this help", keys: "?" },
       { label: "Close / go back", keys: "Esc" },
@@ -165,10 +166,10 @@ export default function ShortcutCheatSheet({
           maxWidth: "92vw",
           maxHeight: "82vh",
           overflowY: "auto",
-          background: "#fff",
+          background: "var(--card-bg)",
           borderRadius: 14,
           padding: "22px 24px",
-          boxShadow: "0 30px 80px rgba(2,44,18,0.35)",
+          boxShadow: "var(--shadow-modal)",
           color: "var(--moss)",
         }}
       >

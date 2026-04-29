@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import type { CompanySearchResult } from "@/lib/types";
 import { getRecentCompanies } from "@/lib/recent-companies";
+import { getBookmarks } from "@/lib/bookmarks";
 
 export type PaletteAction = "refresh" | "open-company-in-hubspot" | "open-deal-in-hubspot";
 
@@ -93,26 +94,39 @@ export function CommandPalette({
 
   if (!open) return null;
 
+  const bookmarks: CompanySearchResult[] = getBookmarks()
+    .slice(0, 8)
+    .map((b) => ({ id: b.id, name: b.name, domain: b.domain || "" }));
+  const bookmarkIds = new Set(bookmarks.map((b) => b.id));
   const recents: CompanySearchResult[] = getRecentCompanies()
     .slice(0, 6)
+    .filter((r) => !bookmarkIds.has(r.id)) // dedupe — bookmarks beat recents
     .map((r) => ({ id: r.id, name: r.name, domain: r.domain || "" }));
 
   const filterText = (s: string) => s.toLowerCase().includes(q.toLowerCase());
   const visibleActions = ALL_ACTIONS
     .filter((a) => !a.needsCompany || hasCurrentCompany)
     .filter((a) => (q ? filterText(a.label) : true));
-  const visibleCompanies: CompanySearchResult[] = q
-    ? results
-    : recents;
 
   const items: Item[] = [];
   if (visibleActions.length > 0) {
     items.push({ section: "Actions" });
     visibleActions.forEach((a) => items.push({ kind: "action", a }));
   }
-  if (visibleCompanies.length > 0) {
-    items.push({ section: q ? "Companies" : "Recent" });
-    visibleCompanies.forEach((c) => items.push({ kind: "company", c }));
+  if (q) {
+    if (results.length > 0) {
+      items.push({ section: "Companies" });
+      results.forEach((c) => items.push({ kind: "company", c }));
+    }
+  } else {
+    if (bookmarks.length > 0) {
+      items.push({ section: "Bookmarked" });
+      bookmarks.forEach((c) => items.push({ kind: "company", c }));
+    }
+    if (recents.length > 0) {
+      items.push({ section: "Recent" });
+      recents.forEach((c) => items.push({ kind: "company", c }));
+    }
   }
 
   const pickable: Pickable[] = items.filter((i): i is Pickable => "kind" in i);
@@ -168,9 +182,9 @@ export function CommandPalette({
         style={{
           width: 640,
           maxWidth: "92vw",
-          background: "#fff",
+          background: "var(--card-bg)",
           borderRadius: 14,
-          boxShadow: "0 30px 80px rgba(2,44,18,0.35)",
+          boxShadow: "var(--shadow-modal)",
           overflow: "hidden",
         }}
       >
@@ -189,7 +203,7 @@ export function CommandPalette({
               outline: 0,
               fontFamily: "var(--font-body)",
               borderBottom: "1px solid var(--hairline)",
-              background: "#fff",
+              background: "var(--card-bg)",
             }}
           />
           {isLoading && (

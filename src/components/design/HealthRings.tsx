@@ -38,7 +38,7 @@ function ScoreRing({ label, value, size = 64 }: RingProps) {
             strokeDasharray={c}
             strokeDashoffset={offset}
             strokeLinecap="round"
-            style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.8, 0.24, 0.16, 1)" }}
+            style={{ transition: "stroke-dashoffset 0.6s var(--ease-out)" }}
           />
         </svg>
         <div

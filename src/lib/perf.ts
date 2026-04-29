@@ -45,6 +45,5 @@ export function logSpans(route: string, spans: Spans): void {
   const parts = spans
     .map((s) => `${s.label}=${s.ms.toFixed(0)}ms`)
     .join(" ");
-  // eslint-disable-next-line no-console
   console.log(`[perf] ${route} total=${total.toFixed(0)}ms ${parts}`);
 }

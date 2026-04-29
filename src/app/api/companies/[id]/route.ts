@@ -4,6 +4,11 @@ import { generateRecap } from "@/lib/summarize";
 import { Cache } from "@/lib/cache";
 import { CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
 
+// Edge runtime — fast cold start matters most here since clicks into
+// detail are the second most common cold path after first paint.
+// The Anthropic SDK + HubSpot calls are all `fetch`-based and edge-safe.
+export const runtime = "edge";
+
 const companyCache = new Cache<CompanyDetail>(5 * 60 * 1000);
 const ownerCache = new Cache<OwnerMap>(60 * 60 * 1000);
 const stageCache = new Cache<StageMap>(60 * 60 * 1000);

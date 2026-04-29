@@ -8,6 +8,9 @@ const CHIP_COMPANY_PROPS = [
   "understory_booking_volume_3m",
   "understory_booking_volume_6m",
   "createdate",
+  // Surfaced as a row context strip on Briefing/Split rows so users don't
+  // have to click into detail to see when they last reached out.
+  "notes_last_contacted",
 ];
 
 async function fetchCompanyBatch(
@@ -53,7 +56,7 @@ async function fetchDealForCompany(companyId: string): Promise<Record<string, st
       headers: hubspotHeaders(),
       body: JSON.stringify({
         inputs: dealIds.map((id) => ({ id })),
-        properties: ["confirmed__contract_mrr", "deal_currency_code", "pipeline", "booking_fee", "understory_pay_status__customer", "dealstage", "amount_in_home_currency"],
+        properties: ["confirmed__contract_mrr", "deal_currency_code", "pipeline", "booking_fee", "understory_pay_status__customer", "subscription_plan", "dealstage", "amount_in_home_currency"],
       }),
     });
     if (!batchRes.ok) return null;
@@ -101,7 +104,7 @@ function formatRevenue(revenueEur: number): string {
 function mapChipFields(
   companyProps: Record<string, string>,
   dealProps: Record<string, string> | null
-): Pick<AttentionCompany, "healthScore" | "volume12m" | "volume3m" | "volume6m" | "payStatus" | "revenue"> {
+): Pick<AttentionCompany, "healthScore" | "volume12m" | "volume3m" | "volume6m" | "payStatus" | "revenue" | "plan" | "lastContactedAt"> {
   const revenue = computeGeneratedRevenue(
     companyProps.understory_booking_volume_12m,
     dealProps?.booking_fee || dealProps?.confirmed_booking_fee,
@@ -115,6 +118,8 @@ function mapChipFields(
     volume3m: parseFloat(companyProps.understory_booking_volume_3m || "0") || undefined,
     volume6m: parseFloat(companyProps.understory_booking_volume_6m || "0") || undefined,
     payStatus: dealProps?.understory_pay_status__customer || undefined,
+    plan: dealProps?.subscription_plan || undefined,
+    lastContactedAt: companyProps.notes_last_contacted || undefined,
     revenue: revenue || undefined,
   };
 }
@@ -132,7 +137,7 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
             { propertyName: "number_of_open_invoices", operator: "GT", value: "0" },
           ],
         })),
-        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "outstanding_amount", "invoice_due_date", "number_of_open_invoices", "understory_pay_status__customer"],
+        properties: ["confirmed__contract_mrr", "deal_currency_code", "booking_fee", "outstanding_amount", "invoice_due_date", "number_of_open_invoices", "understory_pay_status__customer", "subscription_plan"],
         limit: 100,
       }),
     });
@@ -140,11 +145,10 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
     if (!res.ok) return emptyResult;
     const data = await res.json();
 
-    interface DealInfo { id: string; dealname: string; mrr: string; currency: string; bookingFee: string; outstandingAmount: string; invoiceDueDate: string; openInvoices: number; payStatus: string }
+    interface DealInfo { id: string; mrr: string; currency: string; bookingFee: string; outstandingAmount: string; invoiceDueDate: string; openInvoices: number; payStatus: string }
     const deals: DealInfo[] = data.results?.map(
       (d: { id: string; properties: Record<string, string> }) => ({
         id: d.id,
-        dealname: d.properties.dealname || "Unknown deal",
         mrr: d.properties.confirmed__contract_mrr || "",
         currency: d.properties.deal_currency_code || "EUR",
         bookingFee: d.properties.booking_fee || "",
@@ -190,7 +194,6 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
       sumOpenInvoices: number;
       maxDaysOverdue: number | undefined;
       perCurrency: Map<string, number>;
-      dealNames: string[];
       // Deal props from the first deal we encountered, used later for
       // mapChipFields / generated-revenue computation. Not fully accurate
       // when a company has multiple deals but matches today's behaviour.
@@ -223,7 +226,6 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
           const ccy = deal.currency || "EUR";
           existing.perCurrency.set(ccy, (existing.perCurrency.get(ccy) ?? 0) + outstandingNum);
         }
-        existing.dealNames.push(deal.dealname);
       } else {
         const perCurrency = new Map<string, number>();
         if (outstandingNum > 0) perCurrency.set(deal.currency || "EUR", outstandingNum);
@@ -232,7 +234,6 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
           sumOpenInvoices: deal.openInvoices,
           maxDaysOverdue: daysOverdue,
           perCurrency,
-          dealNames: [deal.dealname],
           dealMrr: deal.mrr,
           dealCurrency: deal.currency,
           dealBookingFee: deal.bookingFee,
@@ -251,14 +252,14 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
         localSum = Math.round(sum);
         localCurrency = ccy;
       }
-      const detail = a.dealNames.length === 1
-        ? a.dealNames[0]
-        : `${a.dealNames.length} deals`;
-
+      // Detail line intentionally empty — the section header already says
+      // "Overdue invoices" / "Open invoices" and the right-side pill carries
+      // the days/amount/count. The lifecycle deal name (e.g. "Acme Customer
+      // Lifecycle deal") was just the company name with a noisy suffix.
       companyMap.set(companyId, {
         id: companyId,
         name: "",
-        detail,
+        detail: "",
         mrr: a.sumEur > 0 ? formatRevenue(a.sumEur) : "-",
         currency: "EUR",
         daysOverdue: a.maxDaysOverdue,
@@ -344,7 +345,11 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
       (c: { id: string; properties: Record<string, string> }) => ({
         id: c.id,
         name: c.properties.name || "Unknown",
-        detail: c.properties["health_score"] || "Unknown",
+        // Detail line intentionally left empty — the pill on the right
+        // carries the labelled health score, and the section header says
+        // "Health decline". Repeating the raw number under the company
+        // name was duplicative.
+        detail: "",
         ownerId: c.properties.hubspot_owner_id || "",
         country: c.properties.understory_company_country || "",
         _bookingVolume: c.properties.understory_booking_volume_12m || "",
@@ -445,7 +450,7 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
             { propertyName: "dealstage", operator: "IN", values: activeStageIds },
           ],
         }],
-        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "understory_pay_status__customer", "pipeline", "amount_in_home_currency"],
+        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "understory_pay_status__customer", "subscription_plan", "pipeline", "amount_in_home_currency"],
         limit: 100,
       };
       if (after) body.after = after;
@@ -506,7 +511,7 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
           headers: hubspotHeaders(),
           body: JSON.stringify({
             inputs: batch.map((id) => ({ id })),
-            properties: ["name", "hubspot_owner_id", "understory_company_country", "createdate", "understory_health_score_upcoming_events", ...CHIP_COMPANY_PROPS],
+            properties: ["name", "hubspot_owner_id", "understory_company_country", "createdate", "understory_health_score_upcoming_events", "understory_latest_event", ...CHIP_COMPANY_PROPS],
           }),
         });
         if (!res.ok) continue;
@@ -533,11 +538,15 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
       results.push({
         id: companyId,
         name: props.name || "Unknown",
-        detail: "No upcoming events",
+        // Detail line intentionally empty — the section header already says
+        // "No future events" and the right-side pill carries the latest-
+        // event date. Repeating "No upcoming events" was redundant.
+        detail: "",
         ownerId: props.hubspot_owner_id || "",
         country: props.understory_company_country || "",
         currency: "EUR",
         ...mapChipFields(props, null),
+        latestEventAt: props.understory_latest_event || undefined,
         mrr: formatRevenue(acv),
         revenue: acv || undefined,
         payStatus: deal.properties.understory_pay_status__customer || undefined,
@@ -563,7 +572,7 @@ export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
             { propertyName: "wish_to_churn", operator: "EQ", value: "true" },
           ],
         })),
-        properties: ["dealname", "churn_reason", "churned_reason_elaborated", "churn_date", "customer_stage", "deal_currency_code", "confirmed__contract_mrr", "booking_fee", "understory_pay_status__customer"],
+        properties: ["dealname", "churn_reason", "churned_reason_elaborated", "churn_date", "customer_stage", "deal_currency_code", "confirmed__contract_mrr", "booking_fee", "understory_pay_status__customer", "subscription_plan"],
         limit: 100,
       }),
     });

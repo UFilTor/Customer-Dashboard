@@ -21,14 +21,14 @@ const KEY_OWNER_IDS = new Set(["962517007", "559364799"]); // Anders, Cecilia
 // amber (in motion) → muted lichen/beige (waiting) → cool grey (out of scope).
 // All values tested for ≥3:1 against --card-bg (#F8F6ED).
 const STAGE_ORDER: { key: PayStage; short: string; color: string }[] = [
-  { key: "Live", short: "Live", color: "#2F5F3D" },
-  { key: "Verified", short: "Verified", color: "#6E9374" },
-  { key: "Pending Verification", short: "Pending", color: "#B07028" },
-  { key: "Started Onboarding", short: "Started Onb.", color: "#9F7E2E" },
-  { key: "Signed - Not Started", short: "Signed", color: "#5F7A95" },
-  { key: "Not yet enrolled", short: "Not enrolled", color: "#7E7864" },
-  { key: "Unwilling", short: "Unwilling", color: "#8C5746" },
-  { key: "Ineligible", short: "Ineligible", color: "#8C8F8B" },
+  { key: "Live", short: "Live", color: "var(--pay-stage-live)" },
+  { key: "Verified", short: "Verified", color: "var(--pay-stage-verified)" },
+  { key: "Pending Verification", short: "Pending", color: "var(--pay-stage-pending)" },
+  { key: "Started Onboarding", short: "Started Onb.", color: "var(--pay-stage-onboarding)" },
+  { key: "Signed - Not Started", short: "Signed", color: "var(--pay-stage-signed)" },
+  { key: "Not yet enrolled", short: "Not enrolled", color: "var(--pay-stage-none)" },
+  { key: "Unwilling", short: "Unwilling", color: "var(--pay-stage-unwilling)" },
+  { key: "Ineligible", short: "Ineligible", color: "var(--pay-stage-ineligible)" },
 ];
 
 const STAGE_BY_KEY: Record<string, { color: string; short: string }> = Object.fromEntries(
@@ -197,7 +197,7 @@ export function PayMigrationView({ data, payFilter, isRefreshing, onRefresh, onD
               padding: "8px 14px",
               borderRadius: 10,
               border: "1px solid var(--hairline)",
-              background: "#fff",
+              background: "var(--card-bg)",
               color: "var(--moss)",
               fontSize: 12.5,
               fontWeight: 500,
@@ -543,12 +543,13 @@ function StageDot({ stage }: { stage: PayStage }) {
   const s = STAGE_BY_KEY[stage];
   return (
     <span
+      aria-hidden="true"
       style={{
         display: "inline-block",
         width: 7,
         height: 7,
         borderRadius: "50%",
-        background: s?.color || "#999",
+        background: s?.color || "var(--green-muted)",
         marginRight: 5,
         verticalAlign: "middle",
       }}
@@ -630,6 +631,7 @@ function PipelineBar({
             s.bv > 0 && (
               <span key={s.key} style={{ fontSize: 11, color: "var(--moss)" }}>
                 <span
+                  aria-hidden="true"
                   style={{
                     display: "inline-block",
                     width: 10,
@@ -676,7 +678,7 @@ function PipeSeg({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        transition: "flex-grow 700ms cubic-bezier(0.22, 1, 0.36, 1)",
+        transition: "flex-grow 700ms var(--ease-out)",
         overflow: "hidden",
         whiteSpace: "nowrap",
       }}
@@ -747,7 +749,7 @@ function OwnerCard({
           fontFamily: "var(--font-display)",
           fontSize: 26,
           fontWeight: 700,
-          color: "#2F5F3D",
+          color: "var(--pay-stage-live)",
           lineHeight: 1,
           fontVariantNumeric: "tabular-nums",
         }}
@@ -951,13 +953,19 @@ function PathCard({
                 );
               }
               const { deal, runPct, pp, isLive, highlight, n } = r;
-              const bg = isLive ? "rgba(26,122,74,0.06)" : highlight ? "rgba(193,110,42,0.08)" : "transparent";
+              // Highlighted (warn) rows use a stronger tonal warn background +
+              // a 1px hairline-style left border. The 3px side-stripe is
+              // reserved for the focused list row affordance per DESIGN.md §6.
+              const bg = isLive
+                ? "rgba(26,122,74,0.06)"
+                : highlight
+                  ? "rgba(193,110,42,0.14)"
+                  : "transparent";
               return (
                 <tr
                   key={deal.dealId}
                   style={{
                     background: bg,
-                    borderLeft: highlight ? "3px solid var(--status-warn-fg)" : undefined,
                     cursor: "pointer",
                   }}
                   onClick={() => onDealClick(deal)}

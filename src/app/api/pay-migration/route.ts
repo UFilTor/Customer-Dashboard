@@ -4,6 +4,10 @@ import { Cache } from "@/lib/cache";
 import type { PayMigrationData } from "@/lib/types";
 import { createSpans, logSpans, serverTimingHeader, withTiming } from "@/lib/perf";
 
+// Edge runtime — ~50ms cold start. The per-edge-instance `payCache` is
+// kept warm by the 14-min cron + edge `s-maxage=840`.
+export const runtime = "edge";
+
 const payCache = new Cache<PayMigrationData>(15 * 60 * 1000);
 
 export async function GET(request: NextRequest) {

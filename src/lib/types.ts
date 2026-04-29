@@ -53,6 +53,15 @@ export interface CompanyDetail {
   engagements: Engagement[];
   tasks: TaskItem[];
   recap: Recap | null;
+  /** Primary customer-side contact (name + clickable email/phone). Pulled
+   *  from the deal's first associated contact, falling back to the company.
+   *  Surfaced in the detail header so the CS owner has the call/email
+   *  target without leaving the dashboard. */
+  primaryContact: {
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
 }
 
 export interface Engagement {
@@ -116,6 +125,13 @@ export interface AttentionCompany {
   volume3m?: number;
   volume6m?: number;
   payStatus?: string;
+  plan?: string;
+  lastContactedAt?: string;
+  /** When the customer last *created* an event in their booking system —
+   *  surfaced in the No Future Events row pill so the user knows how
+   *  long ago they actually used the product, not just when CS reached
+   *  out. Pulled from `understory_latest_event`. */
+  latestEventAt?: string;
   revenue?: number;
   // Outstanding invoice amount aggregated across every open-invoice deal on the
   // company. `outstandingLocal` + `outstandingCurrency` are populated only when
@@ -235,6 +251,8 @@ export interface OnboardingObNotesExtended extends OnboardingObNotes {
   // From `enable_understory_pay` — true / false / null when not set.
   understoryPayEnabled: boolean | null;
   contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
   companyDomain: string | null;
   storefrontLink: string | null;
   payStatus: string | null;

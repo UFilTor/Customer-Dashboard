@@ -67,10 +67,14 @@ export function OnboardingContainer({
   // Day keys we have meetings for. Seeded with the bulk endpoint's default
   // window (today + 4 forward workdays) so the strip doesn't show "fetch"
   // buttons on the days that are already loaded.
+  // The deps array intentionally lists `key` even though the body doesn't
+  // reference it — the goal is to recompute on filter switch so the seeded
+  // Set is fresh post-reset.
   const defaultFetchedKeys = useMemo(() => {
     const now = new Date();
     return nextNWorkDayKeys(now, 5);
-  }, [key]); // recompute on filter switch — keeps Set fresh post-reset
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   const [fetchedDays, setFetchedDays] = useState<Set<string>>(
     () => new Set(defaultFetchedKeys)
@@ -192,6 +196,11 @@ export function OnboardingContainer({
     return Array.from(ids).sort().join(",");
   }, [data]);
 
+  // Whether the lazy history fetch is in flight. Surfaced down to the view
+  // so meeting briefs can render a "loading more activity" skeleton instead
+  // of items popping in silently.
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   // Lazy history backfill — once the list is in, request calls + threaded
   // emails for every deal surfaced on the upcoming-meetings strip. Merges
   // into the cached payload so MeetingBriefCard rerenders with the full
@@ -200,6 +209,7 @@ export function OnboardingContainer({
   useEffect(() => {
     if (!historyDealIdsKey) return;
 
+    setHistoryLoading(true);
     let cancelled = false;
     (async () => {
       try {
@@ -238,6 +248,8 @@ export function OnboardingContainer({
         });
       } catch {
         /* ignore — partial data is fine */
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
       }
     })();
     return () => {
@@ -316,6 +328,7 @@ export function OnboardingContainer({
         fetchedDays={fetchedDays}
         fetchingDays={fetchingDays}
         onFetchDay={fetchDay}
+        historyLoading={historyLoading}
       />
     </div>
   );

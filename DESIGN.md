@@ -205,10 +205,11 @@ Used for category swatches, sparklines, and row tints. Selected by hue, not by s
 
 ## 4. Elevation
 
-Flat by default. The dashboard relies on tonal layering (cream page, warmer cream cards, moss ink) and 1px hairlines for depth. Two elevation moments exist, both functional: the focus ring (a 2px blue outline with a 2px offset) and the active segmented-control thumb (a 1px shadow lifting it off the track). Everything else stays on the same plane.
+Flat by default. The dashboard relies on tonal layering (cream page, warmer cream cards, moss ink) and 1px hairlines for depth. Three elevation moments exist, all functional: the focus ring (a 2px blue outline with a 2px offset), the active segmented-control thumb (a 1px shadow lifting it off the track), and transient floating surfaces (cmd palette, dropdown menus, toasts, cheat sheet) that need to read as above the desk. Everything else stays on the same plane.
 
 ### Shadow Vocabulary
 - **Lift, micro** (`box-shadow: 0 1px 2px rgba(0,0,0,0.04)`): Active segmented-control thumb only.
+- **Modal lift** (`box-shadow: var(--shadow-modal)` = `0 8px 24px rgba(2,44,18,0.12)`): Cmd palette, dropdown menus, toast, cheat sheet. Only on transient floating surfaces, never on cards or rows at rest.
 - **Focus ring** (`outline: 2px solid var(--focus-blue); outline-offset: 2px`): Every keyboard-focused interactive element. Not a shadow, but functions as the elevation cue.
 
 ### Named Rules

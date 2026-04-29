@@ -10,6 +10,7 @@ import {
   type GlobalFilter,
   type RegionKey,
 } from "@/lib/owners";
+import { DashboardPicker, type DashboardKey } from "./VariantPicker";
 
 interface TopBarProps {
   filter: GlobalFilter;
@@ -20,6 +21,8 @@ interface TopBarProps {
   onOpenCmdk: () => void;
   showBack: boolean;
   onBack: () => void;
+  dashboard: DashboardKey;
+  setDashboard: (d: DashboardKey) => void;
 }
 
 export function TopBar({
@@ -31,6 +34,8 @@ export function TopBar({
   onOpenCmdk,
   showBack,
   onBack,
+  dashboard,
+  setDashboard,
 }: TopBarProps) {
   // Default to ⌘K so the SSR markup matches the most common case (Mac).
   // On non-Mac clients the label swaps to "Ctrl+K" after hydration.
@@ -127,6 +132,8 @@ export function TopBar({
             clearDefault={clearDefault}
           />
         )}
+        <span aria-hidden="true" style={{ width: 1, height: 20, background: "rgba(255,255,255,0.18)" }} />
+        <DashboardPicker dashboard={dashboard} setDashboard={setDashboard} />
       </div>
     </nav>
   );
@@ -604,10 +611,10 @@ function Dropdown({
         position: "absolute",
         top: "calc(100% + 8px)",
         right: 0,
-        background: "#fff",
+        background: "var(--card-bg)",
         borderRadius: 14,
         border: "1px solid var(--beige-gray)",
-        boxShadow: "0 20px 60px rgba(2,44,18,0.25), 0 4px 12px rgba(2,44,18,0.1)",
+        boxShadow: "var(--shadow-modal)",
         minWidth: 260,
         zIndex: 100,
         overflow: "hidden",

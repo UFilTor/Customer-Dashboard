@@ -484,7 +484,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
     filter: globalFilter,
   };
 
-  // "g" prefix: press g, then [s|o|r|p|b] to jump dashboards (Gmail-style).
+  // "g" prefix: press g, then [s|o|r|p|b|l] to jump dashboards (Gmail-style).
   const goPrefixRef = useRef<number | null>(null);
   const GO_PREFIX_TIMEOUT_MS = 1500;
 
@@ -557,6 +557,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
           r: "retention",
           p: "pay_migration",
           b: "bloom",
+          l: "search",
         };
         const target = dashMap[k];
         if (target) {

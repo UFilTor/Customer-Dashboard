@@ -84,7 +84,7 @@ export function SearchView({
               color: "var(--green-100)",
             }}
           >
-            Search
+            Lookup
           </span>
           <span aria-hidden="true" style={{ color: "var(--green-100)", opacity: 0.5 }}>·</span>
           <span
@@ -211,7 +211,7 @@ export function SearchView({
               fontFamily: "inherit",
             }}
           >
-            {loading ? "…" : "Search"}
+            {loading ? "…" : "Look up"}
           </button>
         </div>
 

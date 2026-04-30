@@ -44,8 +44,9 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
     rows: [
       { label: "Status", keys: "G then S" },
       { label: "Onboarding", keys: "G then O" },
-      { label: "Retention", keys: "G then R" },
+      { label: "Lookup", keys: "G then L" },
       { label: "Pay migration", keys: "G then P" },
+      { label: "Retention", keys: "G then R" },
       { label: "Bloom", keys: "G then B" },
     ],
   });

@@ -30,7 +30,7 @@ export const DASHBOARDS: DashboardDef[] = [
   { key: "retention", label: "Retention", sub: "Churn risk + renewals", available: false },
   { key: "pay_migration", label: "Pay migration", sub: "Moving accounts to Understory Pay", available: true },
   { key: "bloom", label: "Bloom", sub: "Marketing candidates to pitch", available: false },
-  { key: "search", label: "Search", sub: "Ask anything in plain English", available: true },
+  { key: "search", label: "Lookup", sub: "Ask anything in plain English", available: true },
 ];
 
 export type OnboardingSubview = "meetings" | "attention";

@@ -1158,6 +1158,102 @@ export async function buildOnboardingPayload(
         }
       }
 
+      // Email-body fallback — last-ditch attempt for meetings that still
+      // have no company link. HubSpot doesn't expose meeting attendee
+      // emails as a property; the meeting↔contact association is the only
+      // direct link, and it can be missing for Gong-imported meetings or
+      // calendar-only one-offs. We scrape emails out of `hs_meeting_body`
+      // / `hs_internal_meeting_notes`, search HubSpot contacts by email,
+      // then walk to the associated company. Heuristic but bounded —
+      // adds at most one search + one assoc call per request when needed.
+      const stillUnresolved = orphans.filter((m) => !meetingToCompany.has(m.id));
+      if (stillUnresolved.length > 0) {
+        const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+        const SKIP_DOMAINS = ["understory.io"];
+        const SKIP_LOCAL = /^(noreply|no-reply|notifications|calendar|mailer-daemon)@/i;
+        const meetingToCandidateEmails = new Map<string, string[]>();
+        const allEmails = new Set<string>();
+        for (const m of stillUnresolved) {
+          const bodySources = [
+            m.properties.hs_meeting_body,
+            m.properties.hs_internal_meeting_notes,
+          ].filter((s): s is string => typeof s === "string" && s.length > 0);
+          const matches = new Set<string>();
+          for (const src of bodySources) {
+            const found = src.match(EMAIL_RE) || [];
+            for (const raw of found) {
+              const lc = raw.toLowerCase();
+              if (SKIP_DOMAINS.some((d) => lc.endsWith("@" + d))) continue;
+              if (SKIP_LOCAL.test(lc)) continue;
+              matches.add(lc);
+            }
+          }
+          if (matches.size > 0) {
+            meetingToCandidateEmails.set(m.id, Array.from(matches));
+            for (const e of matches) allEmails.add(e);
+          }
+        }
+
+        if (allEmails.size > 0) {
+          const emails = Array.from(allEmails);
+          const emailToContact = new Map<string, string>();
+          for (let i = 0; i < emails.length; i += 100) {
+            const batch = emails.slice(i, i + 100);
+            try {
+              const res = await fetch(
+                `${HUBSPOT_API}/crm/v3/objects/contacts/search`,
+                {
+                  method: "POST",
+                  headers: hubspotHeaders(),
+                  body: JSON.stringify({
+                    filterGroups: [
+                      { filters: [{ propertyName: "email", operator: "IN", values: batch }] },
+                    ],
+                    properties: ["email"],
+                    limit: 100,
+                    // sorts is mandatory for stable pagination — see
+                    // searchDealsPage in pay-migration.ts for the why.
+                    sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
+                  }),
+                }
+              );
+              if (!res.ok) continue;
+              const data = await res.json();
+              for (const c of data.results || []) {
+                const email = (c.properties?.email || "").toLowerCase();
+                if (email) emailToContact.set(email, String(c.id));
+              }
+            } catch {
+              // Ignore — orphan path is best-effort.
+            }
+          }
+
+          const newContactIds = Array.from(new Set(emailToContact.values()));
+          if (newContactIds.length > 0) {
+            const newAssocs = await fetchAssociations(
+              "contacts",
+              "companies",
+              newContactIds
+            );
+            const newContactToCompany = new Map<string, string>();
+            for (const a of newAssocs) {
+              if (a.toIds[0]) newContactToCompany.set(a.fromId, a.toIds[0]);
+            }
+            for (const [meetingId, candidateEmails] of meetingToCandidateEmails) {
+              for (const email of candidateEmails) {
+                const contactId = emailToContact.get(email);
+                if (!contactId) continue;
+                const companyId = newContactToCompany.get(contactId);
+                if (companyId) {
+                  meetingToCompany.set(meetingId, companyId);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+
       const orphanCompanyIds = Array.from(new Set(meetingToCompany.values()));
 
       // Company props and companies→deals are independent (both keyed on the

@@ -35,6 +35,11 @@ const OnboardingContainer = dynamic(
     import("@/components/design/views/OnboardingContainer").then((m) => m.OnboardingContainer),
   { ssr: false }
 );
+const SearchContainer = dynamic(
+  () =>
+    import("@/components/design/views/SearchContainer").then((m) => m.SearchContainer),
+  { ssr: false }
+);
 import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
 import { flattenGroups, SECTION_ORDER, sortBySignal, type FlatCompany } from "@/lib/signals";
 import {
@@ -70,7 +75,7 @@ function readUrlState(): Partial<UrlState> {
   const sp = new URLSearchParams(window.location.search);
   const out: Partial<UrlState> = {};
   const d = sp.get("d");
-  if (d === "status" || d === "onboarding" || d === "pay_migration") out.dashboard = d;
+  if (d === "status" || d === "onboarding" || d === "pay_migration" || d === "search") out.dashboard = d;
   const v = sp.get("v");
   if (v === "briefing" || v === "split") out.variant = v;
   const fk = sp.get("f");
@@ -240,7 +245,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       setDashboard(fromUrl.dashboard);
     } else {
       const d = ls("ud-v2-dashboard");
-      if (d === "onboarding" || d === "pay_migration") setDashboard(d);
+      if (d === "onboarding" || d === "pay_migration" || d === "search") setDashboard(d);
     }
     if (fromUrl.variant) {
       setVariant(fromUrl.variant);
@@ -929,6 +934,13 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         onSelectDeal={(d) => {
           if (d.companyId) selectCompany(d.companyId);
         }}
+      />
+    );
+  } else if (dashboard === "search") {
+    body = (
+      <SearchContainer
+        filter={globalFilter}
+        onSelectCompany={(id) => selectCompany(id)}
       />
     );
   } else {

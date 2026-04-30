@@ -5,10 +5,17 @@ import {
   prefetchAttention,
   prefetchOnboarding,
   prefetchPayMigration,
+  prefetchSearch,
 } from "@/lib/prefetch";
 
 export type Variant = "briefing" | "split";
-export type DashboardKey = "status" | "onboarding" | "retention" | "pay_migration" | "bloom";
+export type DashboardKey =
+  | "status"
+  | "onboarding"
+  | "retention"
+  | "pay_migration"
+  | "bloom"
+  | "search";
 
 interface DashboardDef {
   key: DashboardKey;
@@ -23,6 +30,7 @@ export const DASHBOARDS: DashboardDef[] = [
   { key: "retention", label: "Retention", sub: "Churn risk + renewals", available: false },
   { key: "pay_migration", label: "Pay migration", sub: "Moving accounts to Understory Pay", available: true },
   { key: "bloom", label: "Bloom", sub: "Marketing candidates to pitch", available: false },
+  { key: "search", label: "Search", sub: "Ask anything in plain English", available: true },
 ];
 
 export type OnboardingSubview = "meetings" | "attention";
@@ -299,6 +307,7 @@ export function DashboardPicker({
                     if (d.key === "status") prefetchAttention();
                     else if (d.key === "pay_migration") prefetchPayMigration();
                     else if (d.key === "onboarding") prefetchOnboarding();
+                    else if (d.key === "search") prefetchSearch();
                   }
                 }}
                 onMouseLeave={(e) => {

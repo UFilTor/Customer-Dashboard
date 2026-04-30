@@ -47,3 +47,9 @@ export function prefetchPayMigration(): void {
   fire("/api/pay-migration");
   void import("@/components/design/views/PayMigrationContainer");
 }
+
+// Search has no bulk endpoint to prefetch (each query is a fresh POST), so we
+// only warm the dynamic chunk so the click resolves with code already loaded.
+export function prefetchSearch(): void {
+  void import("@/components/design/views/SearchContainer");
+}

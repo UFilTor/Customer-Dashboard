@@ -348,3 +348,105 @@ export interface OnboardingResponse {
   meetings: OnboardingMeetingEntry[];
   updatedAt: string;
 }
+
+// Natural-language Search dashboard
+//
+// Source of truth for the multi-target search pipeline. The LLM (Haiku) emits
+// a SearchSpec from natural language; src/lib/search.ts validates it against
+// per-entity field allowlists and translates each target into HubSpot
+// filterGroups. Engagement targets resolve up to the parent company so click-
+// through opens the existing CompanyDetail panel.
+
+export type SearchEntityType =
+  | "deal"
+  | "company"
+  | "note"
+  | "meeting"
+  | "call"
+  | "email";
+
+export type SearchOperator =
+  | "EQ"
+  | "NEQ"
+  | "GT"
+  | "LT"
+  | "GTE"
+  | "LTE"
+  | "CONTAINS_TOKEN"
+  | "IN"
+  | "NOT_IN"
+  | "HAS_PROPERTY"
+  | "BETWEEN";
+
+export interface SearchFilter {
+  propertyName: string;
+  operator: SearchOperator;
+  /** For BETWEEN, "value" carries lower bound and "highValue" the upper. */
+  value: string;
+  highValue?: string;
+}
+
+export interface SearchTarget {
+  entityType: SearchEntityType;
+  /** AND-combined filters applied to every text-search OR branch. */
+  filters: SearchFilter[];
+  /** OR-fanned-out across the cartesian product of `terms` × `fields`. Each
+   *  term should be a single CONTAINS_TOKEN-friendly word ("GYG", not "GYG
+   *  getyourguide"); if the user gives synonyms, each one becomes its own
+   *  term in the array. HubSpot caps at 5 filterGroups total, so we cap the
+   *  fan-out at 5 too. */
+  textSearch: { terms: string[]; fields: string[] } | null;
+}
+
+export interface SearchSpec {
+  targets: SearchTarget[];
+  /** Owner scope resolved from the active Filter pill (or restated by the user
+   *  in NL — "in Cecilia's name"). "all" means no owner filter applied. */
+  ownerScope: { kind: "person" | "region" | "all"; value?: string };
+  limit: number;
+}
+
+export interface SearchSnippet {
+  /** Which engagement type the snippet came from. */
+  engagementType: "note" | "meeting" | "call" | "email";
+  /** ISO timestamp of the engagement. */
+  occurredAt: string;
+  /** Body fragment around the matched term, ~200 chars centred on the match. */
+  excerpt: string;
+  /** HubSpot URL for the underlying engagement record. */
+  hubspotUrl: string;
+}
+
+export interface SearchResult {
+  /** Stable id — prefer companyId when resolvable, else `${entity}:${entityId}`. */
+  id: string;
+  /** Top-level kind of hit. Engagement-only hits (no company resolved) keep
+   *  their engagement type so the row can still render usefully. */
+  type: SearchEntityType;
+  title: string;
+  subtitle: string;
+  /** When the hit resolved to a company, dashboard click opens the detail panel. */
+  companyId: string | null;
+  /** Always present so unresolved hits still link out. */
+  hubspotUrl: string;
+  /** Up to 3 engagement snippets attached to this company / hit. */
+  snippets: SearchSnippet[];
+  /** Recency score for ranking. Higher = newer. */
+  score: number;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+  /** The spec the LLM produced for this turn — sent back so the client can
+   *  pass it as `priorSpec` on the next refinement turn. */
+  parsed: SearchSpec | null;
+  latencyMs: number;
+  error?: string;
+}
+
+/** One turn in the client's refinement chain. */
+export interface SearchTurn {
+  query: string;
+  spec: SearchSpec | null;
+  results: SearchResult[];
+}

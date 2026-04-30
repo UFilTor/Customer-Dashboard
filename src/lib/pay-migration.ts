@@ -1,11 +1,15 @@
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
+import { searchObjectsPage } from "./hubspot-search";
 import { getOwners } from "./hubspot";
 import { OWNERS } from "./owners";
 import type { PayDeal, PayStage, PayOwnerSummary, PayMigrationData } from "./types";
 
 const PAY_PIPELINE = "1072518362";
-// Excluded customer_stage values — these are not retention candidates.
-const RETENTION_EXCLUDED_STAGES = ["Churned", "Paused"];
+// Excluded customer_stage values from the Pay Migration scope. Paused
+// customers stay in the calculation (per Filip 2026-04-30) — they're still
+// active relationships even if temporarily on hold, and we want their pay
+// status reflected in the migration progress numbers.
+const RETENTION_EXCLUDED_STAGES = ["Churned"];
 
 const DEAL_PROPERTIES = [
   "dealname",
@@ -100,44 +104,13 @@ interface RawDeal {
   properties: Record<string, string>;
 }
 
-// HubSpot intermittently 429s or 5xx's individual page requests. The previous
-// pattern of `if (!res.ok) break` silently truncated the dataset (e.g. 200 of
-// 600 deals) and the partial result then got cached for 15 minutes. We retry
-// transient failures and throw on terminal failure so the cache rejects it.
-async function searchDealsPage(body: Record<string, unknown>): Promise<{
-  results: RawDeal[];
-  nextAfter: string | undefined;
-}> {
-  const RETRIES = 3;
-  let lastErr: unknown = null;
-  for (let attempt = 0; attempt <= RETRIES; attempt++) {
-    let res: Response;
-    try {
-      res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
-        method: "POST",
-        headers: hubspotHeaders(),
-        body: JSON.stringify(body),
-      });
-    } catch (e) {
-      lastErr = e;
-      if (attempt === RETRIES) break;
-      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-      continue;
-    }
-    if (res.ok) {
-      const data = await res.json();
-      return { results: data.results || [], nextAfter: data.paging?.next?.after };
-    }
-    // Retry on rate-limits and server errors. 4xx other than 429 are terminal.
-    if (res.status === 429 || res.status >= 500) {
-      lastErr = new Error(`HubSpot deal search ${res.status}`);
-      if (attempt === RETRIES) break;
-      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-      continue;
-    }
-    throw new Error(`HubSpot deal search ${res.status}`);
-  }
-  throw lastErr instanceof Error ? lastErr : new Error("HubSpot deal search failed");
+// Retry-aware paged search for deals. The shared helper in hubspot-search.ts
+// handles the actual fetch + retry loop; this thin wrapper just keeps the
+// type narrow to RawDeal so callers don't have to cast.
+async function searchDealsPage(
+  body: Record<string, unknown>
+): Promise<{ results: RawDeal[]; nextAfter: string | undefined }> {
+  return searchObjectsPage<RawDeal>("deals", body);
 }
 
 async function fetchAllPayDeals(): Promise<RawDeal[]> {

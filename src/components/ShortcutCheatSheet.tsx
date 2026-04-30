@@ -5,7 +5,7 @@ import { useState } from "react";
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  dashboard: "status" | "onboarding" | "pay_migration" | "retention" | "bloom";
+  dashboard: "status" | "onboarding" | "pay_migration" | "retention" | "bloom" | "search";
   variant: "briefing" | "split";
   hasSelectedCompany: boolean;
 }

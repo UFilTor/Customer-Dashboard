@@ -224,6 +224,30 @@ export interface PayMigrationData {
   updatedAt: string;
 }
 
+// Watch-out signals — shared between Retention and Onboarding briefs.
+//
+// Computed per-deal in src/lib/signals.ts based on the deal/company state.
+// Rendered in the brief's "Watch out for" section. Severity drives the
+// border color (warn = amber, bad = red).
+
+export type WatchOutSignalKind =
+  | "overdue_invoice"
+  | "wish_to_churn"
+  | "volume_declining"
+  | "health_dropped"
+  | "no_future_events"
+  | "gone_quiet"
+  | "stuck_in_step";
+
+export type WatchOutSignalSeverity = "warn" | "bad";
+
+export interface WatchOutSignal {
+  kind: WatchOutSignalKind;
+  severity: WatchOutSignalSeverity;
+  title: string;
+  detail: string;
+}
+
 // Onboarding Dashboard
 //
 // Source: Customer Lifecycle pipeline (166333631). Customers are "in onboarding"

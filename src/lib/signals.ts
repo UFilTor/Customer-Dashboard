@@ -1,4 +1,10 @@
-import type { AttentionSignal, AttentionGroup, AttentionCompany } from "./types";
+import type {
+  AttentionSignal,
+  AttentionGroup,
+  AttentionCompany,
+  WatchOutSignal,
+  WatchOutSignalSeverity,
+} from "./types";
 
 export interface SignalMeta {
   key: AttentionSignal;
@@ -88,4 +94,133 @@ export function flattenGroups(groups: AttentionGroup[]): FlatCompany[] {
   }
 
   return out;
+}
+
+export interface WatchOutContext {
+  nowIso: string;
+  // Invoice
+  unpaidInvoice: boolean;
+  invoiceDueDate: string | null;
+  outstandingEur: number | null;
+  overdueDays: number | null;
+  // Churn intent
+  wishToChurn: boolean;
+  churnReason: string | null;
+  // Volume trend
+  volume3m: number;
+  volume6m: number;
+  // Health
+  healthScore: number | null;
+  // Future events
+  upcomingEvents: number | null;
+  // Last contact
+  notesLastContacted: string | null;
+  // Onboarding only
+  daysInStep: number | null;
+  expectedDaysInStep: number | null;
+}
+
+const SEVERITY_ORDER: Record<WatchOutSignalSeverity, number> = { bad: 0, warn: 1 };
+
+function fmtEur(n: number): string {
+  return Math.round(n).toLocaleString("en-US").replace(/,/g, " ");
+}
+
+export function computeWatchOutSignals(ctx: WatchOutContext): WatchOutSignal[] {
+  const out: WatchOutSignal[] = [];
+  const now = new Date(ctx.nowIso).getTime();
+
+  // 1. Overdue invoice — bad
+  if (ctx.unpaidInvoice && ctx.invoiceDueDate) {
+    const due = new Date(ctx.invoiceDueDate).getTime();
+    if (!isNaN(due) && due < now) {
+      const days = ctx.overdueDays ?? Math.floor((now - due) / (24 * 60 * 60 * 1000));
+      const amt = ctx.outstandingEur ? ` · ${fmtEur(ctx.outstandingEur)} EUR outstanding` : "";
+      out.push({
+        kind: "overdue_invoice",
+        severity: "bad",
+        title: "Overdue invoice",
+        detail: `Invoice overdue ${days} day${days === 1 ? "" : "s"}${amt}`,
+      });
+    }
+  }
+
+  // 2. Wish to churn — bad
+  if (ctx.wishToChurn) {
+    out.push({
+      kind: "wish_to_churn",
+      severity: "bad",
+      title: "Wish-to-churn flagged",
+      detail: ctx.churnReason ?? "No reason provided",
+    });
+  }
+
+  // 3. Volume declining — bad
+  // last 3m < 50% of prior 3m (months 4-6)
+  const prior3m = Math.max(0, ctx.volume6m - ctx.volume3m);
+  if (prior3m > 0 && ctx.volume3m < prior3m * 0.5) {
+    out.push({
+      kind: "volume_declining",
+      severity: "bad",
+      title: "Volume declining",
+      detail: `Last 3m ${fmtEur(ctx.volume3m)} EUR vs prior 3m ${fmtEur(prior3m)} EUR`,
+    });
+  }
+
+  // 4. Health dropped — warn
+  if (ctx.healthScore != null && ctx.healthScore < 60) {
+    out.push({
+      kind: "health_dropped",
+      severity: "warn",
+      title: `Health score ${Math.round(ctx.healthScore)}`,
+      detail: "Below the 60 threshold — review sub-scores",
+    });
+  }
+
+  // 5. No future events — warn
+  if (ctx.upcomingEvents == null || ctx.upcomingEvents === 0) {
+    out.push({
+      kind: "no_future_events",
+      severity: "warn",
+      title: "No upcoming events",
+      detail: "Storefront has nothing scheduled",
+    });
+  }
+
+  // 6. Gone quiet — warn (30+ days) or bad (45+ days)
+  if (ctx.notesLastContacted) {
+    const last = new Date(ctx.notesLastContacted).getTime();
+    if (!isNaN(last)) {
+      const days = Math.floor((now - last) / (24 * 60 * 60 * 1000));
+      if (days >= 45) {
+        out.push({
+          kind: "gone_quiet",
+          severity: "bad",
+          title: `Last contact ${days} days ago`,
+          detail: `No outbound since ${ctx.notesLastContacted.slice(0, 10)}`,
+        });
+      } else if (days >= 30) {
+        out.push({
+          kind: "gone_quiet",
+          severity: "warn",
+          title: `Last contact ${days} days ago`,
+          detail: `No outbound since ${ctx.notesLastContacted.slice(0, 10)}`,
+        });
+      }
+    }
+  }
+
+  // 7. Stuck in step — warn (Onboarding only — pass null for retention)
+  if (ctx.daysInStep != null && ctx.expectedDaysInStep != null && ctx.daysInStep > ctx.expectedDaysInStep) {
+    out.push({
+      kind: "stuck_in_step",
+      severity: "warn",
+      title: `${ctx.daysInStep} days in step`,
+      detail: `Expected ${ctx.expectedDaysInStep} — past due`,
+    });
+  }
+
+  // Stable order: bad first, then warn, preserving insertion order within each
+  // severity (matches the order of rules above).
+  return [...out].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 }

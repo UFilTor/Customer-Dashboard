@@ -5,6 +5,7 @@ import {
   prefetchAttention,
   prefetchOnboarding,
   prefetchPayMigration,
+  prefetchRetention,
   prefetchSearch,
 } from "@/lib/prefetch";
 
@@ -307,6 +308,7 @@ export function DashboardPicker({
                     if (d.key === "status") prefetchAttention();
                     else if (d.key === "pay_migration") prefetchPayMigration();
                     else if (d.key === "onboarding") prefetchOnboarding();
+                    else if (d.key === "retention") prefetchRetention();
                     else if (d.key === "search") prefetchSearch();
                   }
                 }}

@@ -45,12 +45,17 @@ export async function GET(request: NextRequest) {
     "/api/onboarding?refresh=true",
     "/api/attention?refresh=true",
     "/api/pay-migration?refresh=true",
-    // Per-region onboarding scopes — the only route whose cache key includes
-    // ownerIds. Filter switches in CS happen often enough that paying the
-    // first-cold cost there is the most visible source of "still slow".
+    "/api/retention?refresh=true",
+    // Per-region onboarding + retention scopes — the only routes whose cache
+    // key includes ownerIds. Filter switches in CS happen often enough that
+    // paying the first-cold cost there is the most visible source of "still
+    // slow".
     `/api/onboarding?refresh=true&ownerIds=${ownerIdsForRegion("DK")}`,
     `/api/onboarding?refresh=true&ownerIds=${ownerIdsForRegion("SE")}`,
     `/api/onboarding?refresh=true&ownerIds=${ownerIdsForRegion("IT")}`,
+    `/api/retention?refresh=true&ownerIds=${ownerIdsForRegion("DK")}`,
+    `/api/retention?refresh=true&ownerIds=${ownerIdsForRegion("SE")}`,
+    `/api/retention?refresh=true&ownerIds=${ownerIdsForRegion("IT")}`,
     // VIP company detail payloads — env-driven so we can rotate the list.
     ...companyWarmIds().map((id) => `/api/companies/${id}`),
   ];

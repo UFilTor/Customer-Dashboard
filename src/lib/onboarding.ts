@@ -186,7 +186,7 @@ const SALES_DEAL_PROPS = [
   "hubspot_owner_id",
 ];
 
-const MEETING_PROPS = [
+export const MEETING_PROPS = [
   "hs_meeting_title",
   "hs_meeting_start_time",
   "hs_meeting_end_time",
@@ -343,7 +343,7 @@ function groupEmailsByThread(emails: OnboardingHistoryEntry[]): OnboardingHistor
   return out;
 }
 
-interface RawObject {
+export interface RawObject {
   id: string;
   properties: Record<string, string>;
 }
@@ -359,7 +359,7 @@ let ownerCacheAt = 0;
 let ownerInflight: Promise<Record<string, string>> | null = null;
 const OWNER_TTL_MS = 10 * 60 * 1000;
 
-async function fetchOwnerNames(ownerIds: string[]): Promise<Record<string, string>> {
+export async function fetchOwnerNames(ownerIds: string[]): Promise<Record<string, string>> {
   const unique = Array.from(new Set(ownerIds.filter(Boolean)));
   if (unique.length === 0) return {};
 
@@ -432,12 +432,12 @@ async function fetchLifecycleDeals(ownerIds?: string[]): Promise<RawObject[]> {
   return out;
 }
 
-interface BatchAssoc {
+export interface BatchAssoc {
   fromId: string;
   toIds: string[];
 }
 
-async function fetchAssociations(
+export async function fetchAssociations(
   fromObject: string,
   toObject: string,
   fromIds: string[]
@@ -473,7 +473,7 @@ async function fetchAssociations(
   return results.flat();
 }
 
-async function fetchObjectsBatch(
+export async function fetchObjectsBatch(
   objectType: string,
   ids: string[],
   properties: string[]
@@ -622,7 +622,7 @@ async function fetchMeetingsForDeals(
  * regardless of which pipeline the associated deal sits in. Lets us catch meetings
  * on sales-pipeline deals (or unassociated meetings) that the deal-first fetch misses.
  */
-async function fetchUpcomingMeetingsByOwners(
+export async function fetchUpcomingMeetingsByOwners(
   ownerIds: string[],
   fromIso: string,
   toIso: string

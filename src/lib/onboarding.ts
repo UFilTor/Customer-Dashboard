@@ -1085,6 +1085,10 @@ export async function buildOnboardingPayload(
       selfOnboarding: p.self_onboarding === "true",
       lastTouch: nullable(p.notes_last_contacted),
       history,
+      // Backports populated in Tasks 13-14; empty defaults keep the type valid.
+      invoices: { open: 0, overdue: 0, overdueDays: null, outstandingEur: null },
+      futureEvents: null,
+      watchOuts: [],
     };
 
     // Slot meetings inside the configured window into the flat list.
@@ -1388,6 +1392,10 @@ export async function buildOnboardingPayload(
           selfOnboarding: dp?.self_onboarding === "true",
           lastTouch: dp ? nullable(dp.notes_last_contacted) : null,
           history: [],
+          // Backports populated in Tasks 13-14; empty defaults keep the type valid.
+          invoices: { open: 0, overdue: 0, overdueDays: null, outstandingEur: null },
+          futureEvents: null,
+          watchOuts: [],
         };
 
         meetings.push({ meeting, deal: stubDeal });

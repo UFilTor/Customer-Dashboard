@@ -358,6 +358,10 @@ export interface OnboardingDeal {
   /** Past meetings, calls, and emails on this deal — sorted DESC, filtered to "meaningful" entries
    * (meetings only count if they have a body or are Gong-tagged; emails skip auto-invites). */
   history: OnboardingHistoryEntry[];
+  // Backports from Retention design — surfaced in Commercial + Watch out for.
+  invoices: RetentionInvoiceState;
+  futureEvents: number | null;
+  watchOuts: WatchOutSignal[];
 }
 
 /** A meeting on the calendar that we surface on the dashboard, paired with its account context. */
@@ -370,6 +374,65 @@ export interface OnboardingResponse {
   deals: OnboardingDeal[];
   /** All meetings in [today 00:00, today + 7d), sorted ascending by start time. Client groups by day. */
   meetings: OnboardingMeetingEntry[];
+  updatedAt: string;
+}
+
+// Retention Dashboard
+//
+// Source: Customer Retention pipeline (1072518362). Customers count as "in
+// retention" while customer_stage ∈ {Adopted, Started, Ramp Up, Established}.
+// Distinct from Onboarding (different pipeline) and Status/Pay Migration
+// (different cuts of the same data).
+
+export interface RetentionInvoiceState {
+  open: number;            // count of open invoices on the deal
+  overdue: number;         // count overdue (due in past, unpaid)
+  overdueDays: number | null;     // max overdue days across the deal
+  outstandingEur: number | null;  // sum of outstanding amount in EUR
+}
+
+export interface RetentionDeal {
+  dealId: string;
+  companyId: string | null;
+  companyName: string;
+  ownerId: string;
+  ownerName: string;
+  country: string | null;
+  customerStage: string;       // Adopted / Started / Ramp Up / Established
+  customerSubstage: string | null;
+  liveDate: string | null;     // customer_live_date ISO
+  daysLive: number | null;     // computed; null when liveDate missing
+  // Customer block
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  companyDomain: string | null;
+  storefrontLink: string | null;
+  // Commercial block — same shape as onboarding
+  commercial: OnboardingCommercial;
+  // Invoice + future events
+  invoices: RetentionInvoiceState;
+  futureEvents: number | null;
+  // Raw company props bag — passed straight to <VolumeChart> + <HealthRings>
+  // so we don't duplicate their parsing logic. Keys match what those components
+  // expect: understory_booking_volume_*, understory_health_score_*, health_score.
+  companyProps: Record<string, string>;
+  // Activity history (lazy-filled by /api/retention/history)
+  history: OnboardingHistoryEntry[];
+  // Watch-out signals computed in the lib
+  watchOuts: WatchOutSignal[];
+  // Last touch (notes_last_contacted) — surfaced in Watch out for context
+  lastTouch: string | null;
+}
+
+export interface RetentionMeetingEntry {
+  meeting: OnboardingMeeting;     // reuse — same fields
+  deal: RetentionDeal;
+}
+
+export interface RetentionResponse {
+  deals: RetentionDeal[];
+  meetings: RetentionMeetingEntry[];
   updatedAt: string;
 }
 

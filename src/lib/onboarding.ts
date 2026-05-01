@@ -1,4 +1,5 @@
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
+import { computeWatchOutSignals } from "./signals";
 import type {
   OnboardingCommercial,
   OnboardingDeal,
@@ -9,7 +10,58 @@ import type {
   OnboardingObNotesExtended,
   OnboardingRisk,
   OnboardingStep,
+  RetentionInvoiceState,
 } from "./types";
+
+// Parse the company's "upcoming events" health-score subfield. Surfaced in the
+// Commercial section + drives the no_future_events watch-out.
+function parseUpcomingEvents(raw: string | undefined): number | null {
+  if (raw == null || raw === "") return null;
+  const n = parseInt(raw, 10);
+  return isNaN(n) ? null : n;
+}
+
+// EUR conversion subset — mirrors retention.ts. Kept inline here to avoid an
+// onboarding ↔ retention import cycle (retention.ts imports primitives from
+// this file). Update both when adding a new currency.
+const ONBOARDING_TO_EUR: Record<string, number> = {
+  EUR: 1,
+  SEK: 0.087,
+  DKK: 0.134,
+  NOK: 0.085,
+  GBP: 1.18,
+  USD: 0.92,
+};
+
+// Inline copy of retention.ts's extractInvoiceState — same logic, lives here
+// so onboarding.ts doesn't need to import retention.ts (would be a cycle).
+function extractInvoiceStateLocal(
+  props: Record<string, string>,
+  nowIso: string
+): RetentionInvoiceState {
+  const open = parseInt(props.number_of_open_invoices || "0", 10) || 0;
+  const unpaid = props.unpaid_invoice === "true";
+  const dueIso = props.invoice_due_date || "";
+  const outstandingRaw = parseFloat(props.outstanding_amount || "0") || 0;
+  const currency = (props.deal_currency_code || "EUR").toUpperCase();
+  const rate = ONBOARDING_TO_EUR[currency] ?? 1;
+
+  let overdue = 0;
+  let overdueDays: number | null = null;
+  if (unpaid && dueIso) {
+    const due = new Date(dueIso).getTime();
+    const now = new Date(nowIso).getTime();
+    if (!isNaN(due) && due < now) {
+      overdue = 1;
+      overdueDays = Math.floor((now - due) / (24 * 60 * 60 * 1000));
+    }
+  }
+
+  const outstandingEur =
+    outstandingRaw > 0 ? Math.round(outstandingRaw * rate) : null;
+
+  return { open, overdue, overdueDays, outstandingEur };
+}
 
 // Pipelines (from the verified mapping spec).
 const LIFECYCLE_PIPELINE = "166333631";
@@ -174,6 +226,13 @@ const LIFECYCLE_DEAL_PROPS = [
   "hibernation_notes",
   "product_hold_note",
   "notes_last_contacted",
+  "wish_to_churn",
+  "churn_reason",
+  // Invoice (Retention backport)
+  "number_of_open_invoices",
+  "unpaid_invoice",
+  "invoice_due_date",
+  "outstanding_amount",
 ];
 
 const SALES_DEAL_PROPS = [
@@ -763,6 +822,10 @@ interface CompanyInfo {
   name: string;
   country: string | null;
   domain: string | null;
+  // Raw company props bag — surfaced in the watch-out computation. Keeping it
+  // here lets the onboarding deal builder use the same volume/health/events
+  // fields the Retention brief reads from companyProps.
+  props: Record<string, string>;
 }
 
 async function fetchCompaniesForDeals(
@@ -777,6 +840,13 @@ async function fetchCompaniesForDeals(
     "name",
     "understory_company_country",
     "domain",
+    "notes_last_contacted",
+    // Watch-out signals (volume / health / events). Same set the retention
+    // dashboard pulls — we surface them in the onboarding brief too.
+    "understory_booking_volume_3m",
+    "understory_booking_volume_6m",
+    "health_score",
+    "understory_health_score_upcoming_events",
   ]);
 
   const out = new Map<string, CompanyInfo>();
@@ -788,6 +858,7 @@ async function fetchCompaniesForDeals(
       name: props.name || "Unknown",
       country: nullable(props.understory_company_country),
       domain: nullable(props.domain),
+      props,
     });
   }
   return out;
@@ -1061,6 +1132,31 @@ export async function buildOnboardingPayload(
       (a, b) => b.occurredAt.localeCompare(a.occurredAt)
     );
 
+    // Retention backports — invoice state, future events, and watch-out signals
+    // are now surfaced in the onboarding brief too. The shared helpers live in
+    // retention.ts (extractInvoiceState) and signals.ts (computeWatchOutSignals).
+    const nowIsoForDeal = new Date().toISOString();
+    const invoices = extractInvoiceStateLocal(p, nowIsoForDeal);
+    const cp = company?.props ?? {};
+    const futureEvents = parseUpcomingEvents(cp.understory_health_score_upcoming_events);
+    const expectedDaysInStep = EXPECTED_DAYS[step] ?? 30;
+    const watchOuts = computeWatchOutSignals({
+      nowIso: nowIsoForDeal,
+      unpaidInvoice: p.unpaid_invoice === "true",
+      invoiceDueDate: p.invoice_due_date || null,
+      outstandingEur: invoices.outstandingEur,
+      overdueDays: invoices.overdueDays,
+      wishToChurn: p.wish_to_churn === "true",
+      churnReason: p.churn_reason || null,
+      volume3m: parseFloat(cp.understory_booking_volume_3m || "0") || 0,
+      volume6m: parseFloat(cp.understory_booking_volume_6m || "0") || 0,
+      healthScore: parseFloat(cp.health_score || "") || null,
+      upcomingEvents: futureEvents,
+      notesLastContacted: cp.notes_last_contacted || p.notes_last_contacted || null,
+      daysInStep,
+      expectedDaysInStep,
+    });
+
     const deal: OnboardingDeal = {
       dealId: d.id,
       companyId: company?.companyId ?? null,
@@ -1075,7 +1171,7 @@ export async function buildOnboardingPayload(
       customerStage: stage,
       customerSubstage: substage,
       daysInStep,
-      expectedDaysInStep: EXPECTED_DAYS[step] ?? 30,
+      expectedDaysInStep,
       riskLevel: computeRisk(step, daysInStep, blockers),
       blockers,
       hibernationNote,
@@ -1085,10 +1181,9 @@ export async function buildOnboardingPayload(
       selfOnboarding: p.self_onboarding === "true",
       lastTouch: nullable(p.notes_last_contacted),
       history,
-      // Backports populated in Tasks 13-14; empty defaults keep the type valid.
-      invoices: { open: 0, overdue: 0, overdueDays: null, outstandingEur: null },
-      futureEvents: null,
-      watchOuts: [],
+      invoices,
+      futureEvents,
+      watchOuts,
     };
 
     // Slot meetings inside the configured window into the flat list.

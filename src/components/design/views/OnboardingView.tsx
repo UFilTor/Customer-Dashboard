@@ -1315,7 +1315,7 @@ function MeetingBriefCard({
 
   const obNotes = deal.obNotes;
   const com = deal.commercial;
-  const watchOuts = deal.blockers;
+  const watchOuts = deal.watchOuts;
   const history = deal.history;
   const visibleHistory = history.slice(0, 4);
 
@@ -1626,6 +1626,25 @@ function MeetingBriefCard({
             <BriefRow label="Booking fee" value={com.bookingFee} />
             <BriefRow label="Monthly fee" value={com.monthlyFee} />
             <BriefRow label="First billing" value={com.firstBilling} />
+            <BriefRow label="Open invoices" value={String(deal.invoices.open)} />
+            <BriefRow
+              label="Overdue"
+              value={
+                deal.invoices.overdue > 0
+                  ? `${deal.invoices.overdue}` +
+                    (deal.invoices.overdueDays != null
+                      ? ` · ${deal.invoices.overdueDays} day${deal.invoices.overdueDays === 1 ? "" : "s"}`
+                      : "") +
+                    (deal.invoices.outstandingEur != null
+                      ? ` · ${deal.invoices.outstandingEur.toLocaleString("en-US")} EUR`
+                      : "")
+                  : "0"
+              }
+            />
+            <BriefRow
+              label="Future events"
+              value={deal.futureEvents != null ? `${deal.futureEvents} scheduled` : null}
+            />
           </BriefDL>
         </div>
 
@@ -1667,38 +1686,35 @@ function MeetingBriefCard({
             {watchOuts.length === 0 ? (
               <Italic>Nothing flagged.</Italic>
             ) : (
-              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
+              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
                 {watchOuts.map((w, i) => (
                   <li
-                    key={i}
+                    key={`${w.kind}:${i}`}
                     style={{
-                      fontSize: 13,
-                      lineHeight: 1.5,
-                      color: "var(--dark-moss)",
-                      background: "rgba(184,74,45,0.06)",
-                      border: "1px solid rgba(184,74,45,0.15)",
-                      padding: "8px 12px",
+                      background: "#fff",
+                      border: `1px solid ${w.severity === "bad" ? "#f8d4d4" : "#fce8c2"}`,
+                      borderLeft: `3px solid ${w.severity === "bad" ? "#c43030" : "#d49500"}`,
                       borderRadius: 8,
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
+                      padding: "10px 12px",
+                      fontSize: 12.5,
+                      lineHeight: 1.45,
+                      color: "var(--dark-moss)",
                     }}
                   >
-                    <span
+                    <div
                       style={{
-                        fontFamily: "var(--font-display)",
-                        fontSize: 9,
-                        fontWeight: 700,
+                        color: w.severity === "bad" ? "#7a1d1d" : "#6b4a05",
+                        fontSize: 10.5,
+                        letterSpacing: "0.06em",
                         textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                        color: "var(--rust)",
-                        marginTop: 2,
-                        flexShrink: 0,
+                        fontWeight: 700,
+                        marginBottom: 2,
+                        fontFamily: "var(--font-display)",
                       }}
                     >
-                      !
-                    </span>
-                    <span>{w}</span>
+                      {w.title}
+                    </div>
+                    {w.detail}
                   </li>
                 ))}
               </ul>

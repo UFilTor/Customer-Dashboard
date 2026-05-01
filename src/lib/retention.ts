@@ -25,15 +25,10 @@ import type {
 // scope for churn-risk signals). Keep them in sync.
 export const RETENTION_PIPELINE = "1072518362";
 
-// Stages we treat as "live customer in retention scope". Adopted/Started
-// overlap with onboarding stage names but are scoped here to the retention
-// pipeline — pipeline membership is the discriminator.
-export const RETENTION_STAGES = new Set([
-  "Adopted",
-  "Started",
-  "Ramp Up",
-  "Established",
-]);
+// Pipeline membership is the only retention scope discriminator. The same
+// lifecycle deal moves from the onboarding pipeline (166333631) to this
+// pipeline as the customer progresses, so any deal here is a live or
+// post-live customer regardless of `customer_stage`.
 
 // EUR conversion table — kept in sync with src/lib/pay-migration.ts. Only
 // covers the currencies the CS team actually transacts in. Add new ones as
@@ -53,9 +48,8 @@ function toEur(amount: number, currency: string | undefined): number {
 }
 
 /** True when a deal record (HubSpot raw properties) is in retention scope. */
-export function isRetentionDeal(props: { pipeline?: string; customer_stage?: string }): boolean {
-  if (props.pipeline !== RETENTION_PIPELINE) return false;
-  return RETENTION_STAGES.has(props.customer_stage || "");
+export function isRetentionDeal(props: { pipeline?: string } & Record<string, unknown>): boolean {
+  return props.pipeline === RETENTION_PIPELINE;
 }
 
 /** Extract the deal's invoice state for the brief's Commercial section. */
@@ -222,6 +216,7 @@ export async function buildRetentionPayload(
   ]);
   const { dealIdToCompanyId, byDeal: companyMap } = companyData;
 
+
   // 4. Pick the sales fallback per company so each retention deal can attribute
   // a sales owner. Falls back to "missing" later when no sales deal exists.
   const salesFallbackByCompany = new Map<string, { ownerId: string }>();
@@ -317,7 +312,6 @@ async function searchRetentionDeals(opts: {
 }): Promise<Array<{ id: string; properties: Record<string, string> }>> {
   const baseFilters: unknown[] = [
     { propertyName: "pipeline", operator: "EQ", value: RETENTION_PIPELINE },
-    { propertyName: "customer_stage", operator: "IN", values: [...RETENTION_STAGES] },
   ];
   const filters: unknown[] =
     opts.ownerIds && opts.ownerIds.length > 0
@@ -325,9 +319,12 @@ async function searchRetentionDeals(opts: {
       : baseFilters;
   const filterGroups = [{ filters }];
 
+  // Page cap of 50 = up to 5000 retention deals. The full pool is in the
+  // low thousands today; the cap is just a safety net to catch a runaway
+  // pagination loop. If we ever hit it, lift it and reconsider.
   const results: Array<{ id: string; properties: Record<string, string> }> = [];
   let after: string | undefined;
-  for (let page = 0; page < 10; page++) {
+  for (let page = 0; page < 50; page++) {
     const body: Record<string, unknown> = {
       filterGroups,
       properties: opts.properties,
@@ -382,21 +379,23 @@ async function fetchDealToCompany(dealIds: string[]): Promise<Map<string, string
 }
 
 // Helper: Resolve a list of meeting IDs to their associated retention deal,
-// returning Map<meetingId, dealId>. Walks meetings→deals and picks the first
-// match against `allowedDealIds`. Mirrors the onboarding orphan-meeting flow's
-// "which deal does this meeting belong to" question, narrowed to retention.
+// returning Map<meetingId, dealId>. Walks deals -> meetings (the direction
+// HubSpot reliably indexes; the inverse lookup returns empty even when the
+// association exists). Restricts to `meetingIds` so we don't pay for meetings
+// outside the calendar window the caller already fetched.
 async function resolveDealsForMeetings(
   meetingIds: string[],
   allowedDealIds: Set<string>
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  if (meetingIds.length === 0) return out;
-  const assocs = await fetchAssociations("meetings", "deals", meetingIds);
+  if (meetingIds.length === 0 || allowedDealIds.size === 0) return out;
+  const wanted = new Set(meetingIds);
+  const assocs = await fetchAssociations("deals", "meetings", Array.from(allowedDealIds));
   for (const a of assocs) {
-    for (const dealId of a.toIds) {
-      if (allowedDealIds.has(dealId)) {
-        out.set(a.fromId, dealId);
-        break;
+    if (!allowedDealIds.has(a.fromId)) continue;
+    for (const meetingId of a.toIds) {
+      if (wanted.has(meetingId) && !out.has(meetingId)) {
+        out.set(meetingId, a.fromId);
       }
     }
   }

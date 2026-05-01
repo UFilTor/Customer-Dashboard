@@ -28,7 +28,7 @@ interface DashboardDef {
 export const DASHBOARDS: DashboardDef[] = [
   { key: "status", label: "Status", sub: "Needs attention today", available: true },
   { key: "onboarding", label: "Onboarding", sub: "New customers getting live", available: true },
-  { key: "retention", label: "Retention", sub: "Churn risk + renewals", available: false },
+  { key: "retention", label: "Retention", sub: "Live customers · meeting prep", available: true },
   { key: "pay_migration", label: "Pay migration", sub: "Moving accounts to Understory Pay", available: true },
   { key: "bloom", label: "Bloom", sub: "Marketing candidates to pitch", available: false },
   { key: "search", label: "Lookup", sub: "Ask anything in plain English", available: true },

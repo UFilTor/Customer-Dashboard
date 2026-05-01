@@ -35,6 +35,11 @@ const OnboardingContainer = dynamic(
     import("@/components/design/views/OnboardingContainer").then((m) => m.OnboardingContainer),
   { ssr: false }
 );
+const RetentionContainer = dynamic(
+  () =>
+    import("@/components/design/views/RetentionContainer").then((m) => m.RetentionContainer),
+  { ssr: false }
+);
 const SearchContainer = dynamic(
   () =>
     import("@/components/design/views/SearchContainer").then((m) => m.SearchContainer),
@@ -75,7 +80,7 @@ function readUrlState(): Partial<UrlState> {
   const sp = new URLSearchParams(window.location.search);
   const out: Partial<UrlState> = {};
   const d = sp.get("d");
-  if (d === "status" || d === "onboarding" || d === "pay_migration" || d === "search") out.dashboard = d;
+  if (d === "status" || d === "onboarding" || d === "retention" || d === "pay_migration" || d === "search") out.dashboard = d;
   const v = sp.get("v");
   if (v === "briefing" || v === "split") out.variant = v;
   const fk = sp.get("f");
@@ -151,14 +156,19 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   // its own slot — switching variants brings back what was selected there last,
   // so a detail view in split doesn't bleed over into briefing or vice versa.
   // Onboarding/pay_migration use the shared `_other` slot (they don't have
-  // sub-variants today).
-  type SelectionScope = Variant | "_other";
+  // sub-variants today). Retention has its own slot so its (future) selection
+  // can't bleed into Onboarding's.
+  type SelectionScope = Variant | "_other" | "retention";
   const [selectionByScope, setSelectionByScope] = useState<Record<SelectionScope, string | null>>({
     briefing: null,
     split: null,
     _other: null,
+    retention: null,
   });
-  const selectionScope: SelectionScope = dashboard === "status" ? variant : "_other";
+  const selectionScope: SelectionScope =
+    dashboard === "status" ? variant
+    : dashboard === "retention" ? "retention"
+    : "_other";
   const selectedCompanyId = selectionByScope[selectionScope];
   const setSelectedCompanyId = useCallback(
     (id: string | null) => {
@@ -185,7 +195,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   const [prevDashboard, setPrevDashboard] = useState(dashboard);
   if (prevDashboard !== dashboard) {
     setPrevDashboard(dashboard);
-    setSelectionByScope({ briefing: null, split: null, _other: null });
+    setSelectionByScope({ briefing: null, split: null, _other: null, retention: null });
     setCompanyData(null);
     setDetailError(null);
   }
@@ -226,6 +236,25 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
     };
   }, []);
 
+  // Retention meeting prep focus levels — same shape as onboarding's, but on
+  // their own event channel so the two dashboards' keyboard nav don't collide.
+  const retentionMeetingFocusedRef = useRef(false);
+  const retentionHistoryFocusedRef = useRef(false);
+  useEffect(() => {
+    function onMeetingState(e: Event) {
+      retentionMeetingFocusedRef.current = (e as CustomEvent<boolean>).detail === true;
+    }
+    function onHistoryState(e: Event) {
+      retentionHistoryFocusedRef.current = (e as CustomEvent<boolean>).detail === true;
+    }
+    window.addEventListener("ud-retention-meeting-focused-state", onMeetingState);
+    window.addEventListener("ud-retention-history-focused-state", onHistoryState);
+    return () => {
+      window.removeEventListener("ud-retention-meeting-focused-state", onMeetingState);
+      window.removeEventListener("ud-retention-history-focused-state", onHistoryState);
+    };
+  }, []);
+
 
   // On mount, seed state from URL params (highest priority) and localStorage
   // (fallback for first-time visits). Done in an effect — not a lazy useState
@@ -245,7 +274,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       setDashboard(fromUrl.dashboard);
     } else {
       const d = ls("ud-v2-dashboard");
-      if (d === "onboarding" || d === "pay_migration" || d === "search") setDashboard(d);
+      if (d === "onboarding" || d === "retention" || d === "pay_migration" || d === "search") setDashboard(d);
     }
     if (fromUrl.variant) {
       setVariant(fromUrl.variant);
@@ -272,8 +301,11 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       setOnboardingSubview("attention");
     }
     if (fromUrl.selectedCompanyId) {
+      const dash = fromUrl.dashboard ?? "status";
       const scope: SelectionScope =
-        (fromUrl.dashboard ?? "status") === "status" ? (fromUrl.variant ?? "briefing") : "_other";
+        dash === "status" ? (fromUrl.variant ?? "briefing")
+        : dash === "retention" ? "retention"
+        : "_other";
       setSelectionByScope((prev) => ({ ...prev, [scope]: fromUrl.selectedCompanyId! }));
     }
   }, []);
@@ -289,7 +321,11 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       filter: globalFilter,
       payFilter,
       onboardingSubview,
-      selectedCompanyId: selectionByScope[dashboard === "status" ? variant : "_other"],
+      selectedCompanyId: selectionByScope[
+        dashboard === "status" ? variant
+        : dashboard === "retention" ? "retention"
+        : "_other"
+      ],
     });
     try {
       localStorage.setItem("ud-v2-variant", variant);
@@ -310,8 +346,11 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       if (s.payFilter) setPayFilter(s.payFilter);
       if (s.onboardingSubview) setOnboardingSubview(s.onboardingSubview);
       // Selection: drop into the matching scope.
+      const popDash = s.dashboard ?? "status";
       const scope: SelectionScope =
-        (s.dashboard ?? "status") === "status" ? (s.variant ?? "briefing") : "_other";
+        popDash === "status" ? (s.variant ?? "briefing")
+        : popDash === "retention" ? "retention"
+        : "_other";
       setSelectionByScope((prev) => ({ ...prev, [scope]: s.selectedCompanyId ?? null }));
     }
     window.addEventListener("popstate", onPop);
@@ -695,6 +734,44 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         return;
       }
 
+      // Retention meeting prep — same three modes as onboarding's nav, on its
+      // own event channel so we don't cross-fire to the wrong dashboard.
+      const inRetentionPrep =
+        s.dashboard === "retention" && !s.selectedCompanyId;
+
+      if (inRetentionPrep && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        const dir = e.key === "ArrowLeft" ? "prev" : "next";
+        if (retentionHistoryFocusedRef.current) {
+          if (dir === "prev") window.dispatchEvent(new Event("ud-retention-history-exit"));
+          return;
+        }
+        if (retentionMeetingFocusedRef.current) {
+          if (dir === "next") window.dispatchEvent(new Event("ud-retention-history-enter"));
+          else window.dispatchEvent(new Event("ud-retention-meeting-unfocus"));
+          return;
+        }
+        window.dispatchEvent(
+          new CustomEvent("ud-retention-day-shift", { detail: dir })
+        );
+        return;
+      }
+
+      if (inRetentionPrep && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        const dir = e.key === "ArrowUp" ? "prev" : "next";
+        if (retentionHistoryFocusedRef.current) {
+          window.dispatchEvent(
+            new CustomEvent("ud-retention-history-nav", { detail: dir })
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent("ud-retention-meeting-nav", { detail: dir })
+          );
+        }
+        return;
+      }
+
       if (inMeetingPrep && (e.key === " " || e.code === "Space") && historyFocusedRef.current) {
         e.preventDefault();
         window.dispatchEvent(new Event("ud-onboarding-history-toggle"));
@@ -935,6 +1012,13 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         onSelectDeal={(d) => {
           if (d.companyId) selectCompany(d.companyId);
         }}
+      />
+    );
+  } else if (dashboard === "retention") {
+    body = (
+      <RetentionContainer
+        filter={globalFilter}
+        filterLabel={filterLabel}
       />
     );
   } else if (dashboard === "search") {

@@ -4,8 +4,11 @@ import {
   fetchHistoryForDeals,
   fetchObjectsBatch,
   fetchOwnerNames,
+  fetchPrimaryContactsForDeals,
+  fetchSalesDealsForCompanies,
   fetchUpcomingMeetingsByOwners,
-  MEETING_PROPS,
+  pickSalesFallback,
+  type ContactInfo,
 } from "./onboarding";
 import { computeWatchOutSignals } from "./signals";
 import type {
@@ -169,62 +172,109 @@ export async function buildRetentionPayload(
   // 1. Search retention deals (paginated with sorts clause to avoid silent
   // truncation — see AGENTS.md "HubSpot fetch patterns").
   const deals = await searchRetentionDeals({ ownerIds, properties: RETENTION_DEAL_PROPS });
+  const dealIds = deals.map((d) => d.id);
 
-  // 2. Companies for those deals — fetch via batch associations + then batch-
-  // read company properties (faster than /companies/search per AGENTS.md).
-  const dealIdToCompanyId = await fetchDealToCompany(deals.map((d) => d.id));
-  const companyIds = Array.from(new Set(Array.from(dealIdToCompanyId.values())));
-  const companyProps = companyIds.length > 0
-    ? await fetchObjectsBatch("companies", companyIds, COMPANY_PROPS_FOR_RETENTION)
-    : new Map<string, Record<string, string>>();
-
-  // dealId → company props
-  const companyMap = new Map<string, Record<string, string>>();
-  for (const [dealId, companyId] of dealIdToCompanyId.entries()) {
-    const props = companyProps.get(companyId);
-    if (props) companyMap.set(dealId, props);
-  }
-
-  // 3. Resolve owner names so we can populate ownerName on each deal.
-  const ownerNameMap = await fetchOwnerNames(
-    Array.from(new Set(deals.map((d) => d.properties?.hubspot_owner_id || "").filter(Boolean)))
-  );
-
-  // 4. Meetings — same window logic as onboarding. Default = today through
-  // end of 5th workday. Caller can override with meetingFromIso/meetingToIso.
+  // 2. Meeting window setup. Needed early so the calendar fetch can run in
+  // parallel with the company/contact/sales-deal block below.
   const fromIso = opts.meetingFromIso ?? nowIso;
   const toIso = opts.meetingToIso ?? endOfNthWorkDayIso(new Date(), 5);
 
-  // CS owner scope for the meeting fetch — when the caller doesn't restrict,
-  // use the CS owner directory we already have via the deals' owners. This
-  // mirrors onboarding's behavior: only pull calendars for owners whose
-  // accounts are in scope.
+  // CS owner scope for the meeting fetch. When the caller doesn't restrict,
+  // use the deals' owners. Mirrors onboarding's behavior: only pull calendars
+  // for owners whose accounts are in scope.
   const csOwnerIds = ownerIds && ownerIds.length > 0
     ? ownerIds
     : Array.from(new Set(deals.map((d) => d.properties?.hubspot_owner_id || "").filter(Boolean)));
 
-  const ownerMeetings = csOwnerIds.length > 0
-    ? await fetchUpcomingMeetingsByOwners(csOwnerIds, fromIso, toIso)
-    : [];
+  // 3. Fire the independent fetches concurrently. The sales-deals fetch
+  // depends on companyMap, so chain it off the companies promise (same
+  // pattern as buildOnboardingPayload). This overlaps with the rest of the
+  // block instead of waiting on it.
+  const dealToCompanyPromise = fetchDealToCompany(dealIds);
+  const companyMapPromise = dealToCompanyPromise.then(async (dealIdToCompanyId) => {
+    const companyIds = Array.from(new Set(Array.from(dealIdToCompanyId.values())));
+    const companyProps = companyIds.length > 0
+      ? await fetchObjectsBatch("companies", companyIds, COMPANY_PROPS_FOR_RETENTION)
+      : new Map<string, Record<string, string>>();
+    // dealId → company props (lookup shape used by buildRetentionDeal)
+    const byDeal = new Map<string, Record<string, string>>();
+    for (const [dealId, companyId] of dealIdToCompanyId.entries()) {
+      const props = companyProps.get(companyId);
+      if (props) byDeal.set(dealId, props);
+    }
+    return { dealIdToCompanyId, companyIds, byDeal };
+  });
+  const contactsPromise = dealIds.length > 0
+    ? fetchPrimaryContactsForDeals(dealIds)
+    : Promise.resolve(new Map<string, ContactInfo>());
+  const salesDealsPromise = companyMapPromise.then(({ companyIds }) =>
+    fetchSalesDealsForCompanies(companyIds)
+  );
+  const ownerMeetingsPromise = csOwnerIds.length > 0
+    ? fetchUpcomingMeetingsByOwners(csOwnerIds, fromIso, toIso)
+    : Promise.resolve([] as Awaited<ReturnType<typeof fetchUpcomingMeetingsByOwners>>);
 
-  // 5. Resolve which retention deal each meeting belongs to. Walk
+  const [companyData, contactMap, salesDealsByCompany, ownerMeetings] = await Promise.all([
+    companyMapPromise,
+    contactsPromise,
+    salesDealsPromise,
+    ownerMeetingsPromise,
+  ]);
+  const { dealIdToCompanyId, byDeal: companyMap } = companyData;
+
+  // 4. Pick the sales fallback per company so each retention deal can attribute
+  // a sales owner. Falls back to "missing" later when no sales deal exists.
+  const salesFallbackByCompany = new Map<string, { ownerId: string }>();
+  for (const [companyId, list] of salesDealsByCompany) {
+    const fallback = pickSalesFallback(list);
+    const sownerId = fallback?.deal.properties.hubspot_owner_id;
+    if (sownerId) salesFallbackByCompany.set(companyId, { ownerId: sownerId });
+  }
+
+  // 5. Resolve owner names for the union of retention-deal owners and sales-
+  // deal owners. fetchOwnerNames is request-cached, so this is cheap even when
+  // the deals/meetings fetches called it earlier.
+  const retentionOwnerIds = deals
+    .map((d) => d.properties?.hubspot_owner_id || "")
+    .filter(Boolean);
+  const salesOwnerIds: string[] = [];
+  for (const list of salesDealsByCompany.values()) {
+    for (const d of list) {
+      if (d.properties.hubspot_owner_id) salesOwnerIds.push(d.properties.hubspot_owner_id);
+    }
+  }
+  const ownerNameMap = await fetchOwnerNames(
+    Array.from(new Set([...retentionOwnerIds, ...salesOwnerIds]))
+  );
+
+  // 6. Resolve which retention deal each meeting belongs to. Walk
   // meetings → deals associations and pick the first hit that's in our
   // retention deal set.
   const meetingToDeal = await resolveDealsForMeetings(
     ownerMeetings.map((m) => m.id),
-    new Set(deals.map((d) => d.id))
+    new Set(dealIds)
   );
 
-  // 6. Build RetentionDeal[] from the raw deals + companies. Compute watch-
+  // 7. Build RetentionDeal[] from the raw deals + companies. Compute watch-
   // outs while we have all the inputs in hand.
   const retentionDeals: RetentionDeal[] = deals.map((d) =>
-    buildRetentionDeal(d, companyMap, ownerNameMap, dealIdToCompanyId, nowIso)
+    buildRetentionDeal(
+      d,
+      companyMap,
+      ownerNameMap,
+      dealIdToCompanyId,
+      contactMap,
+      salesFallbackByCompany,
+      nowIso
+    )
   );
   const dealById = new Map(retentionDeals.map((d) => [d.dealId, d]));
 
-  // 7. Build the meeting entries (only meetings that resolved to a retention deal).
+  // 8. Build the meeting entries (only meetings that resolved to a retention deal).
   // Convert the raw HubSpot meeting payload into our OnboardingMeeting shape
-  // and pair it with the retention deal.
+  // and pair it with the retention deal. Owner names already in ownerNameMap
+  // for any meeting owner who also owns a retention deal; backfill any that
+  // are not yet covered (request cache makes this cheap).
   const meetingOwnerIds = new Set<string>();
   for (const m of ownerMeetings) {
     if (m.properties?.hubspot_owner_id) meetingOwnerIds.add(m.properties.hubspot_owner_id);
@@ -376,11 +426,20 @@ function buildRetentionDeal(
   companyMap: Map<string, Record<string, string>>,
   ownerNameMap: Record<string, string>,
   dealIdToCompanyId: Map<string, string>,
+  contactMap: Map<string, ContactInfo>,
+  salesFallbackByCompany: Map<string, { ownerId: string }>,
   nowIso: string
 ): RetentionDeal {
   const dp = rawDeal.properties || {};
   const cp = companyMap.get(rawDeal.id) || {};
   const liveDate = dp.customer_live_date || null;
+  const companyId = dealIdToCompanyId.get(rawDeal.id) ?? null;
+
+  // Sales owner: pulled from the priced sales fallback (or any sales deal as
+  // 2nd fallback). Mirrors the onboarding brief; falls back to "missing" so
+  // the UI can render that string verbatim instead of an empty cell.
+  const salesFallback = companyId ? salesFallbackByCompany.get(companyId) : undefined;
+  const salesOwnerName = salesFallback ? (ownerNameMap[salesFallback.ownerId] ?? "missing") : "missing";
 
   // Commercial — pull the same way onboarding does.
   const commercial: OnboardingCommercial = {
@@ -388,7 +447,7 @@ function buildRetentionDeal(
     acv: formatAcv(dp.amount_in_home_currency),
     bookingFee: formatBookingFee(dp.booking_fee, dp.confirmed_booking_fee),
     firstBilling: formatFirstBilling(dp.test_billing_start_date),
-    salesOwner: null,    // resolved at the API layer where we have the owner directory; null here
+    salesOwner: salesOwnerName,
   };
 
   const invoices = extractInvoiceState(dp, nowIso);
@@ -412,11 +471,18 @@ function buildRetentionDeal(
   });
 
   const ownerId = dp.hubspot_owner_id || "";
-  const ownerName = ownerId ? (ownerNameMap[ownerId] || "Unassigned") : "Unassigned";
+  const ownerName = ownerId ? (ownerNameMap[ownerId] || "") : "";
+
+  // Primary contact: first associated contact from the deal. Empty when the
+  // deal has no contact link in HubSpot.
+  const contact = contactMap.get(rawDeal.id);
+  const contactName = contact
+    ? [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim() || null
+    : null;
 
   return {
     dealId: rawDeal.id,
-    companyId: dealIdToCompanyId.get(rawDeal.id) ?? null,
+    companyId,
     companyName: cp.name || dp.dealname || "(unknown)",
     ownerId,
     ownerName,
@@ -425,9 +491,9 @@ function buildRetentionDeal(
     customerSubstage: dp.customer_substage || null,
     liveDate,
     daysLive: daysSinceIso(nowIso, liveDate),
-    contactName: null,               // resolved at API layer (contact association)
-    contactEmail: null,
-    contactPhone: null,
+    contactName,
+    contactEmail: contact?.email ?? null,
+    contactPhone: contact?.phone ?? null,
     companyDomain: cp.domain || null,
     storefrontLink: dp.storefront || null,
     commercial,
@@ -484,8 +550,3 @@ function formatFirstBilling(date: string | undefined): string | null {
 // route-handler clarity. It's the same primitive — both dashboards share
 // engagements per deal.
 export const fetchRetentionHistoryForDeals = fetchHistoryForDeals;
-
-// Suppress unused-import warning for MEETING_PROPS — we don't currently need
-// it because we always go through `fetchUpcomingMeetingsByOwners` which uses
-// it internally. Keep it imported to make the relationship visible.
-void MEETING_PROPS;

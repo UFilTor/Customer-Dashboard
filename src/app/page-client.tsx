@@ -772,6 +772,9 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         return;
       }
 
+      // Note: no Enter handler for retention. The brief is fully expanded
+      // inline (no detail panel to open), so Enter has nothing to do.
+
       if (inMeetingPrep && (e.key === " " || e.code === "Space") && historyFocusedRef.current) {
         e.preventDefault();
         window.dispatchEvent(new Event("ud-onboarding-history-toggle"));

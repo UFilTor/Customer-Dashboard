@@ -567,7 +567,7 @@ export async function fetchObjectsBatch(
   return out;
 }
 
-async function fetchSalesDealsForCompanies(companyIds: string[]): Promise<Map<string, RawObject[]>> {
+export async function fetchSalesDealsForCompanies(companyIds: string[]): Promise<Map<string, RawObject[]>> {
   // Map companyId → sorted list of sales pipeline deals (most recent first).
   //
   // Why associations + batch-read instead of `/deals/search`: the search
@@ -618,7 +618,7 @@ async function fetchSalesDealsForCompanies(companyIds: string[]): Promise<Map<st
   return dealsByCompany;
 }
 
-function pickSalesFallback(
+export function pickSalesFallback(
   salesDeals: RawObject[]
 ): { deal: RawObject; isPriced: boolean } | null {
   if (salesDeals.length === 0) return null;
@@ -864,14 +864,14 @@ async function fetchCompaniesForDeals(
   return out;
 }
 
-interface ContactInfo {
+export interface ContactInfo {
   firstName: string | null;
   lastName: string | null;
   email: string | null;
   phone: string | null;
 }
 
-async function fetchPrimaryContactsForDeals(
+export async function fetchPrimaryContactsForDeals(
   dealIds: string[]
 ): Promise<Map<string, ContactInfo>> {
   const dealAssocs = await fetchAssociations("deals", "contacts", dealIds);

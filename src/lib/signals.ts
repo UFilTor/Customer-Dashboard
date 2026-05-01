@@ -177,8 +177,10 @@ export function computeWatchOutSignals(ctx: WatchOutContext): WatchOutSignal[] {
     });
   }
 
-  // 5. No future events — warn
-  if (ctx.upcomingEvents == null || ctx.upcomingEvents === 0) {
+  // 5. No future events — warn. The HubSpot field is a 0-1 score where
+  // 0 means literally zero events scheduled. Anything > 0 (even 0.20 = 1
+  // event) does not trigger; null means data is missing, also no trigger.
+  if (ctx.upcomingEvents === 0) {
     out.push({
       kind: "no_future_events",
       severity: "warn",

@@ -7,6 +7,7 @@ import type {
   OnboardingHistoryEntry,
 } from "@/lib/types";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
+import { fmtFutureEvents } from "@/lib/format-design";
 import { OWNER_MAP } from "@/lib/owners";
 import { VolumeChart } from "../VolumeChart";
 import { HealthRings } from "../HealthRings";
@@ -60,33 +61,20 @@ export function RetentionBrief({ entry, isFocused, historyFocusedIdx, historyLoa
       <div
         style={{
           background: "var(--beige-new)",
-          padding: "22px 28px",
+          padding: "14px 22px",
           display: "grid",
           gridTemplateColumns: "auto 1fr auto",
-          gap: 18,
-          alignItems: "start",
+          gap: 16,
+          alignItems: "center",
         }}
       >
-        <div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
           <div
             style={{
               fontFamily: "var(--font-display)",
-              textTransform: "uppercase",
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: "0.12em",
-              color: "var(--green-100)",
-            }}
-          >
-            {fmtDateLabel(start)}
-          </div>
-          <div
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 36,
+              fontSize: 26,
               fontWeight: 700,
               lineHeight: 1,
-              marginTop: 4,
               color: "var(--moss)",
             }}
           >
@@ -94,19 +82,15 @@ export function RetentionBrief({ entry, isFocused, historyFocusedIdx, historyLoa
           </div>
           <div
             style={{
-              display: "inline-block",
-              marginTop: 10,
-              background: "#D6EFD9",
-              color: "#1d5021",
-              fontSize: 9.5,
-              fontWeight: 700,
-              letterSpacing: "0.1em",
-              padding: "4px 9px",
-              borderRadius: 4,
+              fontFamily: "var(--font-display)",
               textTransform: "uppercase",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.12em",
+              color: "var(--green-100)",
             }}
           >
-            Scheduled
+            {fmtDateLabel(start)}
           </div>
         </div>
 
@@ -114,7 +98,7 @@ export function RetentionBrief({ entry, isFocused, historyFocusedIdx, historyLoa
           <h3
             style={{
               fontFamily: "var(--font-display)",
-              fontSize: 26,
+              fontSize: 20,
               fontWeight: 700,
               letterSpacing: "0.02em",
               margin: 0,
@@ -144,20 +128,9 @@ export function RetentionBrief({ entry, isFocused, historyFocusedIdx, historyLoa
             <Dot />
             <span>{fmtTenure(deal.daysLive)}</span>
           </div>
-          <div
-            style={{
-              fontFamily: "var(--font-editorial)",
-              fontStyle: "italic",
-              fontSize: 11.5,
-              color: "var(--green-100)",
-              marginTop: 6,
-            }}
-          >
-            {deal.companyName} & Understory
-          </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "row", gap: 8 }}>
           {companyHref && (
             <a
               href={companyHref}
@@ -168,9 +141,10 @@ export function RetentionBrief({ entry, isFocused, historyFocusedIdx, historyLoa
                 color: "var(--moss)",
                 fontSize: 12,
                 fontWeight: 600,
-                padding: "9px 16px",
+                padding: "7px 12px",
                 borderRadius: 8,
                 textDecoration: "none",
+                whiteSpace: "nowrap",
               }}
             >
               → View account
@@ -186,13 +160,14 @@ export function RetentionBrief({ entry, isFocused, historyFocusedIdx, historyLoa
                 color: "var(--moss)",
                 fontSize: 12,
                 fontWeight: 600,
-                padding: "9px 16px",
+                padding: "7px 12px",
                 borderRadius: 8,
                 border: "1px solid var(--beige-gray)",
                 textDecoration: "none",
+                whiteSpace: "nowrap",
               }}
             >
-              ↗ Open in HubSpot
+              ↗ HubSpot
             </a>
           )}
         </div>
@@ -203,10 +178,10 @@ export function RetentionBrief({ entry, isFocused, historyFocusedIdx, historyLoa
         {/* LEFT — data */}
         <div
           style={{
-            padding: 20,
+            padding: 14,
             display: "flex",
             flexDirection: "column",
-            gap: 14,
+            gap: 10,
           }}
         >
           <VolumeChart company={deal.companyProps} />
@@ -218,11 +193,11 @@ export function RetentionBrief({ entry, isFocused, historyFocusedIdx, historyLoa
         {/* RIGHT — activity */}
         <div
           style={{
-            padding: 20,
+            padding: 14,
             borderLeft: "1px solid var(--beige-gray)",
             display: "flex",
             flexDirection: "column",
-            gap: 14,
+            gap: 10,
           }}
         >
           <PreviousActivity
@@ -250,8 +225,8 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
         fontWeight: 700,
         letterSpacing: "0.16em",
         textTransform: "uppercase",
-        margin: "0 0 10px",
-        paddingBottom: 8,
+        margin: "0 0 6px",
+        paddingBottom: 5,
         borderBottom: "1px solid var(--beige-gray)",
         color: "var(--moss)",
       }}
@@ -268,7 +243,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
         display: "grid",
         gridTemplateColumns: "110px 1fr",
         gap: 10,
-        padding: "4px 0",
+        padding: "2px 0",
         fontSize: 12.5,
       }}
     >
@@ -337,6 +312,10 @@ function toWebUrl(domain: string): string {
 
 function CommercialSection({ deal }: { deal: RetentionDeal }) {
   const inv = deal.invoices;
+  // Overdue subsumes "open invoice" (an overdue invoice is also open), so we
+  // show the more urgent label only. Hide the row entirely when the company
+  // has no open or overdue invoices — clean state should not clutter the brief.
+  const futureEventsLabel = fmtFutureEvents(deal.futureEvents);
   return (
     <div>
       <SectionHeader>Commercial</SectionHeader>
@@ -344,10 +323,8 @@ function CommercialSection({ deal }: { deal: RetentionDeal }) {
       <Row label="ACV">{deal.commercial.acv || "—"}</Row>
       <Row label="Booking fee">{deal.commercial.bookingFee || "—"}</Row>
       <Row label="Monthly fee">{deal.commercial.monthlyFee || "—"}</Row>
-      <Row label="First billing">{deal.commercial.firstBilling || "—"}</Row>
-      <Row label="Open invoices">{inv.open}</Row>
-      <Row label="Overdue">
-        {inv.overdue > 0 ? (
+      {inv.overdue > 0 ? (
+        <Row label="Overdue">
           <span>
             <b style={{ color: "#7a1d1d" }}>{inv.overdue}</b>
             {inv.overdueDays != null ? ` · ${inv.overdueDays} day${inv.overdueDays === 1 ? "" : "s"}` : ""}
@@ -355,13 +332,11 @@ function CommercialSection({ deal }: { deal: RetentionDeal }) {
               ? ` · ${inv.outstandingEur.toLocaleString("en-US")} EUR`
               : ""}
           </span>
-        ) : (
-          "0"
-        )}
-      </Row>
-      <Row label="Future events">
-        {deal.futureEvents != null ? `${deal.futureEvents} scheduled` : "—"}
-      </Row>
+        </Row>
+      ) : inv.open > 0 ? (
+        <Row label="Open invoices">{inv.open}</Row>
+      ) : null}
+      {futureEventsLabel && <Row label="Future events">{futureEventsLabel}</Row>}
     </div>
   );
 }

@@ -19,6 +19,17 @@ export function fmtMrr(n: number | null | undefined): string {
   return "€" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
+// `understory_health_score_upcoming_events` is a 0-1 score where each
+// 0.20 step represents one event up to 5+, which saturates at 1.00.
+// Returns the brief-display string ("3 scheduled" / "5+ scheduled" / "0")
+// or null when no data is available.
+export function fmtFutureEvents(score: number | null | undefined): string | null {
+  if (score == null) return null;
+  if (score >= 1) return "5+ scheduled";
+  const count = Math.round(score * 5);
+  return count === 0 ? "0" : `${count} scheduled`;
+}
+
 export interface HealthInfo {
   label: string;
   num: number | null;

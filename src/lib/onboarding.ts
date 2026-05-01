@@ -13,11 +13,14 @@ import type {
   RetentionInvoiceState,
 } from "./types";
 
-// Parse the company's "upcoming events" health-score subfield. Surfaced in the
-// Commercial section + drives the no_future_events watch-out.
-function parseUpcomingEvents(raw: string | undefined): number | null {
+// Parse the company's "upcoming events" health-score subfield. The HubSpot
+// field is a 0-1 score, not a count: 0 = 0 events, 0.20 = 1 event, 0.40 = 2,
+// ..., 1.00 = 5+ events. Returns the raw score so callers can both display
+// the count and trigger the no_future_events watch-out (which fires only on
+// score === 0).
+function parseUpcomingEventsScore(raw: string | undefined): number | null {
   if (raw == null || raw === "") return null;
-  const n = parseInt(raw, 10);
+  const n = parseFloat(raw);
   return isNaN(n) ? null : n;
 }
 
@@ -1138,7 +1141,7 @@ export async function buildOnboardingPayload(
     const nowIsoForDeal = new Date().toISOString();
     const invoices = extractInvoiceStateLocal(p, nowIsoForDeal);
     const cp = company?.props ?? {};
-    const futureEvents = parseUpcomingEvents(cp.understory_health_score_upcoming_events);
+    const futureEvents = parseUpcomingEventsScore(cp.understory_health_score_upcoming_events);
     const expectedDaysInStep = EXPECTED_DAYS[step] ?? 30;
     const watchOuts = computeWatchOutSignals({
       nowIso: nowIsoForDeal,

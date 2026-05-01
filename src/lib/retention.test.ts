@@ -6,13 +6,12 @@ import {
 } from "./retention";
 
 describe("isRetentionDeal", () => {
-  it("matches every deal on the retention pipeline regardless of stage", () => {
-    // The same lifecycle deal moves from onboarding to retention as the
-    // customer progresses, so any deal here is in scope.
+  it("matches retention-pipeline deals across all live stages", () => {
     expect(isRetentionDeal({ pipeline: "1072518362" })).toBe(true);
     expect(isRetentionDeal({ pipeline: "1072518362", customer_stage: "Adopted" })).toBe(true);
     expect(isRetentionDeal({ pipeline: "1072518362", customer_stage: "Hibernation" })).toBe(true);
-    expect(isRetentionDeal({ pipeline: "1072518362", customer_stage: "Churned" })).toBe(true);
+    expect(isRetentionDeal({ pipeline: "1072518362", customer_stage: "Established" })).toBe(true);
+    expect(isRetentionDeal({ pipeline: "1072518362", customer_stage: "Live" })).toBe(true);
     expect(isRetentionDeal({ pipeline: "1072518362", customer_stage: "" })).toBe(true);
   });
 
@@ -20,6 +19,10 @@ describe("isRetentionDeal", () => {
     expect(isRetentionDeal({ pipeline: "166333631" })).toBe(false);
     expect(isRetentionDeal({ pipeline: "81267902" })).toBe(false);
     expect(isRetentionDeal({})).toBe(false);
+  });
+
+  it("rejects Churned even on the retention pipeline", () => {
+    expect(isRetentionDeal({ pipeline: "1072518362", customer_stage: "Churned" })).toBe(false);
   });
 });
 

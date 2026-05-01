@@ -16,7 +16,7 @@ const ONBOARDING_ACTIVITY_TYPES = new Set([
 ]);
 import type { OnboardingSubview } from "../VariantPicker";
 import { OWNER_MAP } from "@/lib/owners";
-import { fmtMrr, relDays } from "@/lib/format-design";
+import { fmtFutureEvents, fmtMrr, relDays } from "@/lib/format-design";
 import { CountUpInt, Stagger } from "../Motion";
 import { Avatar } from "../Avatar";
 import { Icon } from "../Icon";
@@ -1375,10 +1375,10 @@ function MeetingBriefCard({
     >
       <div
         style={{
-          padding: "20px 24px 18px",
+          padding: "12px 22px",
           display: "grid",
-          gridTemplateColumns: "180px 1fr auto",
-          gap: 24,
+          gridTemplateColumns: "150px 1fr auto",
+          gap: 20,
           alignItems: "center",
           borderBottom: "1px solid var(--hairline)",
           background: "var(--beige-new)",
@@ -1389,12 +1389,12 @@ function MeetingBriefCard({
           <div
             style={{
               fontFamily: "var(--font-display)",
-              fontSize: 34,
+              fontSize: 26,
               fontWeight: 700,
               color: "var(--moss)",
               lineHeight: 1,
               fontVariantNumeric: "tabular-nums",
-              marginTop: 4,
+              marginTop: 2,
             }}
           >
             {timeStr}
@@ -1545,7 +1545,7 @@ function MeetingBriefCard({
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-        <div style={{ padding: "22px 24px", borderRight: "1px solid var(--hairline)" }}>
+        <div style={{ padding: "14px 20px", borderRight: "1px solid var(--hairline)" }}>
           <BriefSectionTitle>Customer</BriefSectionTitle>
           <BriefDL>
             {(() => {
@@ -1626,29 +1626,27 @@ function MeetingBriefCard({
             <BriefRow label="Booking fee" value={com.bookingFee} />
             <BriefRow label="Monthly fee" value={com.monthlyFee} />
             <BriefRow label="First billing" value={com.firstBilling} />
-            <BriefRow label="Open invoices" value={String(deal.invoices.open)} />
-            <BriefRow
-              label="Overdue"
-              value={
-                deal.invoices.overdue > 0
-                  ? `${deal.invoices.overdue}` +
-                    (deal.invoices.overdueDays != null
-                      ? ` · ${deal.invoices.overdueDays} day${deal.invoices.overdueDays === 1 ? "" : "s"}`
-                      : "") +
-                    (deal.invoices.outstandingEur != null
-                      ? ` · ${deal.invoices.outstandingEur.toLocaleString("en-US")} EUR`
-                      : "")
-                  : "0"
-              }
-            />
-            <BriefRow
-              label="Future events"
-              value={deal.futureEvents != null ? `${deal.futureEvents} scheduled` : null}
-            />
+            {deal.invoices.overdue > 0 ? (
+              <BriefRow
+                label="Overdue"
+                value={
+                  `${deal.invoices.overdue}` +
+                  (deal.invoices.overdueDays != null
+                    ? ` · ${deal.invoices.overdueDays} day${deal.invoices.overdueDays === 1 ? "" : "s"}`
+                    : "") +
+                  (deal.invoices.outstandingEur != null
+                    ? ` · ${deal.invoices.outstandingEur.toLocaleString("en-US")} EUR`
+                    : "")
+                }
+              />
+            ) : deal.invoices.open > 0 ? (
+              <BriefRow label="Open invoices" value={String(deal.invoices.open)} />
+            ) : null}
+            <BriefRow label="Future events" value={fmtFutureEvents(deal.futureEvents)} />
           </BriefDL>
         </div>
 
-        <div style={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 22 }}>
+        <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
             <BriefSectionTitle>Previous activity</BriefSectionTitle>
             {visibleHistory.length === 0 && historyLoading ? (

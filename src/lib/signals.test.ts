@@ -75,12 +75,15 @@ describe("computeWatchOutSignals", () => {
     expect(out[0]).toMatchObject({ kind: "health_dropped", severity: "warn" });
   });
 
-  it("flags no_future_events as warn when upcomingEvents = 0", () => {
+  it("flags no_future_events only when upcomingEvents score is exactly 0", () => {
     const out = computeWatchOutSignals(ctx({ upcomingEvents: 0 }));
     expect(out[0]).toMatchObject({ kind: "no_future_events", severity: "warn" });
-    // Also flags when null
-    const out2 = computeWatchOutSignals(ctx({ upcomingEvents: null }));
-    expect(out2[0]?.kind).toBe("no_future_events");
+    // Score 0.20 = 1 event scheduled, must NOT fire
+    const out020 = computeWatchOutSignals(ctx({ upcomingEvents: 0.2 }));
+    expect(out020).toEqual([]);
+    // Null = data missing, must NOT fire
+    const outNull = computeWatchOutSignals(ctx({ upcomingEvents: null }));
+    expect(outNull).toEqual([]);
   });
 
   it("flags gone_quiet as warn at 30 days, bad at 45+", () => {

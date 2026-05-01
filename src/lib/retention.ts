@@ -25,10 +25,12 @@ import type {
 // scope for churn-risk signals). Keep them in sync.
 export const RETENTION_PIPELINE = "1072518362";
 
-// Pipeline membership is the only retention scope discriminator. The same
+// Pipeline membership is the retention scope discriminator. The same
 // lifecycle deal moves from the onboarding pipeline (166333631) to this
 // pipeline as the customer progresses, so any deal here is a live or
-// post-live customer regardless of `customer_stage`.
+// post-live customer regardless of `customer_stage`. Churned customers
+// are out of scope: nothing to prep, nothing to retain.
+const EXCLUDED_RETENTION_STAGES = new Set(["Churned"]);
 
 // EUR conversion table — kept in sync with src/lib/pay-migration.ts. Only
 // covers the currencies the CS team actually transacts in. Add new ones as
@@ -48,8 +50,11 @@ function toEur(amount: number, currency: string | undefined): number {
 }
 
 /** True when a deal record (HubSpot raw properties) is in retention scope. */
-export function isRetentionDeal(props: { pipeline?: string } & Record<string, unknown>): boolean {
-  return props.pipeline === RETENTION_PIPELINE;
+export function isRetentionDeal(
+  props: { pipeline?: string; customer_stage?: string } & Record<string, unknown>
+): boolean {
+  if (props.pipeline !== RETENTION_PIPELINE) return false;
+  return !EXCLUDED_RETENTION_STAGES.has(props.customer_stage || "");
 }
 
 /** Extract the deal's invoice state for the brief's Commercial section. */
@@ -312,6 +317,7 @@ async function searchRetentionDeals(opts: {
 }): Promise<Array<{ id: string; properties: Record<string, string> }>> {
   const baseFilters: unknown[] = [
     { propertyName: "pipeline", operator: "EQ", value: RETENTION_PIPELINE },
+    { propertyName: "customer_stage", operator: "NOT_IN", values: [...EXCLUDED_RETENTION_STAGES] },
   ];
   const filters: unknown[] =
     opts.ownerIds && opts.ownerIds.length > 0
@@ -450,7 +456,7 @@ function buildRetentionDeal(
   };
 
   const invoices = extractInvoiceState(dp, nowIso);
-  const futureEvents = parseUpcomingEvents(cp.understory_health_score_upcoming_events);
+  const futureEvents = parseUpcomingEventsScore(cp.understory_health_score_upcoming_events);
 
   const watchOuts: WatchOutSignal[] = computeWatchOutSignals({
     nowIso,
@@ -505,9 +511,13 @@ function buildRetentionDeal(
   };
 }
 
-function parseUpcomingEvents(raw: string | undefined): number | null {
+// `understory_health_score_upcoming_events` is a 0-1 score, not a count:
+// 0 = 0 events, 0.20 = 1 event, 0.40 = 2, ..., 1.00 = 5+ events. Callers
+// derive both the displayed count and the no_future_events watch-out trigger
+// from the raw score.
+function parseUpcomingEventsScore(raw: string | undefined): number | null {
   if (raw == null || raw === "") return null;
-  const n = parseInt(raw, 10);
+  const n = parseFloat(raw);
   return isNaN(n) ? null : n;
 }
 

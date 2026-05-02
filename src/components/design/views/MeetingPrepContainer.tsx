@@ -14,6 +14,7 @@ import { MeetingPrepView } from "./MeetingPrepView";
 interface Props {
   filter: GlobalFilter;
   filterLabel: string | null;
+  onSelectCompany?: (companyId: string) => void;
 }
 
 function filterKey(filter: GlobalFilter): string {
@@ -42,7 +43,7 @@ function nextNWorkDayKeys(start: Date, n: number): string[] {
   return keys;
 }
 
-export function MeetingPrepContainer({ filter, filterLabel }: Props) {
+export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: Props) {
   const [data, setData] = useState<MeetingPrepResponse | null>(null);
   const [isFirstLoading, setIsFirstLoading] = useState(true);
   const [isRevalidating, setIsRevalidating] = useState(false);
@@ -284,6 +285,7 @@ export function MeetingPrepContainer({ filter, filterLabel }: Props) {
         fetchingDays={fetchingDays}
         onFetchDay={fetchDay}
         historyLoading={historyLoading}
+        onSelectCompany={onSelectCompany}
       />
     </div>
   );

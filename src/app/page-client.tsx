@@ -929,6 +929,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       <MeetingPrepContainer
         filter={globalFilter}
         filterLabel={filterLabel}
+        onSelectCompany={(id) => selectCompany(id)}
       />
     );
   } else if (dashboard === "search") {

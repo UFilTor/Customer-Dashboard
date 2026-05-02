@@ -17,6 +17,7 @@ interface Props {
   fetchingDays?: Set<string>;
   onFetchDay?: (dayKey: string) => void;
   historyLoading?: boolean;
+  onSelectCompany?: (companyId: string) => void;
 }
 
 const VISIBLE_DAYS = 5;
@@ -55,6 +56,7 @@ function MeetingsPanel({
   fetchingDays,
   onFetchDay,
   historyLoading,
+  onSelectCompany,
 }: Props) {
   const total = deals.length;
 
@@ -392,6 +394,7 @@ function MeetingsPanel({
                       isFocused={isFocused}
                       historyFocusedIdx={isFocused ? historyFocusedIdx : null}
                       historyLoading={!!historyLoading}
+                      onSelectCompany={onSelectCompany}
                     />
                   </div>
                 );

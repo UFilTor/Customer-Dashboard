@@ -20,6 +20,7 @@ interface Props {
   isFocused: boolean;
   historyFocusedIdx: number | null;
   historyLoading: boolean;
+  onSelectCompany?: (companyId: string) => void;
 }
 
 function fmtTime24(d: Date): string {
@@ -58,6 +59,7 @@ export function MeetingPrepBrief({
   isFocused,
   historyFocusedIdx,
   historyLoading,
+  onSelectCompany,
 }: Props) {
   const { deal, meeting } = entry;
   const start = new Date(meeting.startsAt);
@@ -145,19 +147,52 @@ export function MeetingPrepBrief({
         </div>
 
         <div>
-          <h3
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 20,
-              fontWeight: 700,
-              letterSpacing: "0.02em",
-              margin: 0,
-              textTransform: "uppercase",
-              color: "var(--moss)",
-            }}
-          >
-            {deal.companyName}
-          </h3>
+          {deal.companyId && onSelectCompany ? (
+            <button
+              onClick={() => onSelectCompany(deal.companyId!)}
+              title={`Open ${deal.companyName}`}
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: 20,
+                fontWeight: 700,
+                letterSpacing: "0.02em",
+                margin: 0,
+                padding: 0,
+                background: "transparent",
+                border: "none",
+                textTransform: "uppercase",
+                color: "var(--moss)",
+                cursor: "pointer",
+                textAlign: "left",
+                textDecoration: "underline",
+                textDecorationColor: "transparent",
+                textUnderlineOffset: 4,
+                transition: "text-decoration-color 120ms ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.textDecorationColor = "var(--moss)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.textDecorationColor = "transparent";
+              }}
+            >
+              {deal.companyName}
+            </button>
+          ) : (
+            <h3
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: 20,
+                fontWeight: 700,
+                letterSpacing: "0.02em",
+                margin: 0,
+                textTransform: "uppercase",
+                color: "var(--moss)",
+              }}
+            >
+              {deal.companyName}
+            </h3>
+          )}
           <div
             style={{
               display: "flex",

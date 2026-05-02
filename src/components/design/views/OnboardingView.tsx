@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import type {
   OnboardingDeal,
   OnboardingHistoryEntry,
@@ -521,22 +521,6 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-
-function Italic({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        fontSize: 13,
-        color: "var(--green-100)",
-        fontStyle: "italic",
-        fontFamily: "var(--font-editorial)",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
 
 function EmptyState({ text }: { text: string }) {
   return (

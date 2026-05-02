@@ -243,8 +243,8 @@ export function MeetingPrepBrief({
               target="_blank"
               rel="noopener noreferrer"
               style={{
-                background: "var(--citrus)",
-                color: "var(--moss)",
+                background: "var(--moss)",
+                color: "var(--text-on-moss)",
                 fontSize: 12,
                 fontWeight: 600,
                 padding: "7px 12px",

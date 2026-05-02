@@ -3,6 +3,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import type { PayMigrationData, PayDeal, PayOwnerSummary, PayStage, CompanySearchResult } from "@/lib/types";
 import { CountUpPct, AnimBar, Stagger } from "../Motion";
+import { Kpi } from "../Kpi";
 
 type PayFilter = "default" | "all" | string; // "default" = key owners, "all" = everyone, otherwise ownerId
 
@@ -217,40 +218,34 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
           initial={120}
           style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 12 }}
         >
-          <KpiCard
+          <Kpi
             label="BV live / verified"
-            tip="Booking Volume of customers already on Understory Pay (Live or Verified), as a % of all eligible BV."
-            big={<CountUpPct value={topline.pctLc} />}
+            value={<CountUpPct value={topline.pctLc} />}
             sub={`${fmtEurShort(topline.liveVerifiedBv)} of ${fmtEurShort(topline.eligibleBv)} eligible`}
-            accent="#2F5F3D"
+            tone="good"
           />
-          <KpiCard
+          <Kpi
             label="BV in progress"
-            tip="Booking Volume of customers signed or started onboarding on Pay but not yet live."
-            big={<CountUpPct value={topline.pctProg} />}
+            value={<CountUpPct value={topline.pctProg} />}
             sub={`${fmtEurShort(topline.liveVerifiedBv + topline.inProgressBv)} of ${fmtEurShort(topline.eligibleBv)}`}
-            accent="#6E9374"
           />
-          <KpiCard
+          <Kpi
             label="ARR live / verified"
-            tip="Annual Recurring Revenue from customers already on Pay (Live or Verified), as a % of total ARR."
-            big={<CountUpPct value={topline.pctAcv} />}
+            value={<CountUpPct value={topline.pctAcv} />}
             sub={`${fmtEurShort(topline.liveVerifiedAcv)} of ${fmtEurShort(topline.totalAcv)}`}
-            accent="var(--moss)"
+            tone="accent"
           />
-          <KpiCard
+          <Kpi
             label="April target"
-            tip="Internal Pay-migration target for end of April."
-            big={`${data.aprilTarget}%`}
+            value={`${data.aprilTarget}%`}
             sub={`${gapApr.toFixed(1)}pp to go`}
-            accent="var(--status-warn-fg)"
+            tone="warn"
           />
-          <KpiCard
+          <Kpi
             label="May target"
-            tip="Internal Pay-migration target for end of May."
-            big={`${data.mayTarget}%`}
+            value={`${data.mayTarget}%`}
             sub={`${gapMay.toFixed(1)}pp to go`}
-            accent="var(--status-warn-fg)"
+            tone="warn"
           />
         </Stagger>
 
@@ -445,68 +440,14 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle?: string })
   );
 }
 
-function KpiCard({
-  label,
-  big,
-  sub,
-  accent,
-  tip,
-}: {
-  label: string;
-  big: React.ReactNode;
-  sub: string;
-  accent: string;
-  tip?: string;
-}) {
-  return (
-    <div
-      style={{
-        background: "var(--light-grey)",
-        border: "1px solid var(--beige-gray)",
-        borderTopWidth: 3,
-        borderTopStyle: "solid",
-        borderTopColor: accent,
-        borderRadius: 10,
-        padding: "14px 16px",
-      }}
-    >
-      <div
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 28,
-          fontWeight: 700,
-          color: accent,
-          lineHeight: 1,
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {big}
-      </div>
-      <div
-        title={tip}
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 10,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          color: "var(--green-100)",
-          letterSpacing: "0.06em",
-          marginTop: 8,
-          cursor: tip ? "help" : "default",
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ fontSize: 11.5, color: "var(--green-100)", marginTop: 4 }}>{sub}</div>
-    </div>
-  );
-}
-
 function Flag({ kind }: { kind: "summer" | "invoice" | "noevents" }) {
+  // Pull tints from the design-token data-viz palette instead of the
+  // hand-picked Bootstrap-warning hex set the chips used to ship with.
+  // Lichen / sky-blue / lilac come from DESIGN.md §2 (data-viz palette).
   const styles: Record<typeof kind, { bg: string; fg: string; text: string }> = {
-    summer: { bg: "#fff3cd", fg: "#856404", text: "☀ SUMMER" },
-    invoice: { bg: "#d1ecf1", fg: "#0c5460", text: "INVOICE" },
-    noevents: { bg: "#e2d9f3", fg: "#5a3d8f", text: "0 EVENTS" },
+    summer: { bg: "var(--beige)", fg: "var(--moss)", text: "☀ SUMMER" },
+    invoice: { bg: "var(--sky-blue)", fg: "var(--moss)", text: "INVOICE" },
+    noevents: { bg: "var(--lilac)", fg: "var(--moss)", text: "0 EVENTS" },
   };
   const s = styles[kind];
   return (

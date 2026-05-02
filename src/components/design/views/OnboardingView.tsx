@@ -936,7 +936,10 @@ export function HistoryItem({
         background: focused ? "var(--beige-new)" : "transparent",
         borderRadius: focused ? 8 : 0,
         boxShadow: focused ? "inset 3px 0 0 var(--moss)" : "none",
-        transition: "background 0.12s, box-shadow 0.12s, padding 0.12s",
+        // Don't animate `padding` — that's a layout property and triggers
+        // reflow. Background + box-shadow are paint-only; the small padding
+        // bump on focus is fine to snap.
+        transition: "background 0.12s, box-shadow 0.12s",
       }}
     >
       {/* Timeline bullet — hidden when focused so it doesn't overlap the

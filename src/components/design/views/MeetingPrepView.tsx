@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { MeetingPrepMeetingEntry } from "@/lib/types";
 import { CountUpInt, Stagger } from "../Motion";
 import { Icon } from "../Icon";
+import { Kpi } from "../Kpi";
 import { MeetingPrepBrief } from "./MeetingPrepBrief";
 
 interface Props {
@@ -285,7 +286,7 @@ function MeetingsPanel({
             marginBottom: 6,
           }}
         >
-          <KpiTile
+          <Kpi
             label="In scope"
             value={<CountUpInt value={total} />}
             sub={
@@ -298,18 +299,18 @@ function MeetingsPanel({
                     : "no deals"
             }
           />
-          <KpiTile
+          <Kpi
             label="Meetings today"
             value={<CountUpInt value={meetingsTodayCount} />}
             sub={meetingsTodayCount > 0 ? "prep below" : "all clear"}
             tone="accent"
           />
-          <KpiTile
+          <Kpi
             label="This week"
             value={<CountUpInt value={meetings.length} />}
             sub="across the next 5 work days"
           />
-          <KpiTile
+          <Kpi
             label={isToday ? "Today's meetings" : "Selected day"}
             value={<CountUpInt value={dayMeetings.length} />}
             sub={
@@ -676,31 +677,6 @@ function Hero({
         overflow: "hidden",
       }}
     >
-      <div
-        className="drift-slow"
-        style={{
-          position: "absolute",
-          top: -80,
-          right: -80,
-          width: 260,
-          height: 260,
-          borderRadius: "50%",
-          background: "var(--citrus)",
-          opacity: 0.1,
-        }}
-      />
-      <div
-        className="drift-slower"
-        style={{
-          position: "absolute",
-          top: -40,
-          right: -40,
-          width: 180,
-          height: 180,
-          borderRadius: "50%",
-          border: "1px solid rgba(241,249,126,0.22)",
-        }}
-      />
       <div style={{ position: "relative" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
           <span
@@ -841,83 +817,6 @@ function Section({
         )}
       </div>
       {children}
-    </div>
-  );
-}
-
-function KpiTile({
-  label,
-  value,
-  sub,
-  tone,
-}: {
-  label: string;
-  value: React.ReactNode;
-  sub: string;
-  tone?: "good" | "warn" | "bad" | "accent";
-}) {
-  const ink =
-    tone === "bad"
-      ? "var(--rust)"
-      : tone === "warn"
-        ? "var(--status-warn-bold)"
-        : tone === "good"
-          ? "var(--status-good-bold)"
-          : tone === "accent"
-            ? "var(--text-on-moss)"
-            : "var(--moss)";
-  const bg = tone === "accent" ? "var(--moss)" : "var(--light-grey)";
-  // The Hero panel above is the page's single citrus moment. Demoting the
-  // accent KPI tile to text-on-moss keeps it visually distinct (dark bg vs
-  // the other tiles' cream) without competing with the Hero's lime accents.
-  const labelColor = tone === "accent" ? "var(--text-on-moss)" : "var(--green-100)";
-  const subColor = tone === "accent" ? "rgba(234,232,221,0.7)" : "var(--green-100)";
-
-  return (
-    <div
-      style={{
-        background: bg,
-        border: tone === "accent" ? "none" : "1px solid var(--beige-gray)",
-        borderRadius: 14,
-        padding: "16px 18px",
-      }}
-    >
-      <div
-        style={{
-          fontFamily: "var(--font-display)",
-          textTransform: "uppercase",
-          fontSize: 10.5,
-          fontWeight: 700,
-          letterSpacing: "0.06em",
-          color: labelColor,
-          marginBottom: 8,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontFamily: "var(--font-display)",
-          fontWeight: 700,
-          fontSize: 32,
-          lineHeight: 1,
-          color: ink,
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          fontSize: 12,
-          color: subColor,
-          marginTop: 6,
-          fontStyle: "italic",
-          fontFamily: "var(--font-editorial)",
-        }}
-      >
-        {sub}
-      </div>
     </div>
   );
 }

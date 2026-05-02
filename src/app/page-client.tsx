@@ -45,6 +45,7 @@ const SearchContainer = dynamic(
   { ssr: false }
 );
 import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
+import { EditorialEmpty } from "@/components/design/EditorialEmpty";
 import { flattenGroups, SECTION_ORDER, sortBySignal, type FlatCompany } from "@/lib/signals";
 import {
   effectiveOwnerIds,
@@ -924,7 +925,11 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       ) : companyData && !isLoadingDetail ? (
         <CompanyDetail companyId={selectedCompanyId} data={companyData} />
       ) : detailError ? (
-        <div style={{ padding: 32, textAlign: "center", color: "var(--rust)" }}>{detailError}</div>
+        <EditorialEmpty
+          tone="error"
+          headline="Could not load the company detail."
+          caption={detailError}
+        />
       ) : (
         <DetailLoading />
       );
@@ -996,9 +1001,11 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       if (isLoadingAttention) return <ListLoading />;
       if (errorAttention) {
         return (
-          <div style={{ padding: 32, textAlign: "center", color: "var(--rust)" }}>
-            {errorAttention}
-            <div style={{ marginTop: 12 }}>
+          <EditorialEmpty
+            tone="error"
+            headline="Could not load the attention queue."
+            caption={errorAttention}
+            action={
               <button
                 onClick={loadAttention}
                 style={{
@@ -1011,8 +1018,8 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
               >
                 Retry
               </button>
-            </div>
-          </div>
+            }
+          />
         );
       }
       if (variant === "briefing") {

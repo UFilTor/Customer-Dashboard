@@ -6,6 +6,7 @@ import { SIGNAL_MAP, SECTION_ORDER, sortBySignal } from "@/lib/signals";
 import { OWNER_MAP } from "@/lib/owners";
 import { fmtEur, fmtHealth, relDays } from "@/lib/format-design";
 import { Avatar } from "../Avatar";
+import { Kpi } from "../Kpi";
 import { RowContextStrip } from "../RowContextStrip";
 import { CountUpInt, CountUpEur, Stagger } from "../Motion";
 import { useListKeyboardNav } from "../useListKeyboardNav";
@@ -193,9 +194,9 @@ export const BriefingView = memo(function BriefingViewImpl({ companies, onSelect
           initial={120}
           style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 32 }}
         >
-          <StatTile label="Accounts today" value={<CountUpInt value={companies.length} />} sub={`${urgent.length} urgent`} />
-          <StatTile label="Revenue at risk" value={<CountUpEur value={totalRevenue} />} sub="across all signals" />
-          <StatTile
+          <Kpi label="Accounts today" value={<CountUpInt value={companies.length} />} sub={`${urgent.length} urgent`} />
+          <Kpi label="Revenue at risk" value={<CountUpEur value={totalRevenue} />} sub="across all signals" />
+          <Kpi
             label="Avg days overdue"
             value={
               <>
@@ -204,7 +205,7 @@ export const BriefingView = memo(function BriefingViewImpl({ companies, onSelect
             }
             sub="invoices + tasks"
           />
-          <StatTile
+          <Kpi
             label="Health drops"
             value={<CountUpInt value={healthDrops} />}
             sub="this week"
@@ -256,63 +257,6 @@ export const BriefingView = memo(function BriefingViewImpl({ companies, onSelect
     </div>
   );
 });
-
-function StatTile({
-  label,
-  value,
-  sub,
-  tone,
-}: {
-  label: string;
-  value: React.ReactNode;
-  sub: string;
-  tone?: "bad";
-}) {
-  // Moss-on-cream: tiles take the moss banner colour from the other dashboards
-  // so the briefing's KPI strip reads as a single anchored band. Label uses
-  // citrus (the brand accent does the work the cream label couldn't), big
-  // number stays clean white, sub-line drops to a warm white at 70%.
-  // The `tone="bad"` variant promotes the value to citrus so a high health-
-  // drop count catches the eye without breaking the moss surface.
-  const ink = tone === "bad" ? "var(--citrus)" : "var(--text-on-moss)";
-  return (
-    <div
-      style={{
-        background: "var(--moss)",
-        border: "1px solid var(--moss)",
-        borderRadius: 14,
-        padding: "18px 18px 16px",
-      }}
-    >
-      <div
-        style={{
-          fontFamily: "var(--font-display)",
-          textTransform: "uppercase",
-          fontSize: 10.5,
-          fontWeight: 700,
-          letterSpacing: "0.06em",
-          color: "var(--citrus)",
-          marginBottom: 10,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontFamily: "var(--font-display)",
-          fontWeight: 700,
-          fontSize: 40,
-          lineHeight: 1,
-          letterSpacing: 0,
-          color: ink,
-        }}
-      >
-        {value}
-      </div>
-      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 8, letterSpacing: "-0.005em" }}>{sub}</div>
-    </div>
-  );
-}
 
 function SignalSection({
   signal,

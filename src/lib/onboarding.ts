@@ -499,6 +499,28 @@ export interface BatchAssoc {
   toIds: string[];
 }
 
+// Wraps a HubSpot fetch with up to 3 attempts, retrying on 429 + 5xx with
+// exponential backoff. Without this, transient failures silently return
+// empty data that gets cached for 15 min — see AGENTS.md "HubSpot fetch
+// patterns" and the Filip-vs-Marc activity bug we shipped this for.
+async function hubspotFetchWithRetry(input: RequestInfo, init?: RequestInit): Promise<Response | null> {
+  let last: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(input, init);
+      if (res.ok) return res;
+      // 4xx other than 429 are not transient — bail with the response so the
+      // caller can decide what to do with it. Don't retry, don't loop.
+      if (res.status !== 429 && res.status < 500) return res;
+      last = res;
+    } catch {
+      // Network error — retry.
+    }
+    await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+  }
+  return last;
+}
+
 export async function fetchAssociations(
   fromObject: string,
   toObject: string,
@@ -509,16 +531,16 @@ export async function fetchAssociations(
   for (let i = 0; i < fromIds.length; i += 50) batches.push(fromIds.slice(i, i + 50));
   const results = await Promise.all(
     batches.map(async (batch) => {
+      const res = await hubspotFetchWithRetry(
+        `${HUBSPOT_API}/crm/v4/associations/${fromObject}/${toObject}/batch/read`,
+        {
+          method: "POST",
+          headers: hubspotHeaders(),
+          body: JSON.stringify({ inputs: batch.map((id) => ({ id })) }),
+        }
+      );
+      if (!res || !res.ok) return [] as BatchAssoc[];
       try {
-        const res = await fetch(
-          `${HUBSPOT_API}/crm/v4/associations/${fromObject}/${toObject}/batch/read`,
-          {
-            method: "POST",
-            headers: hubspotHeaders(),
-            body: JSON.stringify({ inputs: batch.map((id) => ({ id })) }),
-          }
-        );
-        if (!res.ok) return [] as BatchAssoc[];
         const data = await res.json();
         const items: BatchAssoc[] = [];
         for (const result of data.results || []) {
@@ -548,13 +570,13 @@ export async function fetchObjectsBatch(
   for (let i = 0; i < ids.length; i += 100) batches.push(ids.slice(i, i + 100));
   const results = await Promise.all(
     batches.map(async (batch) => {
+      const res = await hubspotFetchWithRetry(`${HUBSPOT_API}/crm/v3/objects/${objectType}/batch/read`, {
+        method: "POST",
+        headers: hubspotHeaders(),
+        body: JSON.stringify({ inputs: batch.map((id) => ({ id })), properties }),
+      });
+      if (!res || !res.ok) return [];
       try {
-        const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/${objectType}/batch/read`, {
-          method: "POST",
-          headers: hubspotHeaders(),
-          body: JSON.stringify({ inputs: batch.map((id) => ({ id })), properties }),
-        });
-        if (!res.ok) return [];
         const data = await res.json();
         return (data.results || []) as Array<{ id: string; properties?: Record<string, string> }>;
       } catch {

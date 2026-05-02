@@ -5,7 +5,6 @@ import type {
   MeetingPrepDeal,
   MeetingPrepMeetingEntry,
   OnboardingHistoryEntry,
-  WatchOutSignal,
 } from "@/lib/types";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 import { fmtFutureEvents } from "@/lib/format-design";
@@ -14,6 +13,7 @@ import { VolumeChart } from "../VolumeChart";
 import { HealthRings } from "../HealthRings";
 import { Avatar } from "../Avatar";
 import { HistoryItem } from "./OnboardingView";
+import { WatchOutFor } from "../WatchOutFor";
 
 interface Props {
   entry: MeetingPrepMeetingEntry;
@@ -312,7 +312,10 @@ export function MeetingPrepBrief({
             expandedIds={expandedIds}
             onToggleExpand={toggleExpanded}
           />
-          <WatchOutFor signals={deal.watchOuts} />
+          <div>
+            <SectionHeader>Watch out for</SectionHeader>
+            <WatchOutFor signals={deal.watchOuts} />
+          </div>
         </div>
       </div>
     </div>
@@ -536,7 +539,7 @@ function CommercialSection({
       {inv.overdue > 0 ? (
         <Row label="Overdue">
           <span>
-            <b style={{ color: "#7a1d1d" }}>{inv.overdue}</b>
+            <b style={{ color: "var(--red)" }}>{inv.overdue}</b>
             {inv.overdueDays != null
               ? ` · ${inv.overdueDays} day${inv.overdueDays === 1 ? "" : "s"}`
               : ""}
@@ -606,44 +609,3 @@ function PreviousActivity({
   );
 }
 
-function WatchOutFor({ signals }: { signals: WatchOutSignal[] }) {
-  return (
-    <div>
-      <SectionHeader>Watch out for</SectionHeader>
-      {signals.length === 0 ? (
-        <div style={{ opacity: 0.5, fontSize: 12, fontStyle: "italic" }}>
-          Nothing flagged.
-        </div>
-      ) : (
-        signals.map((s, i) => (
-          <div
-            key={`${s.kind}:${i}`}
-            style={{
-              background: "#fff",
-              border: `1px solid ${s.severity === "bad" ? "#f8d4d4" : "#fce8c2"}`,
-              borderLeft: `3px solid ${s.severity === "bad" ? "#c43030" : "#d49500"}`,
-              borderRadius: 8,
-              padding: "10px 12px",
-              marginBottom: 8,
-              fontSize: 12,
-            }}
-          >
-            <div
-              style={{
-                color: s.severity === "bad" ? "#7a1d1d" : "#6b4a05",
-                fontSize: 10.5,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                fontWeight: 700,
-                marginBottom: 2,
-              }}
-            >
-              {s.title}
-            </div>
-            {s.detail}
-          </div>
-        ))
-      )}
-    </div>
-  );
-}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { fmtEur, fmtEurFull } from "@/lib/format-design";
 import { synthesizeMonthlyTrend, smoothTrend } from "@/lib/synth-trend";
 
@@ -10,7 +10,10 @@ interface VolumeChartProps {
   company: Record<string, string>;
 }
 
-export function VolumeChart({ company }: VolumeChartProps) {
+// Memoized so the chart doesn't recompute when its parent re-renders for an
+// unrelated reason (keystroke, focus change in the brief). Re-renders only
+// when the company-properties bag's identity changes.
+export const VolumeChart = memo(function VolumeChartImpl({ company }: VolumeChartProps) {
   const [range, setRange] = useState<Range>("12M");
 
   const v12 = parseFloat(company.understory_booking_volume_12m || "0") || 0;
@@ -188,7 +191,7 @@ export function VolumeChart({ company }: VolumeChartProps) {
       </div>
     </div>
   );
-}
+});
 
 function Chart({ data, width = 560, height = 120 }: { data: number[]; width?: number; height?: number }) {
   if (!data || data.length === 0 || data.every((v) => v === 0)) {

@@ -163,6 +163,21 @@ export function SearchView({
         )}
 
         {/* INPUT */}
+        <label
+          htmlFor="ud-lookup-query"
+          style={{
+            display: "block",
+            fontFamily: "var(--font-display)",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--green-100)",
+            marginBottom: 6,
+          }}
+        >
+          Ask anything in plain English
+        </label>
         <div
           style={{
             display: "flex",
@@ -175,14 +190,14 @@ export function SearchView({
           }}
         >
           <input
+            id="ud-lookup-query"
             type="text"
-            aria-label="Lookup query"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKey}
             placeholder={
               hasChain
-                ? "Refine — e.g. 'narrow to last month'"
+                ? "Refine, e.g. 'narrow to last month'"
                 : "e.g. All deals in my name that mention GYG in OB notes"
             }
             disabled={loading}

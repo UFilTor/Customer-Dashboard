@@ -566,10 +566,12 @@ function DayStrip({
                   fontWeight: 700,
                   fontVariantNumeric: "tabular-nums",
                   lineHeight: 1,
-                  // Non-color today signal: a citrus underline accent on the
+                  // Non-color today signal: a moss underline accent on the
                   // date number so the indication survives without color.
+                  // Originally citrus; demoted per the One Lime Rule so the
+                  // hero stays the only citrus moment in the viewport.
                   textDecoration: isToday && !isActive ? "underline" : "none",
-                  textDecorationColor: "var(--citrus)",
+                  textDecorationColor: "var(--moss)",
                   textDecorationThickness: 2,
                   textUnderlineOffset: 4,
                 }}
@@ -625,7 +627,7 @@ function ArrowButton({
         width: 36,
         height: 56,
         borderRadius: 12,
-        background: disabled ? "var(--light-grey)" : "#fff",
+        background: disabled ? "var(--light-grey)" : "var(--card-bg)",
         border: "1px solid var(--beige-gray)",
         color: disabled ? "var(--beige-gray)" : "var(--moss)",
         cursor: disabled ? "not-allowed" : "pointer",
@@ -862,8 +864,11 @@ function KpiTile({
             ? "var(--text-on-moss)"
             : "var(--moss)";
   const bg = tone === "accent" ? "var(--moss)" : "var(--light-grey)";
-  const labelColor = tone === "accent" ? "var(--citrus)" : "var(--green-100)";
-  const subColor = tone === "accent" ? "rgba(241,249,126,0.9)" : "var(--green-100)";
+  // The Hero panel above is the page's single citrus moment. Demoting the
+  // accent KPI tile to text-on-moss keeps it visually distinct (dark bg vs
+  // the other tiles' cream) without competing with the Hero's lime accents.
+  const labelColor = tone === "accent" ? "var(--text-on-moss)" : "var(--green-100)";
+  const subColor = tone === "accent" ? "rgba(234,232,221,0.7)" : "var(--green-100)";
 
   return (
     <div

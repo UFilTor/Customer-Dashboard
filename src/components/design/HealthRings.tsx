@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { fmtHealth } from "@/lib/format-design";
 import { Chip } from "./Chip";
 
@@ -73,7 +74,9 @@ function ScoreRing({ label, value, size = 64 }: RingProps) {
   );
 }
 
-export function HealthRings({ company }: { company: Record<string, string> }) {
+// Memoized for the same reason as VolumeChart — sits inside the meeting
+// brief and re-renders on every parent change otherwise.
+export const HealthRings = memo(function HealthRingsImpl({ company }: { company: Record<string, string> }) {
   const health = fmtHealth(company.health_score);
   return (
     <div
@@ -132,4 +135,4 @@ export function HealthRings({ company }: { company: Record<string, string> }) {
       </div>
     </div>
   );
-}
+});

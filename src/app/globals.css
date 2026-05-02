@@ -51,7 +51,10 @@
   --focus-blue: #4D65FF;
   --border-radius: 0.75rem;
 
-  --background: #FFFFFF;
+  /* The Tailwind "background" token defaults to pure white. Per DESIGN.md's
+     No White Rule, point it at --page-bg so any future Tailwind class adoption
+     inherits the warm cream surface instead of #fff. */
+  --background: var(--page-bg);
   --foreground: var(--moss);
 
   /* Page surfaces */
@@ -223,6 +226,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    /* Components use inline `style={{ transition: ... }}` extensively, so
+       collapsing the spec'd transition + animation properties belt-and-braces
+       covers both stylesheet- and inline-styled motion. */
+    transition-delay: 0s !important;
+    animation-delay: 0s !important;
+    scroll-behavior: auto !important;
   }
 }
 

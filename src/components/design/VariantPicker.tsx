@@ -202,6 +202,9 @@ export function DashboardPicker({
       <button
         onClick={() => setOpen((o) => !o)}
         className="dashboard-picker-btn"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls="ud-dashboard-picker-listbox"
       >
         <span
           style={{
@@ -239,6 +242,9 @@ export function DashboardPicker({
 
       {open && (
         <div
+          role="listbox"
+          id="ud-dashboard-picker-listbox"
+          aria-label="Dashboards"
           style={{
             position: "absolute",
             top: "calc(100% + 6px)",
@@ -258,6 +264,9 @@ export function DashboardPicker({
             return (
               <button
                 key={d.key}
+                role="option"
+                aria-selected={isActive}
+                aria-disabled={disabled || undefined}
                 disabled={disabled}
                 onClick={() => {
                   if (disabled) return;

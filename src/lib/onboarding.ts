@@ -67,7 +67,7 @@ function extractInvoiceStateLocal(
 }
 
 // Pipelines (from the verified mapping spec).
-const LIFECYCLE_PIPELINE = "166333631";
+export const LIFECYCLE_PIPELINE = "166333631";
 const RETENTION_PIPELINE = "1072518362";
 // Pipelines we accept when enriching an orphan meeting's brief: the onboarding
 // lifecycle pipeline first, then customer retention for graduated customers.
@@ -76,9 +76,9 @@ const SALES_PIPELINE = "81267902";
 
 // customer_stage values that count as "still being onboarded".
 // Ramp Up + Established are owned by the Retention dashboard, not this one.
-const ONBOARDING_STAGES = ["Onboarding", "Adopted", "Started"];
+export const ONBOARDING_STAGES = ["Onboarding", "Adopted", "Started"];
 
-const EXPECTED_DAYS: Record<OnboardingStep, number> = {
+export const EXPECTED_DAYS: Record<OnboardingStep, number> = {
   Adopted: 14,
   Started: 30,
   Hibernation: 30,
@@ -86,7 +86,7 @@ const EXPECTED_DAYS: Record<OnboardingStep, number> = {
   Other: 30,
 };
 
-function classifyStep(
+export function classifyStep(
   stage: string,
   substage: string | null,
   customerLiveDate: string | null
@@ -117,13 +117,13 @@ function computeRisk(
   return "low";
 }
 
-function nullable(v: string | undefined): string | null {
+export function nullable(v: string | undefined): string | null {
   if (v == null) return null;
   const trimmed = v.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function daysSince(iso: string | null): number {
+export function daysSince(iso: string | null): number {
   if (!iso) return 0;
   const t = new Date(iso).getTime();
   if (isNaN(t)) return 0;
@@ -134,7 +134,7 @@ function daysSince(iso: string | null): number {
 // `start` if it's a weekday). Used as the upper bound for meeting fetches
 // so the default window is always exactly 5 working days regardless of
 // whether today is Monday or Friday.
-function endOfNthWorkDay(start: Date, n: number): Date {
+export function endOfNthWorkDay(start: Date, n: number): Date {
   const cursor = new Date(start);
   cursor.setHours(0, 0, 0, 0);
   let counted = 0;
@@ -148,14 +148,14 @@ function endOfNthWorkDay(start: Date, n: number): Date {
   return cursor;
 }
 
-function parseEnableUnderstoryPay(v: string | undefined): boolean | null {
+export function parseEnableUnderstoryPay(v: string | undefined): boolean | null {
   if (v == null || v === "") return null;
   if (v === "true") return true;
   if (v === "false") return false;
   return null;
 }
 
-function formatBookingFee(
+export function formatBookingFee(
   bookingFee: string | undefined,
   confirmedBookingFee: string | undefined
 ): string | null {
@@ -169,7 +169,7 @@ function formatBookingFee(
   return `${pct.toFixed(2).replace(/\.?0+$/, "")}%`;
 }
 
-function formatMonthlyFee(
+export function formatMonthlyFee(
   amount: string | undefined,
   currency: string | undefined
 ): string | null {
@@ -180,14 +180,14 @@ function formatMonthlyFee(
   return `${Math.round(n).toLocaleString("en-US")} ${currency.trim().toUpperCase()}/mo`;
 }
 
-function formatAcv(amount: string | undefined): string | null {
+export function formatAcv(amount: string | undefined): string | null {
   if (amount == null || amount === "") return null;
   const n = parseFloat(amount);
   if (isNaN(n) || n === 0) return null;
   return `${Math.round(n).toLocaleString("en-US")} EUR`;
 }
 
-function formatFirstBilling(date: string | undefined): string | null {
+export function formatFirstBilling(date: string | undefined): string | null {
   if (date == null || date === "") return null;
   // The HubSpot date field comes back as either YYYY-MM-DD or an ISO timestamp.
   const trimmed = date.trim();

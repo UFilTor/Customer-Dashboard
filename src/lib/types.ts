@@ -436,6 +436,78 @@ export interface RetentionResponse {
   updatedAt: string;
 }
 
+// Meeting prep (unified)
+//
+// Combines meetings on Lifecycle pipeline (166333631) and Customer Retention
+// pipeline (1072518362) deals. The deal carries both shapes' fields so the
+// brief can render onboarding-flavored OR retention-flavored content based on
+// `pipeline`. Pipeline membership is the discriminator — same stage names
+// appear in both pipelines, so discriminating by stage would cross-fire.
+
+export type MeetingPrepPipeline = "lifecycle" | "retention";
+
+export interface MeetingPrepDeal {
+  // Discriminator. "lifecycle" → onboarding-flavored brief blocks (OB Notes
+  // + step + days-in-step). "retention" → retention-flavored brief blocks
+  // (volume / health / tenure).
+  pipeline: MeetingPrepPipeline;
+
+  // Shared identity + ownership
+  dealId: string;
+  companyId: string | null;
+  companyName: string;
+  ownerId: string;
+  ownerName: string;
+  country: string | null;
+  customerStage: string;
+  customerSubstage: string | null;
+
+  // Customer block — both pipelines surface contact + website + storefront.
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  companyDomain: string | null;
+  storefrontLink: string | null;
+
+  // Commercial block — same shape both pipelines, except first billing is
+  // hidden in retention briefs (already passed long ago, not actionable).
+  commercial: OnboardingCommercial;
+  invoices: RetentionInvoiceState;
+  futureEvents: number | null;
+
+  // Lifecycle-only fields. Null on retention deals.
+  step: OnboardingStep | null;
+  daysInStep: number | null;
+  expectedDaysInStep: number | null;
+  obNotes: OnboardingObNotesExtended | null;
+
+  // Retention-only fields. Null on lifecycle deals.
+  liveDate: string | null;
+  daysLive: number | null;
+  // Raw company props bag — required by retention pipeline briefs to feed
+  // <VolumeChart> + <HealthRings>. Lifecycle-pipeline deals also populate
+  // it (cheap to include) so any future need is unblocked.
+  companyProps: Record<string, string>;
+
+  // Activity history (lazy-filled by /api/meeting-prep/history)
+  history: OnboardingHistoryEntry[];
+  // Watch-out signals computed in the lib
+  watchOuts: WatchOutSignal[];
+  // Last-touch timestamp surfaced in the brief footer / watch-outs
+  lastTouch: string | null;
+}
+
+export interface MeetingPrepMeetingEntry {
+  meeting: OnboardingMeeting;
+  deal: MeetingPrepDeal;
+}
+
+export interface MeetingPrepResponse {
+  deals: MeetingPrepDeal[];
+  meetings: MeetingPrepMeetingEntry[];
+  updatedAt: string;
+}
+
 // Natural-language Search dashboard
 //
 // Source of truth for the multi-target search pipeline. The LLM (Haiku) emits

@@ -48,13 +48,13 @@ export function prefetchPayMigration(): void {
   void import("@/components/design/views/PayMigrationContainer");
 }
 
-export function prefetchRetention(ownerIdsCsv?: string | null): void {
+export function prefetchMeetingPrep(ownerIdsCsv?: string | null): void {
   const url =
     ownerIdsCsv && ownerIdsCsv !== "all"
-      ? `/api/retention?ownerIds=${ownerIdsCsv}`
-      : "/api/retention";
+      ? `/api/meeting-prep?ownerIds=${ownerIdsCsv}`
+      : "/api/meeting-prep";
   fire(url);
-  void import("@/components/design/views/RetentionContainer");
+  void import("@/components/design/views/MeetingPrepContainer");
 }
 
 // Search has no bulk endpoint to prefetch (each query is a fresh POST), so we

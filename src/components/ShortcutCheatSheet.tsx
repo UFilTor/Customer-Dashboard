@@ -5,7 +5,14 @@ import { useState } from "react";
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  dashboard: "status" | "onboarding" | "pay_migration" | "retention" | "bloom" | "search";
+  dashboard:
+    | "status"
+    | "meeting_prep"
+    | "onboarding"
+    | "pay_migration"
+    | "retention"
+    | "bloom"
+    | "search";
   variant: "briefing" | "split";
   hasSelectedCompany: boolean;
 }
@@ -43,10 +50,10 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
     heading: "Switch dashboard",
     rows: [
       { label: "Status", keys: "G then S" },
+      { label: "Meeting prep", keys: "G then M" },
       { label: "Onboarding", keys: "G then O" },
       { label: "Lookup", keys: "G then L" },
       { label: "Pay migration", keys: "G then P" },
-      { label: "Retention", keys: "G then R" },
       { label: "Bloom", keys: "G then B" },
     ],
   });
@@ -88,26 +95,19 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
         ],
       });
     }
-  } else if (ctx.dashboard === "onboarding") {
-    out.push({
-      heading: "Onboarding",
-      rows: [
-        { label: "Meeting prep", keys: "1" },
-        { label: "Needs attention", keys: "2" },
-      ],
-    });
+  } else if (ctx.dashboard === "meeting_prep") {
     out.push({
       heading: "Meeting prep",
       rows: [
         { label: "Previous / next day (when nothing focused)", keys: "← / →" },
         { label: "Previous / next meeting card", keys: "↑ / ↓" },
-        { label: "Open focused meeting", keys: "Enter" },
         { label: "Enter Previous activity (focused meeting)", keys: "→" },
         { label: "Move within Previous activity", keys: "↑ / ↓" },
         { label: "Toggle expand on focused activity", keys: "Enter / Space" },
         { label: "Back out of Previous activity", keys: "←" },
       ],
     });
+  } else if (ctx.dashboard === "onboarding") {
     out.push({
       heading: "Needs attention",
       rows: [

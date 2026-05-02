@@ -3,15 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import {
   prefetchAttention,
+  prefetchMeetingPrep,
   prefetchOnboarding,
   prefetchPayMigration,
-  prefetchRetention,
   prefetchSearch,
 } from "@/lib/prefetch";
 
 export type Variant = "briefing" | "split";
 export type DashboardKey =
   | "status"
+  | "meeting_prep"
   | "onboarding"
   | "retention"
   | "pay_migration"
@@ -27,14 +28,13 @@ interface DashboardDef {
 
 export const DASHBOARDS: DashboardDef[] = [
   { key: "status", label: "Status", sub: "Needs attention today", available: true },
-  { key: "onboarding", label: "Onboarding", sub: "New customers getting live", available: true },
-  { key: "retention", label: "Retention", sub: "Live customers · meeting prep", available: true },
+  { key: "meeting_prep", label: "Meeting prep", sub: "Today's meetings, prep ready", available: true },
+  { key: "onboarding", label: "Onboarding", sub: "New customers stuck or off-track", available: true },
+  { key: "retention", label: "Retention", sub: "Live customer health", available: false },
   { key: "pay_migration", label: "Pay migration", sub: "Moving accounts to Understory Pay", available: true },
   { key: "bloom", label: "Bloom", sub: "Marketing candidates to pitch", available: false },
   { key: "search", label: "Lookup", sub: "Ask anything in plain English", available: true },
 ];
-
-export type OnboardingSubview = "meetings" | "attention";
 
 interface VariantPickerProps {
   variant: Variant;
@@ -42,8 +42,6 @@ interface VariantPickerProps {
   dashboard: DashboardKey;
   payFilter?: "default" | "all";
   setPayFilter?: (v: "default" | "all") => void;
-  onboardingSubview?: OnboardingSubview;
-  setOnboardingSubview?: (v: OnboardingSubview) => void;
 }
 
 const VARIANTS: { key: Variant; label: string }[] = [
@@ -57,13 +55,9 @@ export function VariantPicker({
   dashboard,
   payFilter,
   setPayFilter,
-  onboardingSubview,
-  setOnboardingSubview,
 }: VariantPickerProps) {
   const showLayout = dashboard === "status";
   const showPayFilter = dashboard === "pay_migration" && setPayFilter && payFilter;
-  const showOnboardingTabs =
-    dashboard === "onboarding" && setOnboardingSubview && onboardingSubview;
 
   return (
     <div
@@ -110,23 +104,6 @@ export function VariantPicker({
                 aria-selected={payFilter === opt.key}
                 onClick={() => setPayFilter!(opt.key)}
                 className={payFilter === opt.key ? "seg-light-btn active" : "seg-light-btn"}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </SegLight>
-        ) : showOnboardingTabs ? (
-          <SegLight label="Onboarding view">
-            {([
-              { key: "meetings", label: "Meeting prep" },
-              { key: "attention", label: "Needs attention" },
-            ] as const).map((opt) => (
-              <button
-                key={opt.key}
-                role="tab"
-                aria-selected={onboardingSubview === opt.key}
-                onClick={() => setOnboardingSubview!(opt.key)}
-                className={onboardingSubview === opt.key ? "seg-light-btn active" : "seg-light-btn"}
               >
                 {opt.label}
               </button>
@@ -303,12 +280,10 @@ export function DashboardPicker({
                     e.currentTarget.style.background = "var(--beige-new)";
                     // Prefetch the bulk endpoint + dynamic chunk so the click
                     // resolves with both code and data already in flight.
-                    // Onboarding: skip the per-scope data prefetch (filter
-                    // unknown here) — chunk import is the larger win anyway.
                     if (d.key === "status") prefetchAttention();
                     else if (d.key === "pay_migration") prefetchPayMigration();
                     else if (d.key === "onboarding") prefetchOnboarding();
-                    else if (d.key === "retention") prefetchRetention();
+                    else if (d.key === "meeting_prep") prefetchMeetingPrep();
                     else if (d.key === "search") prefetchSearch();
                   }
                 }}

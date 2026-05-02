@@ -3,6 +3,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { MeetingPrepMeetingEntry } from "@/lib/types";
 import { CountUpInt, Stagger } from "../Motion";
+import { EditorialEmpty } from "../EditorialEmpty";
 import { Icon } from "../Icon";
 import { Kpi } from "../Kpi";
 import { MeetingPrepBrief } from "./MeetingPrepBrief";
@@ -238,40 +239,27 @@ function MeetingsPanel({
           eyebrow="Meeting prep"
           filterLabel={filterLabel}
           line1Number={total}
-          line1Suffix={total === 1 ? "customer" : "customers"}
-          line2="ready for prep."
+          line1Suffix={total === 1 ? "customer in scope" : "customers in scope"}
           body={
             <>
-              You have{" "}
-              <strong
-                style={{
-                  // Citrus is reserved for urgent / actionable callouts; a
-                  // zero-meeting day is a positive empty state, so render it
-                  // in the brand foreground instead.
-                  color:
-                    meetingsTodayCount > 0
-                      ? "var(--citrus)"
-                      : "var(--moss)",
-                }}
-              >
+              <strong style={{ fontWeight: 600 }}>
                 {meetingsTodayCount} meeting{meetingsTodayCount === 1 ? "" : "s"} today
               </strong>
               {meetingsTodayCount > 0 && (
                 <>
-                  {" "}, first at{" "}
+                  , first at{" "}
                   {fmtTime24(
                     new Date((meetingsByDay.get(dayKey(today)) || [])[0].meeting.startsAt)
                   )}
                 </>
               )}
-              . {meetings.length} meetings booked across the next 5 work days.
+              . {meetings.length} across the next 5 work days
               {lifecycleDeals > 0 && retentionDeals > 0 && (
                 <>
-                  {" "}
-                  {lifecycleDeals} onboarding · {retentionDeals} live customer
-                  {retentionDeals === 1 ? "" : "s"} in scope.
+                  {" "}({lifecycleDeals} onboarding, {retentionDeals} live)
                 </>
               )}
+              .
             </>
           }
         />
@@ -386,8 +374,8 @@ function MeetingsPanel({
               onFetch={() => onFetchDay?.(selectedKey)}
             />
           ) : dayMeetings.length === 0 ? (
-            <EmptyState
-              text={isToday ? "No meetings today. Enjoy the focus time." : "No meetings on this day."}
+            <EditorialEmpty
+              headline={isToday ? "No meetings today. Enjoy the focus time." : "No meetings on this day."}
             />
           ) : (
             <div
@@ -651,112 +639,95 @@ function Hero({
   filterLabel,
   line1Number,
   line1Suffix,
-  line2,
   body,
 }: {
   eyebrow: string;
   filterLabel?: string | null;
   line1Number: number;
   line1Suffix: string;
-  line2: string;
+  // Kept in the type signature so callers can supply a richer summary; the
+  // morning-band render only uses the inline counts in `body`.
+  line2?: string;
   body: React.ReactNode;
 }) {
+  // Distilled from the previous moss-drenched hero panel. The morning band
+  // matches Briefing's pattern: eyebrow + Fraunces date + filter chip + a
+  // single sentence carrying the meaningful counts. The KPI strip below
+  // already carries the headline number, so the hero doesn't need to.
   const dateStr =
     typeof window === "undefined"
       ? ""
       : new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   return (
-    <div
-      style={{
-        background: "var(--moss)",
-        color: "var(--text-on-moss)",
-        borderRadius: 20,
-        padding: "32px 36px",
-        marginBottom: 28,
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ position: "relative" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-          <span
-            style={{
-              fontFamily: "var(--font-display)",
-              textTransform: "uppercase",
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: "0.12em",
-              color: "var(--citrus)",
-            }}
-          >
-            {eyebrow}
-          </span>
-          <span style={{ height: 1, flex: "0 0 32px", background: "rgba(241,249,126,0.4)" }} />
-          <span
-            suppressHydrationWarning
-            style={{
-              fontSize: 12,
-              color: "rgba(255,255,255,0.6)",
-              fontStyle: "italic",
-              fontFamily: "var(--font-editorial)",
-            }}
-          >
-            {dateStr}
-          </span>
-          {filterLabel && (
-            <>
-              <span style={{ height: 1, flex: "0 0 24px", background: "rgba(241,249,126,0.4)" }} />
-              <span
-                style={{
-                  fontFamily: "var(--font-display)",
-                  textTransform: "uppercase",
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  color: "var(--citrus)",
-                  background: "rgba(241,249,126,0.10)",
-                  padding: "3px 8px",
-                  borderRadius: 6,
-                }}
-              >
-                {filterLabel}
-              </span>
-            </>
-          )}
-        </div>
-
-        <h1
+    <div style={{ marginBottom: 18 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 10,
+          flexWrap: "wrap",
+          color: "var(--moss)",
+        }}
+      >
+        <span
           style={{
-            margin: "0 0 18px",
             fontFamily: "var(--font-display)",
-            fontSize: 42,
-            fontWeight: 700,
-            lineHeight: 1.05,
             textTransform: "uppercase",
-            letterSpacing: "-0.01em",
-            color: "var(--text-on-moss)",
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: "0.08em",
+            color: "var(--green-100)",
           }}
         >
-          <span className="citrus-wipe" style={{ color: "var(--moss)" }}>
-            <CountUpInt value={line1Number} duration={700} /> {line1Suffix}
-          </span>
-          <br />
-          {line2}
-        </h1>
-
-        <p
+          {eyebrow}
+        </span>
+        <span aria-hidden="true" style={{ color: "var(--green-100)", opacity: 0.5 }}>·</span>
+        <span
+          suppressHydrationWarning
           style={{
-            margin: 0,
-            fontSize: 15,
-            lineHeight: 1.6,
-            maxWidth: 720,
-            color: "rgba(255,255,255,0.85)",
             fontFamily: "var(--font-editorial)",
+            fontStyle: "italic",
+            fontSize: 13,
+            color: "var(--moss)",
           }}
         >
-          {body}
-        </p>
+          {dateStr}
+        </span>
+        {filterLabel && (
+          <>
+            <span aria-hidden="true" style={{ color: "var(--green-100)", opacity: 0.5 }}>·</span>
+            <span
+              style={{
+                fontFamily: "var(--font-display)",
+                textTransform: "uppercase",
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                color: "var(--moss)",
+                background: "var(--hairline)",
+                padding: "3px 7px",
+                borderRadius: 6,
+              }}
+            >
+              {filterLabel}
+            </span>
+          </>
+        )}
       </div>
+      <p
+        style={{
+          margin: "10px 0 0",
+          fontSize: 14,
+          lineHeight: 1.55,
+          maxWidth: 720,
+          color: "var(--moss)",
+        }}
+      >
+        <strong style={{ fontWeight: 600 }}>
+          <CountUpInt value={line1Number} duration={500} /> {line1Suffix}
+        </strong>
+        {body && <> · {body}</>}
+      </p>
     </div>
   );
 }
@@ -817,26 +788,6 @@ function Section({
         )}
       </div>
       {children}
-    </div>
-  );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return (
-    <div
-      style={{
-        background: "var(--light-grey)",
-        border: "1px dashed var(--beige-gray)",
-        borderRadius: 14,
-        padding: "32px 20px",
-        textAlign: "center",
-        fontStyle: "italic",
-        fontFamily: "var(--font-editorial)",
-        fontSize: 14,
-        color: "var(--green-100)",
-      }}
-    >
-      {text}
     </div>
   );
 }

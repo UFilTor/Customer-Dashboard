@@ -6,6 +6,7 @@ import { SIGNAL_MAP, SECTION_ORDER, sortBySignal } from "@/lib/signals";
 import { OWNER_MAP } from "@/lib/owners";
 import { fmtEur, fmtHealth, relDays } from "@/lib/format-design";
 import { Avatar } from "../Avatar";
+import { EditorialEmpty } from "../EditorialEmpty";
 import { Kpi } from "../Kpi";
 import { RowContextStrip } from "../RowContextStrip";
 import { CountUpInt, CountUpEur, Stagger } from "../Motion";
@@ -237,21 +238,7 @@ export const BriefingView = memo(function BriefingViewImpl({ companies, onSelect
         )}
 
         {companies.length === 0 && (
-          <div
-            style={{
-              background: "var(--light-grey)",
-              border: "1px dashed var(--beige-gray)",
-              borderRadius: 16,
-              padding: 60,
-              textAlign: "center",
-              color: "var(--green-100)",
-              fontStyle: "italic",
-              fontFamily: "var(--font-editorial)",
-              fontSize: 16,
-            }}
-          >
-            Nothing needs your attention. Enjoy the focus time.
-          </div>
+          <EditorialEmpty headline="Nothing needs your attention. Enjoy the focus time." />
         )}
       </div>
     </div>

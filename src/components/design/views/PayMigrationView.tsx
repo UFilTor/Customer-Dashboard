@@ -238,14 +238,12 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
           <Kpi
             label="April target"
             value={`${data.aprilTarget}%`}
-            sub={`${gapApr.toFixed(1)}pp to go`}
-            tone="warn"
+            sub={<GapPill ppToGo={gapApr} />}
           />
           <Kpi
             label="May target"
             value={`${data.mayTarget}%`}
-            sub={`${gapMay.toFixed(1)}pp to go`}
-            tone="warn"
+            sub={<GapPill ppToGo={gapMay} />}
           />
         </Stagger>
 
@@ -440,18 +438,70 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle?: string })
   );
 }
 
+// Sub-line renderer for the April / May target tiles. The previous tone="warn"
+// painted the whole tile rust which read as "this metric is broken" instead of
+// "you have ground to cover". Now the value sits in moss; the gap rides as a
+// small rust pill below it, only when there's actually ground to cover.
+function GapPill({ ppToGo }: { ppToGo: number }) {
+  const formatted = ppToGo.toFixed(1).replace(/\.0$/, "");
+  if (ppToGo <= 0) {
+    return <span style={{ color: "var(--green-100)" }}>on target</span>;
+  }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        background: "var(--rust)",
+        color: "var(--page-bg)",
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        padding: "2px 7px",
+        borderRadius: 999,
+        fontFamily: "var(--font-display)",
+        textTransform: "uppercase",
+        fontStyle: "normal",
+      }}
+    >
+      {formatted}pp to go
+    </span>
+  );
+}
+
 function Flag({ kind }: { kind: "summer" | "invoice" | "noevents" }) {
   // Pull tints from the design-token data-viz palette instead of the
   // hand-picked Bootstrap-warning hex set the chips used to ship with.
   // Lichen / sky-blue / lilac come from DESIGN.md §2 (data-viz palette).
-  const styles: Record<typeof kind, { bg: string; fg: string; text: string }> = {
-    summer: { bg: "var(--beige)", fg: "var(--moss)", text: "☀ SUMMER" },
-    invoice: { bg: "var(--sky-blue)", fg: "var(--moss)", text: "INVOICE" },
-    noevents: { bg: "var(--lilac)", fg: "var(--moss)", text: "0 EVENTS" },
+  // Each chip carries its own tooltip so meaning survives outside the
+  // legend block at the top of the page (a row 200px down the table is
+  // out of legend context otherwise).
+  const styles: Record<
+    typeof kind,
+    { bg: string; fg: string; text: string; title: string }
+  > = {
+    summer: {
+      bg: "var(--beige)",
+      fg: "var(--moss)",
+      text: "☀ SUMMER",
+      title: "Customer is on summer break and will not migrate before autumn.",
+    },
+    invoice: {
+      bg: "var(--sky-blue)",
+      fg: "var(--moss)",
+      text: "INVOICE",
+      title: "Has an open invoice in HubSpot. Resolve before pushing on Pay.",
+    },
+    noevents: {
+      bg: "var(--lilac)",
+      fg: "var(--moss)",
+      text: "0 EVENTS",
+      title: "Zero upcoming events on the storefront. Pay migration is moot until they're booking.",
+    },
   };
   const s = styles[kind];
   return (
     <span
+      title={s.title}
       style={{
         display: "inline-block",
         padding: "1px 5px",
@@ -463,6 +513,7 @@ function Flag({ kind }: { kind: "summer" | "invoice" | "noevents" }) {
         color: s.fg,
         marginLeft: 4,
         verticalAlign: "middle",
+        cursor: "help",
       }}
     >
       {s.text}

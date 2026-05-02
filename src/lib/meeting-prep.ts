@@ -675,10 +675,25 @@ function buildMeetingPrepDeal(
 // the same primitive — engagements per deal.
 export const fetchMeetingPrepHistoryForDeals = fetchHistoryForDeals;
 
-// Wrap the buildMeetingPrepPayload return into the response shape callers expect.
+// Wrap the buildMeetingPrepPayload return into the response shape callers
+// expect. The bulk endpoint ships only the meetings (with their attached
+// deals) and scalar pool counts. Shipping the full deals[] array meant
+// hydrating 700+ deal objects (~1.5MB raw) for two count tiles.
 export async function buildMeetingPrepResponse(
   opts: BuildOptions = {}
 ): Promise<MeetingPrepResponse> {
   const payload = await buildMeetingPrepPayload(opts);
-  return { ...payload, updatedAt: new Date().toISOString() };
+  let lifecycle = 0;
+  let retention = 0;
+  for (const d of payload.deals) {
+    if (d.pipeline === "lifecycle") lifecycle++;
+    else if (d.pipeline === "retention") retention++;
+  }
+  return {
+    meetings: payload.meetings,
+    dealsTotal: payload.deals.length,
+    lifecycleDealsTotal: lifecycle,
+    retentionDealsTotal: retention,
+    updatedAt: new Date().toISOString(),
+  };
 }

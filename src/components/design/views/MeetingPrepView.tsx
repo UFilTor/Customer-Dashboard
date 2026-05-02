@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  MeetingPrepDeal,
-  MeetingPrepMeetingEntry,
-} from "@/lib/types";
+import type { MeetingPrepMeetingEntry } from "@/lib/types";
 import { CountUpInt, Stagger } from "../Motion";
 import { Icon } from "../Icon";
 import { MeetingPrepBrief } from "./MeetingPrepBrief";
 
 interface Props {
-  deals: MeetingPrepDeal[];
+  // Pool counts for the eyebrow + KPI tiles. Server-computed so we don't
+  // have to ship the full deals[] array just to render two numbers.
+  dealsTotal: number;
+  lifecycleDealsTotal: number;
+  retentionDealsTotal: number;
   meetings: MeetingPrepMeetingEntry[];
   filterLabel?: string | null;
   fetchedDays?: Set<string>;
@@ -49,7 +50,9 @@ export function MeetingPrepView(props: Props) {
 }
 
 function MeetingsPanel({
-  deals,
+  dealsTotal,
+  lifecycleDealsTotal,
+  retentionDealsTotal,
   meetings,
   filterLabel,
   fetchedDays,
@@ -58,7 +61,7 @@ function MeetingsPanel({
   historyLoading,
   onSelectCompany,
 }: Props) {
-  const total = deals.length;
+  const total = dealsTotal;
 
   // Group meetings by day key.
   const meetingsByDay = useMemo(() => {
@@ -213,9 +216,10 @@ function MeetingsPanel({
 
   const isToday = dayKey(selectedDay) === dayKey(today);
 
-  // Compute population breakdown so the hero summary highlights mix.
-  const lifecycleDeals = deals.filter((d) => d.pipeline === "lifecycle").length;
-  const retentionDeals = total - lifecycleDeals;
+  // Population breakdown comes pre-computed from the server (no client-side
+  // deals array to filter through).
+  const lifecycleDeals = lifecycleDealsTotal;
+  const retentionDeals = retentionDealsTotal;
 
   return (
     <div

@@ -195,10 +195,6 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
           };
           return {
             ...prev,
-            deals: prev.deals.map((d) => {
-              const merged = mergeFor(d.dealId, d.history);
-              return merged === d.history ? d : { ...d, history: merged };
-            }),
             meetings: prev.meetings.map((entry) => {
               const merged = mergeFor(entry.deal.dealId, entry.deal.history);
               return merged === entry.deal.history
@@ -219,15 +215,13 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
   }, [historyDealIdsKey]);
 
   const filtered = useMemo<{
-    deals: MeetingPrepDeal[];
     meetings: MeetingPrepMeetingEntry[];
   }>(() => {
-    if (!data) return { deals: [], meetings: [] };
+    if (!data) return { meetings: [] };
     const ids = effectiveOwnerIds(filter);
     const matches = (d: MeetingPrepDeal) =>
       ids ? (d.ownerId ? ids.has(d.ownerId) : false) : true;
     return {
-      deals: data.deals.filter(matches),
       meetings: data.meetings.filter((entry) => matches(entry.deal)),
     };
   }, [data, filter]);
@@ -278,7 +272,9 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
   return (
     <div className={isRevalidating ? "is-revalidating" : undefined}>
       <MeetingPrepView
-        deals={filtered.deals}
+        dealsTotal={data?.dealsTotal ?? 0}
+        lifecycleDealsTotal={data?.lifecycleDealsTotal ?? 0}
+        retentionDealsTotal={data?.retentionDealsTotal ?? 0}
         meetings={filtered.meetings}
         filterLabel={filterLabel}
         fetchedDays={fetchedDays}

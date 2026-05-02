@@ -503,8 +503,13 @@ export interface MeetingPrepMeetingEntry {
 }
 
 export interface MeetingPrepResponse {
-  deals: MeetingPrepDeal[];
+  // Only the meetings the day strip will display, with their attached deals
+  // hydrated. The full retention/lifecycle pool counts ride as scalars below
+  // so we don't ship 700+ deal objects to compute "X customers in scope".
   meetings: MeetingPrepMeetingEntry[];
+  dealsTotal: number;
+  lifecycleDealsTotal: number;
+  retentionDealsTotal: number;
   updatedAt: string;
 }
 

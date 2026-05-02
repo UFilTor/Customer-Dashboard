@@ -578,8 +578,13 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
           }
           return;
         }
-        // Unknown second key — close the picker; fall through to normal handling.
+        // Unknown second key — close the picker and swallow the keystroke.
+        // Without the early return, the second key (e.g. r, ?, f, 1, 2) would
+        // fall through to refresh / help / filter / variant handlers, which
+        // is not what the user expected from the chord.
+        e.preventDefault();
         window.dispatchEvent(new Event("ud-dashboard-picker-close"));
+        return;
       }
 
       // Activate "g" prefix → open the picker dropdown so the options are visible

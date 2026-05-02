@@ -353,7 +353,7 @@ function Dot() {
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <h4
+    <h3
       style={{
         fontFamily: "var(--font-display)",
         fontSize: 11,
@@ -367,7 +367,7 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
-    </h4>
+    </h3>
   );
 }
 

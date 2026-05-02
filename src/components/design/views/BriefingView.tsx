@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useSyncExternalStore } from "react";
 import type { FlatCompany } from "@/lib/signals";
 import { SIGNAL_MAP, SECTION_ORDER, sortBySignal } from "@/lib/signals";
 import { OWNER_MAP } from "@/lib/owners";
@@ -74,16 +74,15 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
   const healthDrops = companies.filter((c) => c.signal === "health_score").length;
 
   // Greeting + date depend on the user's local clock and locale, so the
-  // server can't render the right value. We render empty on SSR + first
-  // client render, then adjust state during render once we've confirmed
-  // we're on the client (the project's `react-hooks/set-state-in-effect`
-  // rule blocks the equivalent useEffect — this is the convergent
-  // "adjust state during render" pattern instead).
-  const [mounted, setMounted] = useState(false);
-  const onClient = typeof window !== "undefined";
-  if (onClient && !mounted) {
-    setMounted(true);
-  }
+  // server can't render the right value. useSyncExternalStore with a no-op
+  // subscriber returns false on the server and on the first client render
+  // (matching SSR), then true on subsequent renders. No setState during
+  // render, no hydration mismatch.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
   const greeting = mounted
     ? (() => {
         const h = new Date().getHours();

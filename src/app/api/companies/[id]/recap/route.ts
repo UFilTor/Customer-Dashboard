@@ -7,10 +7,12 @@ import type { OwnerMap, Recap, StageMap } from "@/lib/types";
 // Edge runtime — same reasoning as the parent /api/companies/[id] route.
 export const runtime = "edge";
 
-// Recap cache is decoupled from the company-detail cache so a recap miss
-// (Anthropic outage, bad parse) doesn't poison the panel. 5-minute TTL
-// matches the parent so they expire roughly together.
-const recapCache = new Cache<Recap | null>(5 * 60 * 1000);
+// The Cache helper returns `null` on miss AND when a stored value is null.
+// Wrap the cached recap in an object so we can tell the two cases apart;
+// otherwise every uncached company id looks like "we have a cached null
+// result" and the route returns {recap: null} without ever calling Anthropic.
+type CachedRecap = { value: Recap | null };
+const recapCache = new Cache<CachedRecap>(5 * 60 * 1000);
 const ownerCache = new Cache<OwnerMap>(60 * 60 * 1000);
 const stageCache = new Cache<StageMap>(60 * 60 * 1000);
 
@@ -25,8 +27,8 @@ export async function GET(
   }
 
   const cached = recapCache.get(id);
-  if (cached !== undefined) {
-    return NextResponse.json({ recap: cached });
+  if (cached) {
+    return NextResponse.json({ recap: cached.value });
   }
 
   try {
@@ -48,7 +50,12 @@ export async function GET(
       stages
     );
 
-    recapCache.set(id, recap);
+    // Only cache successful recaps. An Anthropic outage or parse error
+    // (recap?.error === true) should be retried on the next click rather
+    // than poisoning the cache for 5 minutes.
+    if (!recap || !recap.error) {
+      recapCache.set(id, { value: recap });
+    }
     return NextResponse.json({ recap });
   } catch {
     return NextResponse.json(

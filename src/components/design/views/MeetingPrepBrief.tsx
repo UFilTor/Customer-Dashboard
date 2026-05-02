@@ -164,16 +164,21 @@ export function MeetingPrepBrief({
                 color: "var(--moss)",
                 cursor: "pointer",
                 textAlign: "left",
-                textDecoration: "underline",
-                textDecorationColor: "transparent",
-                textUnderlineOffset: 4,
-                transition: "text-decoration-color 120ms ease",
+                textDecoration: "underline dotted",
+                textDecorationColor: "rgba(2, 44, 18, 0.3)",
+                textUnderlineOffset: 5,
+                textDecorationThickness: 1,
+                transition: "text-decoration-color 120ms ease, text-decoration-style 120ms ease",
               }}
               onMouseEnter={(e) => {
+                e.currentTarget.style.textDecoration = "underline";
                 e.currentTarget.style.textDecorationColor = "var(--moss)";
+                e.currentTarget.style.textDecorationThickness = "2px";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.textDecorationColor = "transparent";
+                e.currentTarget.style.textDecoration = "underline dotted";
+                e.currentTarget.style.textDecorationColor = "rgba(2, 44, 18, 0.3)";
+                e.currentTarget.style.textDecorationThickness = "1px";
               }}
             >
               {deal.companyName}

@@ -176,6 +176,7 @@ export function SearchView({
         >
           <input
             type="text"
+            aria-label="Lookup query"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKey}

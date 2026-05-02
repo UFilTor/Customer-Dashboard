@@ -496,10 +496,14 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
     cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, orderedCompanies,
     filter: globalFilter,
   });
-  stateRef.current = {
-    cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, orderedCompanies,
-    filter: globalFilter,
-  };
+  // Mirror the latest values via an effect (no deps) so the ref update
+  // happens after render commits, satisfying react-hooks/refs.
+  useEffect(() => {
+    stateRef.current = {
+      cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, orderedCompanies,
+      filter: globalFilter,
+    };
+  });
 
   // "g" prefix: press g, then [s|m|o|p|b|l] to jump dashboards (Gmail-style).
   const goPrefixRef = useRef<number | null>(null);
@@ -688,13 +692,13 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         return;
       }
 
-      if (
-        inMeetingPrep &&
-        (e.key === " " || e.code === "Space") &&
-        historyFocusedRef.current
-      ) {
+      if (inMeetingPrep && (e.key === " " || e.code === "Space")) {
+        // Always swallow Space in meeting prep so the page doesn't scroll.
+        // When a history item is focused, also fire the toggle event.
         e.preventDefault();
-        window.dispatchEvent(new Event("ud-meeting-prep-history-toggle"));
+        if (historyFocusedRef.current) {
+          window.dispatchEvent(new Event("ud-meeting-prep-history-toggle"));
+        }
         return;
       }
 

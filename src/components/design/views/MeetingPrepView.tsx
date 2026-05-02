@@ -239,7 +239,17 @@ function MeetingsPanel({
           body={
             <>
               You have{" "}
-              <strong style={{ color: "var(--citrus)" }}>
+              <strong
+                style={{
+                  // Citrus is reserved for urgent / actionable callouts; a
+                  // zero-meeting day is a positive empty state, so render it
+                  // in the brand foreground instead.
+                  color:
+                    meetingsTodayCount > 0
+                      ? "var(--citrus)"
+                      : "var(--moss)",
+                }}
+              >
                 {meetingsTodayCount} meeting{meetingsTodayCount === 1 ? "" : "s"} today
               </strong>
               {meetingsTodayCount > 0 && (

@@ -128,7 +128,7 @@ button {
 ::-webkit-scrollbar-thumb:hover { background: var(--green-muted); }
 
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-  outline: 2px solid var(--focus-blue); outline-offset: 2px; border-radius: 6px;
+  outline: 2px solid var(--moss); outline-offset: 2px; border-radius: 6px;
 }
 
 /* Legacy focused-row classes used by existing keyboard nav */

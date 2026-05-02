@@ -15,7 +15,19 @@ export async function GET(request: NextRequest) {
 
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateParam.trim());
   if (!m) return NextResponse.json({ error: "Invalid date" }, { status: 400 });
-  const dayStart = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 0, 0, 0, 0);
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const dayStart = new Date(year, month - 1, day, 0, 0, 0, 0);
+  // Roundtrip the parsed date — values like 2026-13-99 pass the regex but
+  // produce a different month/day after JS Date normalization. Reject those.
+  if (
+    dayStart.getFullYear() !== year ||
+    dayStart.getMonth() !== month - 1 ||
+    dayStart.getDate() !== day
+  ) {
+    return NextResponse.json({ error: "Invalid date" }, { status: 400 });
+  }
   const dayEnd = new Date(dayStart);
   dayEnd.setDate(dayEnd.getDate() + 1);
 

@@ -255,10 +255,15 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
       <MetricStrip company={company} deal={deal} />
       <RecapCardBig recap={recap} companyId={companyId} />
 
-      <div style={{ display: "flex", gap: 24, borderBottom: "1px solid var(--hairline)", marginBottom: 18 }}>
+      <div role="tablist" aria-label="Company detail sections" style={{ display: "flex", gap: 24, borderBottom: "1px solid var(--hairline)", marginBottom: 18 }}>
         {(["overview", "activity"] as const).map((t) => (
           <button
             key={t}
+            role="tab"
+            id={`detail-tab-${t}`}
+            aria-selected={tab === t}
+            aria-controls={`detail-panel-${t}`}
+            tabIndex={tab === t ? 0 : -1}
             onClick={() => setTab(t)}
             style={{
               padding: "12px 0",
@@ -282,8 +287,16 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
         ))}
       </div>
 
-      {tab === "overview" && <OverviewPanel company={company} deal={deal} owners={owners} stages={stages} />}
-      {tab === "activity" && <ActivityPanel engagements={engagements} owners={owners} />}
+      {tab === "overview" && (
+        <div role="tabpanel" id="detail-panel-overview" aria-labelledby="detail-tab-overview">
+          <OverviewPanel company={company} deal={deal} owners={owners} stages={stages} />
+        </div>
+      )}
+      {tab === "activity" && (
+        <div role="tabpanel" id="detail-panel-activity" aria-labelledby="detail-tab-activity">
+          <ActivityPanel engagements={engagements} owners={owners} />
+        </div>
+      )}
     </div>
   );
 }

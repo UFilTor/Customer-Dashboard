@@ -2061,7 +2061,7 @@ function kindStyles(kind: OnboardingHistoryEntry["kind"]): { bg: string; fg: str
   return { bg: "var(--lichen)", fg: "var(--moss)" };
 }
 
-function HistoryItem({
+export function HistoryItem({
   entry,
   expanded,
   onToggleExpand,
@@ -2117,18 +2117,22 @@ function HistoryItem({
         transition: "background 0.12s, box-shadow 0.12s, padding 0.12s",
       }}
     >
-      <span
-        style={{
-          position: "absolute",
-          left: 0,
-          top: focused ? 14 : 8,
-          width: 5,
-          height: 5,
-          borderRadius: "50%",
-          background: "var(--moss)",
-          opacity: 0.5,
-        }}
-      />
+      {/* Timeline bullet — hidden when focused so it doesn't overlap the
+          inset focus bar at the same left edge. */}
+      {!focused && (
+        <span
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 8,
+            width: 5,
+            height: 5,
+            borderRadius: "50%",
+            background: "var(--moss)",
+            opacity: 0.5,
+          }}
+        />
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span
           style={{

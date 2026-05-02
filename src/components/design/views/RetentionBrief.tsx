@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import type {
   RetentionDeal,
   RetentionMeetingEntry,
@@ -12,6 +13,7 @@ import { OWNER_MAP } from "@/lib/owners";
 import { VolumeChart } from "../VolumeChart";
 import { HealthRings } from "../HealthRings";
 import { Avatar } from "../Avatar";
+import { HistoryItem } from "./OnboardingView";
 
 interface Props {
   entry: RetentionMeetingEntry;
@@ -46,6 +48,36 @@ export function RetentionBrief({ entry, isFocused, historyFocusedIdx, historyLoa
   const ownerLocal = OWNER_MAP[deal.ownerId] || null;
   const companyHref = hubspotCompanyUrl(deal.companyId);
   const dealHref = hubspotDealUrl(deal.dealId);
+
+  // Expand state per history entry (mirrors onboarding's MeetingBriefCard).
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Keep the latest focused-history index in a ref so the once-attached
+  // ud-retention-history-toggle listener can read it without re-binding.
+  const visibleHistory = deal.history.slice(0, 4);
+  const focusedHistoryRef = useRef<number | null>(historyFocusedIdx);
+  useEffect(() => {
+    focusedHistoryRef.current = historyFocusedIdx;
+  });
+  useEffect(() => {
+    if (!isFocused) return;
+    function onToggle() {
+      const idx = focusedHistoryRef.current;
+      if (idx === null || idx === undefined) return;
+      const item = visibleHistory[idx];
+      if (item) toggleExpanded(item.id);
+    }
+    window.addEventListener("ud-retention-history-toggle", onToggle);
+    return () => window.removeEventListener("ud-retention-history-toggle", onToggle);
+  }, [isFocused, visibleHistory]);
 
   return (
     <div
@@ -204,6 +236,8 @@ export function RetentionBrief({ entry, isFocused, historyFocusedIdx, historyLoa
             history={deal.history}
             historyLoading={historyLoading}
             focusedIdx={historyFocusedIdx}
+            expandedIds={expandedIds}
+            onToggleExpand={toggleExpanded}
           />
           <WatchOutFor signals={deal.watchOuts} />
         </div>
@@ -345,10 +379,14 @@ function PreviousActivity({
   history,
   historyLoading,
   focusedIdx,
+  expandedIds,
+  onToggleExpand,
 }: {
   history: OnboardingHistoryEntry[];
   historyLoading: boolean;
   focusedIdx: number | null;
+  expandedIds: Set<string>;
+  onToggleExpand: (id: string) => void;
 }) {
   const items = history.slice(0, 4);
 
@@ -361,99 +399,27 @@ function PreviousActivity({
       {items.length === 0 && !historyLoading && (
         <div style={{ opacity: 0.5, fontSize: 12, fontStyle: "italic" }}>Nothing logged yet.</div>
       )}
-      {items.map((h, i) => (
-        <ActivityItem key={h.id} entry={h} isFocused={i === focusedIdx} />
-      ))}
-    </div>
-  );
-}
-
-function ActivityItem({ entry, isFocused }: { entry: OnboardingHistoryEntry; isFocused: boolean }) {
-  const when = new Date(entry.occurredAt);
-  const whenLabel = when.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-  let pillBg = "#d8e1f2";
-  let pillFg = "#1d2d6b";
-  let pillText = "CALL";
-  if (entry.kind === "meeting") {
-    pillBg = "#e7d8ed";
-    pillFg = "#4a2865";
-    pillText = "MEETING";
-  } else if (entry.kind === "email") {
-    if (entry.direction === "INBOUND") {
-      pillBg = "#d4eaf5";
-      pillFg = "#103e5a";
-      pillText = "EMAIL IN";
-    } else {
-      pillBg = "#d6efd9";
-      pillFg = "#1d5021";
-      pillText = "EMAIL OUT";
-    }
-  }
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        gap: 10,
-        padding: "8px 0",
-        alignItems: "start",
-        outline: isFocused ? "2px solid var(--moss)" : "2px solid transparent",
-        outlineOffset: 2,
-        borderRadius: 8,
-        transition: "outline-color 120ms ease",
-      }}
-    >
-      <div
+      <ul
         style={{
-          width: 6,
-          height: 6,
-          borderRadius: "50%",
-          background: "var(--green-muted)",
-          marginTop: 8,
-          flexShrink: 0,
+          margin: 0,
+          padding: 0,
+          listStyle: "none",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
         }}
-      />
-      <div style={{ flex: 1 }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              fontSize: 9,
-              fontWeight: 700,
-              letterSpacing: "0.1em",
-              padding: "2px 6px",
-              borderRadius: 4,
-              textTransform: "uppercase",
-              background: pillBg,
-              color: pillFg,
-            }}
-          >
-            {pillText}
-          </span>
-          <span style={{ fontSize: 11, opacity: 0.6 }}>{whenLabel}</span>
-        </div>
-        <div style={{ fontSize: 12.5, marginTop: 2 }}>{entry.title}</div>
-        {entry.body && (
-          <div
-            style={{
-              fontFamily: "var(--font-editorial)",
-              fontStyle: "italic",
-              fontSize: 11.5,
-              color: "var(--green-100)",
-              marginTop: 4,
-              lineHeight: 1.45,
-              maxHeight: 48,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-            }}
-          >
-            {entry.body.slice(0, 280)}
-          </div>
-        )}
-      </div>
+      >
+        {items.map((h, i) => (
+          <li key={h.id} data-history-idx={i}>
+            <HistoryItem
+              entry={h}
+              expanded={expandedIds.has(h.id)}
+              onToggleExpand={() => onToggleExpand(h.id)}
+              focused={i === focusedIdx}
+            />
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

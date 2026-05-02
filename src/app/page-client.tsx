@@ -781,6 +781,16 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         return;
       }
 
+      if (
+        inRetentionPrep &&
+        (e.key === " " || e.code === "Space") &&
+        retentionHistoryFocusedRef.current
+      ) {
+        e.preventDefault();
+        window.dispatchEvent(new Event("ud-retention-history-toggle"));
+        return;
+      }
+
       // List navigation in full-page views (Briefing, Onboarding Needs
       // attention). The active view subscribes to ud-list-nav / ud-list-open
       // and manages its own focused state.

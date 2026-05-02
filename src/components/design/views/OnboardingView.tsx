@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import type {
   OnboardingDeal,
   OnboardingHistoryEntry,
@@ -33,7 +33,9 @@ function stepLabel(step: string): string {
   return STEP_LABELS[step] ?? step;
 }
 
-export function OnboardingView({ deals, filterLabel, onSelect }: Props) {
+// Memoized — see MeetingPrepView for the rationale. Deals identity
+// changes only when /api/onboarding refetches.
+export const OnboardingView = memo(function OnboardingViewImpl({ deals, filterLabel, onSelect }: Props) {
   return (
     <AttentionPanel
       deals={deals}
@@ -41,7 +43,7 @@ export function OnboardingView({ deals, filterLabel, onSelect }: Props) {
       onSelect={onSelect}
     />
   );
-}
+});
 
 /* =====================================================
    Needs attention panel

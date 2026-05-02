@@ -3,6 +3,11 @@ import { buildMeetingPrepResponse } from "@/lib/meeting-prep";
 import { Cache } from "@/lib/cache";
 import type { MeetingPrepResponse } from "@/lib/types";
 
+// Edge runtime — primitives are all `fetch`-based (HubSpot v3/v4 + the
+// Cache helper holds an in-memory Map). Edge cuts ~500-1500ms off cold
+// starts and matches the rest of the dashboard's main API routes.
+export const runtime = "edge";
+
 const meetingPrepCache = new Cache<MeetingPrepResponse>(15 * 60 * 1000);
 
 export async function GET(request: NextRequest) {

@@ -84,9 +84,9 @@ export function TopBar({
             display: "inline-flex",
             alignItems: "center",
             gap: 10,
-            background: "rgba(255,255,255,0.08)",
-            border: "1px solid rgba(255,255,255,0.14)",
-            color: "rgba(255,255,255,0.72)",
+            background: "var(--inverse-surface)",
+            border: "1px solid var(--inverse-border)",
+            color: "var(--inverse-text)",
             padding: "7px 12px",
             borderRadius: 10,
             fontSize: 13,
@@ -94,8 +94,8 @@ export function TopBar({
             cursor: "pointer",
             transition: "background 160ms ease",
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "#fff"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "rgba(255,255,255,0.72)"; }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--inverse-surface-hover)"; e.currentTarget.style.color = "var(--inverse-text-strong)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--inverse-surface)"; e.currentTarget.style.color = "var(--inverse-text)"; }}
         >
           <Icon.Search />
           <span>Search companies, run commands…</span>
@@ -104,10 +104,10 @@ export function TopBar({
               marginLeft: "auto",
               fontFamily: "var(--font-mono)",
               fontSize: 11,
-              background: "rgba(255,255,255,0.10)",
+              background: "var(--inverse-surface-hover)",
               padding: "2px 6px",
               borderRadius: 4,
-              color: "rgba(255,255,255,0.85)",
+              color: "var(--inverse-text-strong)",
             }}
           >
             {cmdLabel}

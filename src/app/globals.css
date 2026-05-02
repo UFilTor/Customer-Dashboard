@@ -57,6 +57,15 @@
   --background: var(--page-bg);
   --foreground: var(--moss);
 
+  /* Inverse-surface tints — used on the dark moss TopBar where white-on-moss
+     is the right hover/border idiom. Centralised so the values stay in sync
+     across components instead of being inlined as raw rgba literals. */
+  --inverse-surface: rgba(255, 255, 255, 0.08);
+  --inverse-surface-hover: rgba(255, 255, 255, 0.12);
+  --inverse-border: rgba(255, 255, 255, 0.14);
+  --inverse-text: rgba(255, 255, 255, 0.72);
+  --inverse-text-strong: rgba(255, 255, 255, 1);
+
   /* Page surfaces */
   --page-bg: #EAE8DD;
   --card-bg: #F8F6ED;

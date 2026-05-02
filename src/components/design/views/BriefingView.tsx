@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useSyncExternalStore } from "react";
+import { memo, useMemo, useRef, useSyncExternalStore } from "react";
 import type { FlatCompany } from "@/lib/signals";
 import { SIGNAL_MAP, SECTION_ORDER, sortBySignal } from "@/lib/signals";
 import { OWNER_MAP } from "@/lib/owners";
@@ -43,7 +43,9 @@ interface BriefingViewProps {
   showAvatar?: boolean;
 }
 
-export function BriefingView({ companies, onSelect, filterLabel, showAvatar = true }: BriefingViewProps) {
+// Memoized — see MeetingPrepView for the rationale. Companies prop
+// identity changes only on attention refetch.
+export const BriefingView = memo(function BriefingViewImpl({ companies, onSelect, filterLabel, showAvatar = true }: BriefingViewProps) {
   // Flat list in the same order rows are rendered (sections in SECTION_ORDER,
   // each section sorted by sortBySignal). Drives keyboard nav so arrows + Enter
   // walk the visible queue without a side detail panel.
@@ -253,7 +255,7 @@ export function BriefingView({ companies, onSelect, filterLabel, showAvatar = tr
       </div>
     </div>
   );
-}
+});
 
 function StatTile({
   label,

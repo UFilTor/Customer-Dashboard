@@ -3,6 +3,8 @@ import { buildOnboardingPayload } from "@/lib/onboarding";
 import { Cache } from "@/lib/cache";
 import type { OnboardingMeetingEntry } from "@/lib/types";
 
+export const runtime = "edge";
+
 // Per-(filter,day) cache so revisiting a manually-fetched day doesn't refetch.
 // 15-minute TTL matches the bulk and history caches.
 const dayCache = new Cache<OnboardingMeetingEntry[]>(15 * 60 * 1000);

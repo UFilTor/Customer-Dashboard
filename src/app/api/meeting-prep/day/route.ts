@@ -3,6 +3,8 @@ import { buildMeetingPrepPayload } from "@/lib/meeting-prep";
 import { Cache } from "@/lib/cache";
 import type { MeetingPrepMeetingEntry } from "@/lib/types";
 
+export const runtime = "edge";
+
 const dayCache = new Cache<MeetingPrepMeetingEntry[]>(15 * 60 * 1000);
 
 export async function GET(request: NextRequest) {

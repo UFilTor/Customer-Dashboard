@@ -3,6 +3,8 @@ import { fetchHistoryForDeals } from "@/lib/onboarding";
 import { Cache } from "@/lib/cache";
 import type { OnboardingHistoryEntry } from "@/lib/types";
 
+export const runtime = "edge";
+
 // Per-deal cache so revisiting a meeting brief doesn't refetch.
 // 15-minute TTL matches the list cache.
 const historyCache = new Cache<OnboardingHistoryEntry[]>(15 * 60 * 1000);

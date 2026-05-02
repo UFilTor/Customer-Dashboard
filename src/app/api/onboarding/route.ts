@@ -4,6 +4,8 @@ import { Cache } from "@/lib/cache";
 import type { OnboardingResponse } from "@/lib/types";
 import { createSpans, logSpans, serverTimingHeader, withTiming } from "@/lib/perf";
 
+export const runtime = "edge";
+
 const onboardingCache = new Cache<OnboardingResponse>(15 * 60 * 1000);
 
 export async function GET(request: NextRequest) {

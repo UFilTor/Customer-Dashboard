@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type { PayMigrationData, PayDeal, PayOwnerSummary, PayStage, CompanySearchResult } from "@/lib/types";
 import { CountUpPct, AnimBar, Stagger } from "../Motion";
 
@@ -71,7 +71,9 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-export function PayMigrationView({ data, payFilter, isRefreshing, onRefresh, onDealClick }: Props) {
+// Memoized — see MeetingPrepView. Pay migration data identity changes
+// only on refetch.
+export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFilter, isRefreshing, onRefresh, onDealClick }: Props) {
   // Decide which owners to render in per-owner sections
   const breakoutOwners: PayOwnerSummary[] = useMemo(() => {
     if (payFilter === "default") {
@@ -397,7 +399,7 @@ export function PayMigrationView({ data, payFilter, isRefreshing, onRefresh, onD
       </div>
     </div>
   );
-}
+});
 
 function aggregateStageCounts(deals: PayDeal[]): Record<PayStage, { count: number; bv: number }> {
   const out = {} as Record<PayStage, { count: number; bv: number }>;

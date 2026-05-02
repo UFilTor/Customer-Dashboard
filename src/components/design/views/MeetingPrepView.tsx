@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { MeetingPrepMeetingEntry } from "@/lib/types";
 import { CountUpInt, Stagger } from "../Motion";
 import { Icon } from "../Icon";
@@ -45,9 +45,12 @@ function startOfToday(): Date {
   return d;
 }
 
-export function MeetingPrepView(props: Props) {
+// Memoized so the view doesn't re-render when page-client's parent state
+// changes for unrelated reasons (filter pill open/close, command palette,
+// toast). The bulk-data prop identity changes only on fetch.
+export const MeetingPrepView = memo(function MeetingPrepViewImpl(props: Props) {
   return <MeetingsPanel {...props} />;
-}
+});
 
 function MeetingsPanel({
   dealsTotal,

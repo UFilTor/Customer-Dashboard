@@ -186,12 +186,24 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   // dashboard's detail panel bleeds into the new dashboard until the user
   // navigates away. "Adjust state during render" pattern keeps the eslint
   // react-hooks/set-state-in-effect rule happy.
+  //
+  // Exception: the very first dashboard transition can be URL-driven (a deep
+  // link like /?d=meeting_prep&c=<id>). The mount-init effect sets dashboard
+  // and selectionByScope from URL in the same batch; without this gate, the
+  // adjust-during-render block would wipe the just-set selection. The mount-
+  // init effect sets `skipNextDashboardWipe = true` whenever it changes the
+  // dashboard from URL state, and we consume the flag here.
   const [prevDashboard, setPrevDashboard] = useState(dashboard);
+  const [skipNextDashboardWipe, setSkipNextDashboardWipe] = useState(false);
   if (prevDashboard !== dashboard) {
     setPrevDashboard(dashboard);
-    setSelectionByScope({ briefing: null, split: null, _other: null });
-    setCompanyData(null);
-    setDetailError(null);
+    if (skipNextDashboardWipe) {
+      setSkipNextDashboardWipe(false);
+    } else {
+      setSelectionByScope({ briefing: null, split: null, _other: null });
+      setCompanyData(null);
+      setDetailError(null);
+    }
   }
 
   // UI state
@@ -245,7 +257,8 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       try { return localStorage.getItem(k); } catch { return null; }
     };
 
-    if (fromUrl.dashboard) {
+    if (fromUrl.dashboard && fromUrl.dashboard !== dashboard) {
+      setSkipNextDashboardWipe(true);
       setDashboard(fromUrl.dashboard);
     } else {
       const d = ls("ud-v2-dashboard");
@@ -254,8 +267,10 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         d === "meeting_prep" ||
         d === "pay_migration" ||
         d === "search"
-      )
+      ) {
+        if (d !== dashboard) setSkipNextDashboardWipe(true);
         setDashboard(d);
+      }
     }
     if (fromUrl.variant) {
       setVariant(fromUrl.variant);
@@ -282,6 +297,10 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         dash === "status" ? (fromUrl.variant ?? "briefing") : "_other";
       setSelectionByScope((prev) => ({ ...prev, [scope]: fromUrl.selectedCompanyId! }));
     }
+    // Mount-init effect intentionally runs once. The `dashboard` reference
+    // inside is the initial default; we only branch on it to detect "URL
+    // wants a different dashboard than the current default".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Mirror state into the URL (canonical) and localStorage (for first-load
@@ -415,15 +434,6 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
     })();
     return () => { cancelled = true; };
   }, [selectedCompanyId]);
-
-  // Browser back/forward navigation
-  useEffect(() => {
-    function onPopState() {
-      setSelectedCompanyIdRef.current(null);
-    }
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
 
   function selectCompany(id: string) {
     if (selectedCompanyId === id) return;
@@ -886,8 +896,8 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   if (selectedCompanyId) {
     // Detail flow: shared across every dashboard.
     // Status + Split is the only layout that keeps the queue visible alongside the detail.
-    if (dashboard === "status" && variant === "split") {
-      body = (
+    const detailNode =
+      dashboard === "status" && variant === "split" ? (
         <SplitView
           companies={filteredCompanies}
           selectedId={selectedCompanyId}
@@ -897,18 +907,33 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
           updatedAt={attention?.updatedAt || null}
           showAvatar={globalFilter.kind !== "person"}
         />
+      ) : companyData && !isLoadingDetail ? (
+        <CompanyDetail companyId={selectedCompanyId} data={companyData} />
+      ) : detailError ? (
+        <div style={{ padding: 32, textAlign: "center", color: "var(--rust)" }}>{detailError}</div>
+      ) : (
+        <DetailLoading />
       );
-    } else if (companyData && !isLoadingDetail) {
+
+    // Meeting prep: keep the underlying view mounted so day strip + meeting
+    // focus state survives the round-trip into a company detail. Esc returns
+    // the user to the same focused meeting they came from. The detail node
+    // renders on top with display: none toggling.
+    if (dashboard === "meeting_prep") {
       body = (
-        <CompanyDetail
-          companyId={selectedCompanyId}
-          data={companyData}
-        />
+        <>
+          <div style={{ display: "none" }}>
+            <MeetingPrepContainer
+              filter={globalFilter}
+              filterLabel={filterLabel}
+              onSelectCompany={(id) => selectCompany(id)}
+            />
+          </div>
+          {detailNode}
+        </>
       );
-    } else if (detailError) {
-      body = <div style={{ padding: 32, textAlign: "center", color: "var(--rust)" }}>{detailError}</div>;
     } else {
-      body = <DetailLoading />;
+      body = detailNode;
     }
   } else if (dashboard === "pay_migration") {
     // Pay Migration ignores the global filter — the dashboard's own Default/All

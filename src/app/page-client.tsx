@@ -400,6 +400,14 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       setCompanyData(null);
       return;
     }
+    // HubSpot company ids are positive integers. Skip the fetch for anything
+    // else (e.g. ?c=foo from a hand-edited URL) so we don't pollute the
+    // browser network log with predictable 404s.
+    if (!/^\d+$/.test(selectedCompanyId)) {
+      setIsLoadingDetail(false);
+      setDetailError("Company not found in HubSpot.");
+      return;
+    }
     let cancelled = false;
     setIsLoadingDetail(true);
     setDetailError(null);
@@ -634,8 +642,10 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         }
       }
 
-      // Pay Migration filter: 1 = Default, 2 = All. Same any-state policy.
-      if (s.dashboard === "pay_migration") {
+      // Pay Migration filter: 1 = Default, 2 = All. Skip when a company
+      // detail is open so 1/2 don't shift the (hidden) underlying scope
+      // while the user is reading the panel.
+      if (s.dashboard === "pay_migration" && !s.selectedCompanyId) {
         if (e.key === "1") {
           e.preventDefault();
           setPayFilter("default");
@@ -954,7 +964,14 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         filter={globalFilter}
         filterLabel={filterLabel}
         onSelectDeal={(d) => {
-          if (d.companyId) selectCompany(d.companyId);
+          if (d.companyId) {
+            selectCompany(d.companyId);
+          } else {
+            // Stub deals (external-… IDs from orphan meetings) have no
+            // matching HubSpot company. Surface a toast instead of a
+            // silent no-op so the user knows the click registered.
+            showToast("No HubSpot company linked to this meeting");
+          }
         }}
       />
     );

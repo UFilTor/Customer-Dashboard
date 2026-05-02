@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { SearchView } from "./SearchView";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import type { GlobalFilter } from "@/lib/owners";
@@ -30,6 +30,10 @@ export function SearchContainer({
   const [loading, setLoading] = useState(false);
   const [loadingPhase, setLoadingPhase] = useState<"parse" | "execute" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Drop submits while another search is in flight. Without this, repeated
+  // Enter presses kick off duplicate Anthropic calls and the chain ends up
+  // with whichever response races back last.
+  const inFlightRef = useRef(false);
 
   // Each turn fires once on Enter. The body is small (a few fields); the
   // server caches by query+filter+priorSpec for 15 min so identical resubmits
@@ -37,6 +41,8 @@ export function SearchContainer({
   const onSubmit = useCallback(async () => {
     const q = query.trim();
     if (!q) return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setLoading(true);
     setLoadingPhase("parse");
     setError(null);
@@ -74,6 +80,7 @@ export function SearchContainer({
       clearTimeout(phaseTimer);
       setLoading(false);
       setLoadingPhase(null);
+      inFlightRef.current = false;
     }
   }, [query, filter, chain]);
 

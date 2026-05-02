@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyDetail, getOwners, getDealStages } from "@/lib/hubspot";
+import { generateRecap } from "@/lib/summarize";
 import { Cache } from "@/lib/cache";
-import { CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
+import type { OwnerMap, Recap, StageMap } from "@/lib/types";
 
-// Edge runtime — fast cold start matters most here since clicks into
-// detail are the second most common cold path after first paint.
-// The Anthropic SDK + HubSpot calls are all `fetch`-based and edge-safe.
+// Edge runtime — same reasoning as the parent /api/companies/[id] route.
 export const runtime = "edge";
 
-const companyCache = new Cache<CompanyDetail>(5 * 60 * 1000);
+// Recap cache is decoupled from the company-detail cache so a recap miss
+// (Anthropic outage, bad parse) doesn't poison the panel. 5-minute TTL
+// matches the parent so they expire roughly together.
+const recapCache = new Cache<Recap | null>(5 * 60 * 1000);
 const ownerCache = new Cache<OwnerMap>(60 * 60 * 1000);
 const stageCache = new Cache<StageMap>(60 * 60 * 1000);
 
@@ -18,25 +20,17 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  // Validate ID shape — HubSpot company IDs are positive integers. Reject
-  // anything else with 404 instead of returning a stub payload + owner directory.
   if (!/^\d+$/.test(id)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const cached = companyCache.get(id);
-  if (cached) {
-    const [owners, stages] = await Promise.all([
-      getCachedOwners(),
-      getCachedStages(),
-    ]);
-    return NextResponse.json({ ...cached, owners, stages });
+  const cached = recapCache.get(id);
+  if (cached !== undefined) {
+    return NextResponse.json({ recap: cached });
   }
 
   try {
     const detail = await getCompanyDetail(id);
-    // 404 when HubSpot has no record for this ID — `fetchCompany` returns an
-    // empty object on a 404 from HubSpot. Don't expose stub data.
     if (!detail.company || Object.keys(detail.company).length === 0) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -46,17 +40,19 @@ export async function GET(
       getCachedStages(),
     ]);
 
-    // Recap (Anthropic Haiku) is fetched lazily by /api/companies/[id]/recap
-    // so the detail panel can paint as soon as HubSpot data is ready. The
-    // 2-4s LLM round-trip used to block this response.
-    detail.recap = null;
+    const recap = await generateRecap(
+      detail.engagements,
+      detail.company,
+      detail.deal,
+      owners,
+      stages
+    );
 
-    companyCache.set(id, detail);
-
-    return NextResponse.json({ ...detail, owners, stages });
+    recapCache.set(id, recap);
+    return NextResponse.json({ recap });
   } catch {
     return NextResponse.json(
-      { error: "Could not load company data" },
+      { error: "Could not load recap" },
       { status: 500 }
     );
   }

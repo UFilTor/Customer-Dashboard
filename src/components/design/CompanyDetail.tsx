@@ -38,8 +38,41 @@ const quickActionBtn: React.CSSProperties = {
 
 
 export function CompanyDetail({ companyId, data, embedded = false }: Props) {
-  const { company, deal, owners, stages, engagements, recap } = data;
+  const { company, deal, owners, stages, engagements } = data;
   const [tab, setTab] = useState<"overview" | "activity">("overview");
+
+  // Recap is fetched lazily from /api/companies/[id]/recap so the rest of
+  // the detail panel paints immediately. The Anthropic round-trip used to
+  // block the parent /api/companies/[id] response for 2-4s.
+  const initialRecap = data.recap ?? null;
+  const [recap, setRecap] = useState<CompanyDetailData["recap"]>(initialRecap);
+  const [recapLoading, setRecapLoading] = useState(!initialRecap);
+  useEffect(() => {
+    if (initialRecap) {
+      setRecap(initialRecap);
+      setRecapLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRecap(null);
+    setRecapLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/companies/${companyId}/recap`);
+        if (!res.ok) return;
+        const json: { recap: CompanyDetailData["recap"] } = await res.json();
+        if (cancelled) return;
+        setRecap(json.recap ?? null);
+      } catch {
+        /* swallow — RecapCardBig handles the null state */
+      } finally {
+        if (!cancelled) setRecapLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, initialRecap]);
   // Bookmark state — starts as false so server and client first render agree
   // (no hydration mismatch). The "adjust state during render" pattern
   // initialises from localStorage on the client without violating
@@ -253,7 +286,7 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
       </div>
 
       <MetricStrip company={company} deal={deal} />
-      <RecapCardBig recap={recap} companyId={companyId} />
+      <RecapCardBig recap={recap} loading={recapLoading} companyId={companyId} />
 
       <div role="tablist" aria-label="Company detail sections" style={{ display: "flex", gap: 24, borderBottom: "1px solid var(--hairline)", marginBottom: 18 }}>
         {(["overview", "activity"] as const).map((t) => (

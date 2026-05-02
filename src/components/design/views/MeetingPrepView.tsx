@@ -354,6 +354,7 @@ function MeetingsPanel({
           selectedIdx={selectedIdx}
           setSelectedIdx={setSelectedIdx}
           today={today}
+          todayIdx={todayIdx}
           fetchedDays={fetchedDays}
         />
 
@@ -458,6 +459,7 @@ function DayStrip({
   selectedIdx,
   setSelectedIdx,
   today,
+  todayIdx,
   fetchedDays,
 }: {
   weekdays: Date[];
@@ -465,8 +467,13 @@ function DayStrip({
   selectedIdx: number;
   setSelectedIdx: (n: number) => void;
   today: Date;
+  todayIdx: number;
   fetchedDays?: Set<string>;
 }) {
+  // On weekends, dayKey(today) doesn't match any visible weekday. The strip's
+  // "today anchor" is the next workday — we still want it labelled clearly.
+  const todayWeekday = today.getDay();
+  const todayOnWeekend = todayWeekday === 0 || todayWeekday === 6;
   const half = Math.floor(VISIBLE_DAYS / 2);
   const start = Math.max(0, Math.min(weekdays.length - VISIBLE_DAYS, selectedIdx - half));
   const visible = weekdays.slice(start, start + VISIBLE_DAYS);
@@ -500,17 +507,36 @@ function DayStrip({
           const k = dayKey(d);
           const count = (meetingsByDay.get(k) || []).length;
           const isActive = idx === selectedIdx;
-          const isToday = k === dayKey(today);
+          const isTodayExact = k === dayKey(today);
+          // When today is a weekend, the day strip's anchor (todayIdx) is the
+          // next workday. Treat it as "today" for visual purposes so the
+          // user has a stable point of reference.
+          const isTodayAnchor = idx === todayIdx;
+          const isToday = isTodayExact || (todayOnWeekend && isTodayAnchor);
           const isFetched = !fetchedDays || fetchedDays.has(k);
+          const eyebrow = isTodayExact
+            ? "Today"
+            : todayOnWeekend && isTodayAnchor
+              ? `Mon · next`
+              : d.toLocaleDateString("en-US", { weekday: "short" });
           return (
             <button
               key={k}
               onClick={() => setSelectedIdx(idx)}
+              aria-current={isToday ? "date" : undefined}
               style={{
                 background: isActive ? "var(--moss)" : "var(--light-grey)",
-                border: `1px ${isFetched ? "solid" : "dashed"} ${isActive ? "var(--moss)" : "var(--beige-gray)"}`,
+                // Non-color "today" affordance: a thicker accent border so
+                // the indication isn't carried by color alone (WCAG 1.4.1).
+                border: `${isToday && !isActive ? 2 : 1}px ${isFetched ? "solid" : "dashed"} ${
+                  isActive
+                    ? "var(--moss)"
+                    : isToday
+                      ? "var(--moss)"
+                      : "var(--beige-gray)"
+                }`,
                 borderRadius: 12,
-                padding: "10px 8px",
+                padding: isToday && !isActive ? "9px 7px" : "10px 8px",
                 textAlign: "center",
                 cursor: "pointer",
                 display: "flex",
@@ -531,7 +557,7 @@ function DayStrip({
                   color: isActive ? "var(--citrus)" : "var(--green-100)",
                 }}
               >
-                {isToday ? "Today" : d.toLocaleDateString("en-US", { weekday: "short" })}
+                {eyebrow}
               </span>
               <span
                 style={{
@@ -540,6 +566,12 @@ function DayStrip({
                   fontWeight: 700,
                   fontVariantNumeric: "tabular-nums",
                   lineHeight: 1,
+                  // Non-color today signal: a citrus underline accent on the
+                  // date number so the indication survives without color.
+                  textDecoration: isToday && !isActive ? "underline" : "none",
+                  textDecorationColor: "var(--citrus)",
+                  textDecorationThickness: 2,
+                  textUnderlineOffset: 4,
                 }}
               >
                 {d.getDate()}

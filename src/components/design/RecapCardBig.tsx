@@ -6,6 +6,7 @@ import { hubspotCompanyUrl } from "@/lib/hubspot-links";
 
 interface RecapCardBigProps {
   recap: Recap | null;
+  loading?: boolean;
   companyId: string;
   companyName?: string;
   onAction?: (type: string) => void;
@@ -37,7 +38,7 @@ function deepLink(type: string | undefined, companyId: string): string {
   return hubspotCompanyUrl(companyId) ?? "#";
 }
 
-export function RecapCardBig({ recap, companyId }: RecapCardBigProps) {
+export function RecapCardBig({ recap, loading, companyId }: RecapCardBigProps) {
   const summary = recap?.summary;
   const action = recap?.suggestedAction;
 
@@ -91,7 +92,9 @@ export function RecapCardBig({ recap, companyId }: RecapCardBigProps) {
       >
         {summary || (
           <span style={{ color: "var(--green-100)", fontStyle: "italic" }}>
-            No recap yet. Activity is being summarised…
+            {loading
+              ? "Summarising recent activity…"
+              : "No recap yet. Activity is being summarised…"}
           </span>
         )}
       </p>

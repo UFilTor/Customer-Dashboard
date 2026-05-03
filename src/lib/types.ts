@@ -205,8 +205,10 @@ export interface PayMigrationData {
   bvLiveVerifiedPercent: number;
   bvInProgressPercent: number;
   arrLiveVerifiedPercent: number;
-  aprilTarget: number;
-  mayTarget: number;
+  // Single migration target (currently 60% by end of May). The earlier
+  // dual-target shape (April 40% + May 60%) collapsed to one once April
+  // passed; keeping a single field future-proofs renames.
+  targetPct: number;
 
   totalBv: number;
   totalAcv: number;

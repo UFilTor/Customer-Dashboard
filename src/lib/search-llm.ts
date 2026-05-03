@@ -49,6 +49,23 @@ const ENTITY_FIELDS: Record<string, string[]> = {
     "hibernation_notes",
     "product_hold_note",
     "hs_next_step",
+    // Invoice + step-tracking fields. unpaid_invoice is "true"/"false";
+    // outstanding_amount is a numeric string in the deal's deal_currency_code
+    // (no automatic EUR conversion in HubSpot search). number_of_open_invoices
+    // covers the count axis. hs_v2_date_entered_current_stage powers
+    // "stuck in step" queries via a date threshold.
+    "unpaid_invoice",
+    "invoice_due_date",
+    "outstanding_amount",
+    // Pseudo-property: not a real HubSpot field. The runtime strips it from
+    // the HubSpot filterGroups and applies it as a post-fetch filter, using
+    // the deal's deal_currency_code to convert outstanding_amount → EUR via
+    // the TO_EUR table. Use this when the user's query is currency-aware
+    // ("over 100 EUR") so the threshold matches the EUR figure instead of
+    // the deal's local-currency amount.
+    "outstanding_amount_eur",
+    "number_of_open_invoices",
+    "hs_v2_date_entered_current_stage",
   ],
   company: [
     "name",
@@ -195,7 +212,25 @@ Example 6 (multi-target)
 Query: "Everything about Acme"
 Active filter: all
 Output:
-{"targets":[{"entityType":"company","filters":[],"textSearch":{"terms":["Acme"],"fields":["name","domain"]}},{"entityType":"deal","filters":[],"textSearch":{"terms":["Acme"],"fields":["dealname"]}},{"entityType":"meeting","filters":[],"textSearch":{"terms":["Acme"],"fields":["hs_meeting_title","hs_meeting_body"]}},{"entityType":"call","filters":[],"textSearch":{"terms":["Acme"],"fields":["hs_call_body","hs_call_title"]}}],"ownerScope":{"kind":"all"},"limit":100}`;
+{"targets":[{"entityType":"company","filters":[],"textSearch":{"terms":["Acme"],"fields":["name","domain"]}},{"entityType":"deal","filters":[],"textSearch":{"terms":["Acme"],"fields":["dealname"]}},{"entityType":"meeting","filters":[],"textSearch":{"terms":["Acme"],"fields":["hs_meeting_title","hs_meeting_body"]}},{"entityType":"call","filters":[],"textSearch":{"terms":["Acme"],"fields":["hs_call_body","hs_call_title"]}}],"ownerScope":{"kind":"all"},"limit":100}
+
+Example 7 (overdue invoices with EUR threshold — uses the pseudo-field outstanding_amount_eur so 100 EUR is honest across SEK/DKK/USD deals)
+Query: "Customers with overdue invoices over 100 EUR"
+Active filter: all
+Output: (today is 2026-05-04)
+{"targets":[{"entityType":"deal","filters":[{"propertyName":"unpaid_invoice","operator":"EQ","value":"true"},{"propertyName":"invoice_due_date","operator":"LT","value":"2026-05-04"},{"propertyName":"outstanding_amount_eur","operator":"GT","value":"100"}],"textSearch":null}],"ownerScope":{"kind":"all"},"limit":100}
+
+Example 8 (stuck in step)
+Query: "Onboarding deals stuck in step for more than 30 days"
+Active filter: all
+Output: (today is 2026-05-04, 30 days ago = 2026-04-04)
+{"targets":[{"entityType":"deal","filters":[{"propertyName":"pipeline","operator":"EQ","value":"166333631"},{"propertyName":"hs_v2_date_entered_current_stage","operator":"LT","value":"2026-04-04"}],"textSearch":null}],"ownerScope":{"kind":"all"},"limit":100}
+
+Example 9 (cross-entity qualifier dropped — booking volume is company-only, customer_stage is deal-only and the runtime does not intersect)
+Query: "Established customers with declining booking volume"
+Active filter: all
+Output:
+{"targets":[{"entityType":"company","filters":[{"propertyName":"understory_booking_volume_3m","operator":"LT","value":"500"}],"textSearch":null}],"ownerScope":{"kind":"all"},"limit":100}`;
 
 function buildPrompt(
   query: string,
@@ -237,6 +272,16 @@ Output rules:
 - "mine" / "in my name" maps to the active filter's owner id when filter.kind === "person". When filter.kind === "all" and the query says "mine", emit {"targets":[],"ownerScope":{"kind":"all"},"limit":0,"_error":"Set the Filter pill to a person to use 'mine'."}
 - If the user names an owner directly ("filips name", "Cecilia's deals", etc) regardless of the active filter, look up the matching owner id from the directory above and use it.
 - "OB notes" / "the notes" / "anywhere in the notes" / "in the deal" on a deal expands to ALL seven free-text deal fields, in this order: ob_note___customer_needs_, ob_note___promises_made, ob_note___grow_notes__if_booked_, ob_note___link_to_experience_s__that_need_to_be_created_, hibernation_notes, product_hold_note, hs_next_step. The runtime handles the HubSpot 5-filterGroup cap automatically — emit all 7 fields, do NOT trim.
+- Field-to-entity rules (CRITICAL — never misroute):
+  - customer_stage / customer_substage / wish_to_churn / churn_date / pipeline / dealstage / unpaid_invoice / invoice_due_date / outstanding_amount / number_of_open_invoices / hs_v2_date_entered_current_stage live on DEAL only.
+  - health_score / understory_booking_volume_3m|6m|12m / understory_total_number_of_transactions / understory_company_country / notes_last_contacted live on COMPANY only.
+  - hubspot_owner_id / createdate live on both.
+  - When a query mixes a company-only filter and a deal-only filter, the runtime does NOT intersect across entities. Pick the target where the more specific / actionable filter lives, drop the weaker qualifier rather than route it to the wrong entity. Example: "Established customers with declining booking volume" → target=company with booking-volume filter only (customer_stage stays out; it's deal-only).
+- Invoice queries: "overdue" → unpaid_invoice EQ "true" AND invoice_due_date LT today. "open invoice(s)" without "overdue" → number_of_open_invoices GT 0.
+- Outstanding-amount thresholds: when the user says "over X EUR" (or "over X" without a currency, default to EUR), use the pseudo-field outstanding_amount_eur — the runtime converts each deal's local outstanding_amount to EUR before applying the threshold. When the user names a different currency explicitly ("over 1000 SEK"), use outstanding_amount GT X paired with deal_currency_code EQ "SEK".
+- "stuck in step" / "in step for more than N days" → hs_v2_date_entered_current_stage LT (today minus N days). Compute the threshold date relative to today. Optionally pair with pipeline EQ "166333631" (Lifecycle/Onboarding pipeline) when the user says "onboarding" specifically.
+- "wish to churn flagged" → wish_to_churn EQ "true". "in the last month" then adds churn_date GTE (today minus 30 days) when present.
+- "no one has contacted in the last N days" / "not contacted in the last N days" → company query with notes_last_contacted LT (today minus N days).
 - limit is always 100 unless the user explicitly asks for more.
 - Never invent property names or operators. If you can't express a constraint, drop it rather than fake it.
 

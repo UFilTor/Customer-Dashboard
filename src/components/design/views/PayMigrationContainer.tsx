@@ -128,7 +128,6 @@ export function PayMigrationContainer({ payFilter, onSelectCompany }: Props) {
       data={data}
       payFilter={payFilter}
       isRefreshing={isRefreshing}
-      onRefresh={() => fetchData(true)}
       onDealClick={handleDealClick}
     />
   );

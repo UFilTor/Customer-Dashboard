@@ -2,11 +2,9 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { MeetingPrepMeetingEntry } from "@/lib/types";
-import { CountUpInt, Stagger } from "../Motion";
 import { DashboardBanner } from "../DashboardBanner";
 import { EditorialEmpty } from "../EditorialEmpty";
 import { Icon } from "../Icon";
-import { Kpi } from "../Kpi";
 import { MeetingPrepBrief } from "./MeetingPrepBrief";
 
 interface Props {
@@ -281,57 +279,11 @@ function MeetingsPanel({
         }
       />
 
-      <div style={{ padding: "20px 28px 60px" }}>
+      <div style={{ padding: "0 28px 60px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-        <Stagger
-          delay={70}
-          initial={120}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: 14,
-            marginBottom: 6,
-          }}
-        >
-          <Kpi
-            label="In scope"
-            value={<CountUpInt value={total} />}
-            sub={
-              lifecycleDeals > 0 && retentionDeals > 0
-                ? `${lifecycleDeals} onboarding · ${retentionDeals} retention`
-                : lifecycleDeals > 0
-                  ? "all onboarding"
-                  : retentionDeals > 0
-                    ? "all live customers"
-                    : "no deals"
-            }
-          />
-          <Kpi
-            label="Meetings today"
-            value={<CountUpInt value={meetingsTodayCount} />}
-            sub={meetingsTodayCount > 0 ? "prep below" : "all clear"}
-            tone="accent"
-          />
-          <Kpi
-            label="This week"
-            value={<CountUpInt value={meetings.length} />}
-            sub="across the next 5 work days"
-          />
-          <Kpi
-            label={isToday ? "Today's meetings" : "Selected day"}
-            value={<CountUpInt value={dayMeetings.length} />}
-            sub={
-              isToday
-                ? "viewing today"
-                : selectedDay.toLocaleDateString("en-US", {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })
-            }
-          />
-        </Stagger>
-
+        {/* Sticky day-selector now leads the page (was below the KPI strip).
+            Moving it to the top means a returning user lands directly on the
+            day they last navigated to, no scroll-past required. */}
         <div ref={daySentinelRef} aria-hidden="true" style={{ height: 1, marginBottom: -1 }} />
         <div
           className={`mp-sticky${dayScrolled ? " scrolled" : ""}`}
@@ -340,8 +292,8 @@ function MeetingsPanel({
             top: 0,
             zIndex: 30,
             background: "var(--beige-new)",
-            paddingTop: 8,
-            paddingBottom: 10,
+            paddingTop: 4,
+            paddingBottom: 4,
             transition: "box-shadow 160ms var(--ease-out)",
             boxShadow: dayScrolled
               ? "0 1px 0 var(--hairline), 0 6px 12px -8px rgba(2, 44, 18, 0.10)"
@@ -353,8 +305,7 @@ function MeetingsPanel({
               display: "flex",
               justifyContent: "flex-end",
               alignItems: "center",
-              marginBottom: 6,
-              minHeight: 32,
+              marginBottom: 4,
             }}
           >
             <button
@@ -386,17 +337,9 @@ function MeetingsPanel({
           />
         </div>
 
-        <Section
-          title={
-            isToday
-              ? "Today's meetings"
-              : selectedDay.toLocaleDateString("en-US", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })
-          }
-        >
+        {/* Day label is already pinned in the sticky strip above; the
+            duplicate <h2> here was redundant and pushed the meetings down. */}
+        <Section>
           {fetchedDays && !fetchedDays.has(selectedKey) ? (
             <FetchDayButton
               dayLabel={selectedDay.toLocaleDateString("en-US", {
@@ -595,9 +538,9 @@ function DayStrip({
                   lineHeight: 1,
                   // Non-color today signal: a moss underline accent on the
                   // date number so the indication survives without color.
-                  // Originally citrus; demoted per the One Lime Rule so the
-                  // hero stays the only citrus moment in the viewport.
-                  textDecoration: isToday && !isActive ? "underline" : "none",
+                  // React 19 warns when shorthand and longhand decoration
+                  // properties mix, so we use longhands only.
+                  textDecorationLine: isToday && !isActive ? "underline" : "none",
                   textDecorationColor: "var(--moss)",
                   textDecorationThickness: 2,
                   textUnderlineOffset: 4,
@@ -676,55 +619,60 @@ function Section({
   count,
   children,
 }: {
-  title: string;
+  title?: string;
   subtitle?: string;
   count?: number;
   children: React.ReactNode;
 }) {
+  const hasHeader = !!title || !!subtitle || count != null;
   return (
     <div style={{ marginBottom: 32 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-        <h2
-          style={{
-            margin: 0,
-            fontFamily: "var(--font-display)",
-            fontSize: 22,
-            fontWeight: 700,
-            color: "var(--moss)",
-            textTransform: "uppercase",
-            letterSpacing: "-0.005em",
-          }}
-        >
-          {title}
-        </h2>
-        {subtitle && (
-          <span
-            style={{
-              fontSize: 13,
-              color: "var(--green-100)",
-              fontFamily: "var(--font-editorial)",
-              fontStyle: "italic",
-            }}
-          >
-            {subtitle}
-          </span>
-        )}
-        {count != null && (
-          <span
-            style={{
-              marginLeft: "auto",
-              fontFamily: "var(--font-display)",
-              fontSize: 11,
-              fontWeight: 700,
-              color: "var(--green-100)",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-            }}
-          >
-            {count} item{count === 1 ? "" : "s"}
-          </span>
-        )}
-      </div>
+      {hasHeader && (
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+          {title && (
+            <h2
+              style={{
+                margin: 0,
+                fontFamily: "var(--font-display)",
+                fontSize: 22,
+                fontWeight: 700,
+                color: "var(--moss)",
+                textTransform: "uppercase",
+                letterSpacing: "-0.005em",
+              }}
+            >
+              {title}
+            </h2>
+          )}
+          {subtitle && (
+            <span
+              style={{
+                fontSize: 13,
+                color: "var(--green-100)",
+                fontFamily: "var(--font-editorial)",
+                fontStyle: "italic",
+              }}
+            >
+              {subtitle}
+            </span>
+          )}
+          {count != null && (
+            <span
+              style={{
+                marginLeft: "auto",
+                fontFamily: "var(--font-display)",
+                fontSize: 11,
+                fontWeight: 700,
+                color: "var(--green-100)",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+              }}
+            >
+              {count} item{count === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
+      )}
       {children}
     </div>
   );

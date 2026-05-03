@@ -12,7 +12,6 @@ interface Props {
   data: PayMigrationData;
   payFilter: PayFilter;
   isRefreshing: boolean;
-  onRefresh: () => void;
   onDealClick: (deal: PayDeal) => void;
 }
 
@@ -75,7 +74,7 @@ function timeAgo(iso: string): string {
 
 // Memoized — see MeetingPrepView. Pay migration data identity changes
 // only on refetch.
-export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFilter, isRefreshing, onRefresh, onDealClick }: Props) {
+export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFilter, isRefreshing, onDealClick }: Props) {
   // Decide which owners to render in per-owner sections
   const breakoutOwners: PayOwnerSummary[] = useMemo(() => {
     if (payFilter === "default") {
@@ -127,8 +126,7 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
     };
   }, [data, payFilter]);
 
-  const gapApr = Math.max(0, data.aprilTarget - topline.pctLc);
-  const gapMay = Math.max(0, data.mayTarget - topline.pctLc);
+  const gapToTarget = Math.max(0, data.targetPct - topline.pctLc);
 
   return (
     <div
@@ -165,32 +163,11 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
 
       <div style={{ padding: "20px 28px 60px" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        {/* HEADER ROW — refresh control */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 18 }}>
-          <button
-            onClick={onRefresh}
-            disabled={isRefreshing}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 10,
-              border: "1px solid var(--hairline)",
-              background: "var(--card-bg)",
-              color: "var(--moss)",
-              fontSize: 12.5,
-              fontWeight: 500,
-              cursor: isRefreshing ? "wait" : "pointer",
-              opacity: isRefreshing ? 0.7 : 1,
-            }}
-          >
-            {isRefreshing ? "Refreshing…" : "Refresh"}
-          </button>
-        </div>
-
         {/* KPI CARDS */}
         <Stagger
           delay={70}
           initial={120}
-          style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 12 }}
+          style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 12 }}
         >
           <Kpi
             label="BV live / verified"
@@ -210,35 +187,11 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
             tone="accent"
           />
           <Kpi
-            label="April target"
-            value={`${data.aprilTarget}%`}
-            sub={<GapPill ppToGo={gapApr} />}
-          />
-          <Kpi
-            label="May target"
-            value={`${data.mayTarget}%`}
-            sub={<GapPill ppToGo={gapMay} />}
+            label="Target"
+            value={`${data.targetPct}%`}
+            sub={<GapPill ppToGo={gapToTarget} />}
           />
         </Stagger>
-
-        {/* Flag legend */}
-        <div
-          style={{
-            fontSize: 11.5,
-            color: "var(--green-100)",
-            marginBottom: 24,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            flexWrap: "wrap",
-            fontFamily: "var(--font-editorial)",
-            fontStyle: "italic",
-          }}
-        >
-          Ineligible BV excluded from target denominator ·
-          <Flag kind="invoice" />open invoice in HubSpot ·
-          <Flag kind="noevents" />0 upcoming events
-        </div>
 
         {/* PIPELINE BAR */}
         <SectionTitle title="Full pipeline" subtitle="BV breakdown across stages" />
@@ -280,7 +233,7 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
         </div>
 
         {/* PATH TO TARGET */}
-        <SectionTitle title={`Path to ${data.aprilTarget}%`} subtitle="Top deals to close, by owner" />
+        <SectionTitle title={`Path to ${data.targetPct}%`} subtitle="Top deals to close, by owner" />
         <div
           style={{
             display: "grid",
@@ -294,7 +247,7 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
               key={o.ownerId}
               name={ownerFullName(o.ownerName)}
               owner={o}
-              targetPct={data.aprilTarget}
+              targetPct={data.targetPct}
               allEligBv={data.eligibleBv}
               onDealClick={onDealClick}
             />
@@ -413,7 +366,7 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle?: string })
   );
 }
 
-// Sub-line renderer for the April / May target tiles. The previous tone="warn"
+// Sub-line renderer for the migration target tile. The previous tone="warn"
 // painted the whole tile rust which read as "this metric is broken" instead of
 // "you have ground to cover". Now the value sits in moss; the gap rides as a
 // small rust pill below it, only when there's actually ground to cover.

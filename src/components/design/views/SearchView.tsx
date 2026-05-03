@@ -36,7 +36,13 @@ const EXAMPLE_CHIPS = [
   "All deals in my name that mention GYG in OB notes",
   "Companies in DK with health below 50",
   "Calls where we discussed seasonal pricing",
-  "Pay-unwilling deals owned by Cecilia",
+  "Pay-unwilling deals owned by Anders",
+  "Onboarding deals stuck in step for more than 30 days",
+  "Customers with overdue invoices over 1000 EUR",
+  "Accounts no one has contacted in the last 45 days",
+  "Established customers with declining booking volume",
+  "Deals with wish-to-churn flagged in the last month",
+  "Calls with action items mentioning Understory Pay",
 ];
 
 export function SearchView({

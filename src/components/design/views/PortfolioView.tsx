@@ -22,6 +22,11 @@ interface Props {
   // pre-pagination list.
   totalRowCount: number;
   totalsBySignal: Record<PortfolioSignalKey, number>;
+  // Book-wide totals, never filtered. Drives the FilterDropdown counts so
+  // the user always sees how many accounts each signal would surface
+  // regardless of the current selection (e.g. Health drop always reads "216"
+  // even while another signal is the active filter).
+  globalTotalsBySignal: Record<PortfolioSignalKey, number>;
 
   // Filter scope label rendered as a banner-eyebrow tail ("Portfolio · Filip's
   // book"). Null/undefined drops the tail and the eyebrow reads "Portfolio".
@@ -48,7 +53,6 @@ interface Props {
 
   hasSavedDefault: boolean;
   defaultsAreCurrent: boolean;
-  onSaveDefaults: () => void;
   onResetDefaults: () => void;
 
   // Pagination. Top + bottom selectors share this state; bottom mirror lets
@@ -311,7 +315,7 @@ export function PortfolioView(props: Props) {
               selectedSignals={props.selectedSignals}
               toggleSignal={props.toggleSignal}
               clearSignals={props.clearSignals}
-              totalsBySignal={props.totalsBySignal}
+              globalTotalsBySignal={props.globalTotalsBySignal}
               sortKey={props.sortKey}
               sortDirection={props.sortDirection}
               setSortKey={props.setSortKey}
@@ -325,7 +329,6 @@ export function PortfolioView(props: Props) {
               isPaginated={isPaginated}
               hasSavedDefault={props.hasSavedDefault}
               defaultsAreCurrent={props.defaultsAreCurrent}
-              onSaveDefaults={props.onSaveDefaults}
               onResetDefaults={props.onResetDefaults}
             />
             <ColumnHeaders
@@ -512,7 +515,10 @@ interface ToolbarProps {
   selectedSignals: PortfolioSignalKey[];
   toggleSignal: (k: PortfolioSignalKey) => void;
   clearSignals: () => void;
-  totalsBySignal: Record<PortfolioSignalKey, number>;
+  // Toolbar feeds the FilterDropdown with book-wide totals so signal
+  // counts stay stable as the user toggles filters. The current-scope
+  // totals (used by the banner) live one level up in PortfolioView.
+  globalTotalsBySignal: Record<PortfolioSignalKey, number>;
   sortKey: PortfolioSortKey;
   sortDirection: "asc" | "desc";
   setSortKey: (k: PortfolioSortKey) => void;
@@ -529,7 +535,6 @@ interface ToolbarProps {
   isPaginated: boolean;
   hasSavedDefault: boolean;
   defaultsAreCurrent: boolean;
-  onSaveDefaults: () => void;
   onResetDefaults: () => void;
 }
 
@@ -537,7 +542,7 @@ function Toolbar({
   selectedSignals,
   toggleSignal,
   clearSignals,
-  totalsBySignal,
+  globalTotalsBySignal,
   sortKey,
   sortDirection,
   setSortKey,
@@ -551,7 +556,6 @@ function Toolbar({
   isPaginated,
   hasSavedDefault,
   defaultsAreCurrent,
-  onSaveDefaults,
   onResetDefaults,
 }: ToolbarProps) {
   const isFiltered = selectedSignals.length > 0;
@@ -624,6 +628,10 @@ function Toolbar({
         flexWrap: "wrap",
         background: "var(--page-bg)",
         padding: "12px 0",
+        // Relative so the absolutely-positioned Pagination can pin itself
+        // to the toolbar's true horizontal center, independent of the count
+        // text's width on the left or the action cluster's width on the right.
+        position: "relative",
       }}
     >
       <div ref={filterRef} style={{ position: "relative" }}>
@@ -644,7 +652,7 @@ function Toolbar({
             selectedSignals={selectedSignals}
             toggleSignal={toggleSignal}
             clearSignals={clearSignals}
-            totalsBySignal={totalsBySignal}
+            totalsBySignal={globalTotalsBySignal}
             onClose={() => setFilterOpen(false)}
           />
         )}
@@ -685,15 +693,26 @@ function Toolbar({
         {isFiltered && <span style={{ opacity: 0.65 }}>· filtered</span>}
       </span>
 
-      {/* Pagination sits next to the count on the left so the row reads as
-          "where am I in the data" all together. The flex spacer pushes the
-          state-affecting controls (Clear / Reset / Save / Sort) to the right. */}
+      {/* Pagination pinned to the toolbar's true horizontal center via
+          absolute positioning. flex: 1 spacers were close-but-not-quite —
+          they balanced LEFTOVER space, which drifted as count/action
+          widths changed. Absolute centering is layout-independent. */}
       {totalPages > 1 && (
-        <Pagination
-          page={page}
-          totalPages={totalPages}
-          onPageChange={onPageChange}
-        />
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 1,
+          }}
+        >
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={onPageChange}
+          />
+        </div>
       )}
 
       <span style={{ flex: 1 }} />
@@ -708,17 +727,6 @@ function Toolbar({
           Reset to default
         </button>
       )}
-      <button
-        onClick={onSaveDefaults}
-        title={hasSavedDefault ? "Update saved default" : "Save current state as default"}
-        style={ghostBtnStyle}
-      >
-        <span className={`pf-star${hasSavedDefault ? " on" : ""}`}>
-          {hasSavedDefault ? "★" : "☆"}
-        </span>
-        <span>{hasSavedDefault ? "Saved" : "Save view"}</span>
-        <span className="kbd" style={{ marginLeft: 2 }}>⌘S</span>
-      </button>
 
       <div ref={sortRef} style={{ position: "relative" }}>
         <button
@@ -740,7 +748,6 @@ function Toolbar({
             sortOptions={sortOptions}
             setSortKey={setSortKey}
             onClose={() => setSortOpen(false)}
-            anchorRight
           />
         )}
       </div>
@@ -819,13 +826,34 @@ function FilterDropdown({
         maxWidth: "calc(100vw - 80px)",
       }}
     >
-      {/* Eyebrow alone is enough header chrome here. The italic helper that
-          used to live below ("Multi-select. Press 1-8 to toggle.") was a
-          third Fraunces use per viewport and a misleading scope cue (numbers
-          fire globally, not popover-scoped) — the per-row kbd badges next to
-          each signal already advertise the binding. */}
-      <div style={{ padding: "12px 20px 8px", borderBottom: "1px solid var(--hairline)" }}>
+      {/* Header carries the Clear-all action on the right so the popover
+          ends cleanly at the last signal row (no bottom-strip chrome). */}
+      <div
+        style={{
+          padding: "10px 14px 8px 20px",
+          borderBottom: "1px solid var(--hairline)",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
         <div style={eyebrowStyle}>Filter by signal</div>
+        <span style={{ flex: 1 }} />
+        <button
+          onClick={clearSignals}
+          style={{
+            background: "transparent",
+            color: "var(--moss)",
+            fontSize: 12,
+            fontWeight: 600,
+            padding: "4px 6px",
+            borderRadius: 6,
+            cursor: "pointer",
+            border: 0,
+          }}
+        >
+          Clear all
+        </button>
       </div>
       <div ref={listRef} style={{ padding: 6, maxHeight: 420, overflowY: "auto" }}>
         {PORTFOLIO_SIGNALS.map((meta, i) => {
@@ -876,41 +904,6 @@ function FilterDropdown({
           );
         })}
       </div>
-      <div
-        style={{
-          padding: "10px 16px",
-          borderTop: "1px solid var(--hairline)",
-          display: "flex",
-          gap: 14,
-          fontSize: 11,
-          color: "var(--green-100)",
-          alignItems: "center",
-        }}
-      >
-        <span>
-          <span className="kbd">↑↓</span> nav
-        </span>
-        <span>
-          <span className="kbd">space</span> toggle
-        </span>
-        <span style={{ marginLeft: "auto" }}>
-          <button
-            onClick={clearSignals}
-            style={{
-              background: "transparent",
-              color: "var(--moss)",
-              fontSize: 12,
-              fontWeight: 600,
-              padding: "5px 8px",
-              borderRadius: 6,
-              cursor: "pointer",
-              border: 0,
-            }}
-          >
-            Clear all
-          </button>
-        </span>
-      </div>
     </div>
   );
 }
@@ -923,14 +916,12 @@ function SortDropdown({
   sortOptions,
   setSortKey,
   onClose,
-  anchorRight,
 }: {
   sortKey: PortfolioSortKey;
   sortDirection: "asc" | "desc";
   sortOptions: ReturnType<typeof getSortOptions>;
   setSortKey: (k: PortfolioSortKey) => void;
   onClose: () => void;
-  anchorRight?: boolean;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [focusedIdx, setFocusedIdx] = useState(() => {
@@ -975,7 +966,10 @@ function SortDropdown({
   return (
     <div
       className="pf-pop"
-      style={{ ...(anchorRight ? { right: 0 } : { left: 0 }), minWidth: 200 }}
+      // Stretch to match the trigger pill's width by anchoring to both
+      // edges of the relative-positioned wrapper. Trigger and popover
+      // read as one continuous element.
+      style={{ left: 0, right: 0, minWidth: 0 }}
     >
       <div style={{ padding: "12px 20px 8px", borderBottom: "1px solid var(--hairline)" }}>
         <div style={eyebrowStyle}>Sort by</div>
@@ -1012,30 +1006,8 @@ function SortDropdown({
           );
         })}
       </div>
-      {/* Mirrors the FilterDropdown footer so both popovers teach the same
-          surface. Recognition over recall: the in-popover hint announces
-          space flips direction without the user having to discover it. */}
-      <div
-        style={{
-          padding: "10px 16px",
-          borderTop: "1px solid var(--hairline)",
-          display: "flex",
-          gap: 14,
-          fontSize: 11,
-          color: "var(--green-100)",
-          alignItems: "center",
-        }}
-      >
-        <span>
-          <span className="kbd">↑↓</span> nav
-        </span>
-        <span>
-          <span className="kbd">↵</span> apply
-        </span>
-        <span>
-          <span className="kbd">space</span> apply/flip
-        </span>
-      </div>
+      {/* No footer — keyboard hints moved into the global shortcut cheatsheet
+          (open with `?`). Keeps the Sort popover compact. */}
     </div>
   );
 }

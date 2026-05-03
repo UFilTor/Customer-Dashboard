@@ -301,6 +301,9 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
     function onSaveDefaults() {
       const { filter: f, selectedSignals: sigs, sortKey: sk } = stateRef.current;
       saveDefaults({ filter: f, signals: sigs, sort: sk });
+      // Mirror the prop-callback: flip hasSavedDefault so "Reset to default"
+      // becomes available immediately after a Cmd+S save.
+      setHasSavedDefault(true);
     }
 
     window.addEventListener("ud-list-nav", onNav);
@@ -428,10 +431,6 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
     []
   );
   const clearSignals = useCallback(() => setSelectedSignals([]), []);
-  const onSaveDefaults = useCallback(() => {
-    saveDefaults({ filter, signals: selectedSignals, sort: sortKey });
-    setHasSavedDefault(true);
-  }, [filter, selectedSignals, sortKey]);
   const onResetDefaults = useCallback(() => {
     const d = loadDefaults();
     if (!d) return;
@@ -491,6 +490,7 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
         rows={paginatedRows}
         totalRowCount={filteredSortedRows.length}
         totalsBySignal={totalsBySignal}
+        globalTotalsBySignal={data?.totalsBySignal ?? totalsBySignal}
         filterLabel={filterLabel}
         showAvatar={showAvatar}
         selectedSignals={selectedSignals}
@@ -503,7 +503,6 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
         onRowClick={onRowClick}
         hasSavedDefault={hasSavedDefault}
         defaultsAreCurrent={isCurrentEqualToSaved(filter, selectedSignals, sortKey)}
-        onSaveDefaults={onSaveDefaults}
         onResetDefaults={onResetDefaults}
         page={effectivePage}
         totalPages={totalPages}

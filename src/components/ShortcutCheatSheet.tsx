@@ -97,12 +97,24 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
     out.push({
       heading: "Portfolio",
       rows: [
-        { label: "Toggle signal filter", keys: "1-8" },
+        { label: "Open Signals filter", keys: "Shift + F" },
+        { label: "Toggle signal filter (in popover or list)", keys: "1-8" },
         { label: "Clear all signal filters", keys: "0" },
+        { label: "Open Sort menu", keys: "Shift + S" },
         { label: "Cycle sort", keys: "S" },
         { label: "Save current as default", keys: `${modLabel} + S` },
+        { label: "Previous / next page", keys: "[ / ]" },
         { label: "Navigate rows", keys: "Up / Down" },
         { label: "Open account", keys: "Enter" },
+      ],
+    });
+    out.push({
+      heading: "Inside Signals or Sort popover",
+      rows: [
+        { label: "Move focus", keys: "Up / Down" },
+        { label: "Toggle / apply", keys: "Space" },
+        { label: "Apply and close", keys: "Enter" },
+        { label: "Close popover", keys: "Esc" },
       ],
     });
   } else if (ctx.dashboard === "meeting_prep") {

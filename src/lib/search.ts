@@ -1,3 +1,4 @@
+import { TO_EUR } from "./attention";
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { searchObjectsPage } from "./hubspot-search";
 import { parseQuery } from "./search-llm";
@@ -57,6 +58,14 @@ const ENTITY_FIELDS: Record<SearchEntityType, Set<string>> = {
     "hibernation_notes",
     "product_hold_note",
     "hs_next_step",
+    // Invoice + step-tracking fields. Mirrors search-llm.ts.
+    "unpaid_invoice",
+    "invoice_due_date",
+    "outstanding_amount",
+    // Pseudo-field handled post-fetch, see executeTarget below.
+    "outstanding_amount_eur",
+    "number_of_open_invoices",
+    "hs_v2_date_entered_current_stage",
   ]),
   company: new Set([
     "name",
@@ -129,7 +138,17 @@ const HUBSPOT_OBJECT_PATH: Record<SearchEntityType, string> = {
 // these small — search results are bulk and a wide property fan-out doubles
 // payload size.
 const SEARCH_RETURN_PROPS: Record<SearchEntityType, string[]> = {
-  deal: ["dealname", "dealstage", "hubspot_owner_id", "createdate"],
+  // outstanding_amount + deal_currency_code are returned even when not
+  // filtered on, because the post-fetch EUR conversion (see PSEUDO_FIELDS)
+  // needs both. Adds ~30 bytes per deal payload, no perceivable cost.
+  deal: [
+    "dealname",
+    "dealstage",
+    "hubspot_owner_id",
+    "createdate",
+    "outstanding_amount",
+    "deal_currency_code",
+  ],
   company: ["name", "domain", "hubspot_owner_id", "health_score"],
   note: ["hs_note_body", "hs_timestamp", "hubspot_owner_id"],
   meeting: [
@@ -200,8 +219,21 @@ function validateSpec(spec: SearchSpec): string | null {
 // run multiple searches in parallel — results merged + deduped by id below.
 const FILTER_GROUP_LIMIT = 5;
 
+// Pseudo-fields are validated like real fields (so the LLM can name them
+// freely) but they don't exist in HubSpot. They're stripped here before the
+// HubSpot request is built, then applied in-memory in executeTarget after
+// the fetch returns. Currently: outstanding_amount_eur (deal currency
+// converted to EUR via TO_EUR table).
+const PSEUDO_FIELDS = new Set<string>(["outstanding_amount_eur"]);
+
+function isPseudoFilter(f: SearchFilter): boolean {
+  return PSEUDO_FIELDS.has(f.propertyName);
+}
+
 function buildFilterGroupChunks(t: SearchTarget): Record<string, unknown>[][] {
-  const baseFilters = t.filters.map((f) => filterToHubspot(f));
+  const baseFilters = t.filters
+    .filter((f) => !isPseudoFilter(f))
+    .map((f) => filterToHubspot(f));
   if (!t.textSearch) {
     return baseFilters.length > 0 ? [[{ filters: baseFilters }]] : [];
   }
@@ -303,7 +335,47 @@ async function executeTarget(t: SearchTarget): Promise<{
       merged.push(obj);
     }
   }
-  return { entityType: t.entityType, results: merged };
+
+  // Apply pseudo-filters in memory. Right now there's only one
+  // (outstanding_amount_eur), but the loop is structured so adding more
+  // currency-converted thresholds (e.g. amount_eur for deal_amount) is a
+  // one-line addition.
+  const pseudoFilters = t.filters.filter(isPseudoFilter);
+  if (pseudoFilters.length === 0) {
+    return { entityType: t.entityType, results: merged };
+  }
+  const filtered = merged.filter((obj) => {
+    for (const f of pseudoFilters) {
+      if (!matchesPseudoFilter(f, obj.properties)) return false;
+    }
+    return true;
+  });
+  return { entityType: t.entityType, results: filtered };
+}
+
+function matchesPseudoFilter(
+  f: SearchFilter,
+  props: Record<string, string>
+): boolean {
+  if (f.propertyName === "outstanding_amount_eur") {
+    const raw = parseFloat(props.outstanding_amount || "0");
+    if (!Number.isFinite(raw) || raw <= 0) return false;
+    const ccy = (props.deal_currency_code || "EUR").toUpperCase();
+    const rate = TO_EUR[ccy] ?? 1;
+    const eur = raw * rate;
+    const target = parseFloat(f.value);
+    if (!Number.isFinite(target)) return false;
+    switch (f.operator) {
+      case "GT":  return eur > target;
+      case "GTE": return eur >= target;
+      case "LT":  return eur < target;
+      case "LTE": return eur <= target;
+      case "EQ":  return Math.abs(eur - target) < 0.01;
+      case "NEQ": return Math.abs(eur - target) >= 0.01;
+      default:    return false;
+    }
+  }
+  return true;
 }
 
 // Resolve a list of engagement IDs to their associated company IDs. Returns

@@ -40,10 +40,11 @@ export function isSignalApplicable(signal: PortfolioSignalKey, stage: PortfolioS
   return STAGE_APPLICABILITY[signal].includes(stage);
 }
 
-// Pure value extractor for a row + sort key. Returns null for signal-specific
-// keys when the row is not firing that signal, sortByKey orders nulls to the
-// bottom of either ascending or descending sorts so non-firing rows never
-// outrank firing ones.
+// Pure value extractor for a row + sort key. Returns null when the requested
+// signal-specific value is unavailable for this row. CONTRACT for callers:
+// non-firing rows must be ordered last regardless of sort direction so they
+// never outrank firing ones. The Portfolio container's sort comparator
+// (Task 11) is responsible for honoring this.
 export function extractSortKey(row: PortfolioRow, key: PortfolioSortKey): number | string | null {
   switch (key) {
     // Universal
@@ -60,7 +61,7 @@ export function extractSortKey(row: PortfolioRow, key: PortfolioSortKey): number
     case "count_overdue":      return row.openInvoiceCount;
 
     // Open invoices
-    case "due_soonest":        return row.overdueDays;
+    case "due_soonest":        return row.daysUntilDue;
     case "value_open":         return row.outstandingEur;
     case "count_open":         return row.openInvoiceCount;
 

@@ -17,6 +17,7 @@ function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
     daysSinceContact: null,
     signals: [],
     overdueDays: null,
+    daysUntilDue: null,
     outstandingEur: null,
     openInvoiceCount: null,
     daysSilent: null,
@@ -88,6 +89,11 @@ describe("extractSortKey", () => {
     expect(extractSortKey(row({ overdueDays: 14 }), "oldest_outstanding")).toBe(14);
     expect(extractSortKey(row({ outstandingEur: 5000 }), "value_overdue")).toBe(5000);
     expect(extractSortKey(row({ volumeDropPct: 0.7 }), "biggest_pct_drop")).toBe(0.7);
+  });
+
+  it("returns daysUntilDue for due_soonest sort on open invoices", () => {
+    expect(extractSortKey(row({ daysUntilDue: 5 }), "due_soonest")).toBe(5);
+    expect(extractSortKey(row(), "due_soonest")).toBeNull();
   });
 });
 

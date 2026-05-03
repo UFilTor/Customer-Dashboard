@@ -713,7 +713,18 @@ export interface PortfolioRow {
 
   // Signal-specific values surfaced for sort key extraction.
   // Null when the corresponding signal is not firing.
+  /**
+   * Days *past* due (positive integer) when an open invoice is overdue.
+   * Null when no open invoice or when the invoice is not yet due.
+   * Sort `oldest_outstanding` reads this in descending order.
+   */
   overdueDays: number | null;
+  /**
+   * Days *until* due (positive integer) for open invoices that are not yet
+   * overdue. Null when no open invoice or when the invoice is already overdue.
+   * Sort `due_soonest` reads this in ascending order.
+   */
+  daysUntilDue: number | null;
   outstandingEur: number | null;
   openInvoiceCount: number | null;
   daysSilent: number | null;

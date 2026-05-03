@@ -1,5 +1,33 @@
 import { describe, it, expect } from "vitest";
-import { classifyPortfolioStage, isSignalApplicable } from "./portfolio";
+import { classifyPortfolioStage, isSignalApplicable, extractSortKey, getSortOptions } from "./portfolio";
+import type { PortfolioRow } from "./types";
+
+function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
+  return {
+    id: "1",
+    name: "Example",
+    domain: null,
+    ownerId: null,
+    ownerName: null,
+    stage: "Established",
+    daysInStage: null,
+    customerLiveDate: null,
+    revenue: 0,
+    healthScore: null,
+    daysSinceContact: null,
+    signals: [],
+    overdueDays: null,
+    outstandingEur: null,
+    openInvoiceCount: null,
+    daysSilent: null,
+    healthDrop: null,
+    daysPastExpectedStep: null,
+    volumeDropPct: null,
+    prior3mVolume: null,
+    wishToChurnAt: null,
+    ...overrides,
+  };
+}
 
 describe("classifyPortfolioStage", () => {
   it("maps onboarding-flavored HubSpot values", () => {
@@ -40,5 +68,52 @@ describe("isSignalApplicable", () => {
     for (const stage of ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"] as const) {
       expect(isSignalApplicable("overdue_invoices", stage)).toBe(true);
     }
+  });
+});
+
+describe("extractSortKey", () => {
+  it("returns universal values", () => {
+    expect(extractSortKey(row({ revenue: 1234 }), "revenue")).toBe(1234);
+    expect(extractSortKey(row({ healthScore: 55 }), "health")).toBe(55);
+    expect(extractSortKey(row({ daysSinceContact: 12 }), "last_contact")).toBe(12);
+    expect(extractSortKey(row({ name: "Acme" }), "name")).toBe("Acme");
+  });
+
+  it("returns null for signal-specific keys when signal is not firing", () => {
+    expect(extractSortKey(row(), "oldest_outstanding")).toBeNull();
+    expect(extractSortKey(row(), "biggest_pct_drop")).toBeNull();
+  });
+
+  it("returns signal-specific values when present", () => {
+    expect(extractSortKey(row({ overdueDays: 14 }), "oldest_outstanding")).toBe(14);
+    expect(extractSortKey(row({ outstandingEur: 5000 }), "value_overdue")).toBe(5000);
+    expect(extractSortKey(row({ volumeDropPct: 0.7 }), "biggest_pct_drop")).toBe(0.7);
+  });
+});
+
+describe("getSortOptions", () => {
+  it("returns universal sorts when no signal is selected", () => {
+    const opts = getSortOptions([]);
+    const keys = opts.map((o) => o.key);
+    expect(keys).toContain("urgency");
+    expect(keys).toContain("revenue");
+    expect(keys).not.toContain("oldest_outstanding");
+  });
+
+  it("adds signal-specific sorts when exactly one signal is selected", () => {
+    const opts = getSortOptions(["overdue_invoices"]);
+    const keys = opts.map((o) => o.key);
+    expect(keys).toContain("urgency");
+    expect(keys).toContain("oldest_outstanding");
+    expect(keys).toContain("value_overdue");
+    expect(keys).toContain("count_overdue");
+  });
+
+  it("omits signal-specific sorts when 2+ signals are selected", () => {
+    const opts = getSortOptions(["overdue_invoices", "wish_to_churn"]);
+    const keys = opts.map((o) => o.key);
+    expect(keys).toContain("urgency");
+    expect(keys).not.toContain("oldest_outstanding");
+    expect(keys).not.toContain("wish_flagged_recent");
   });
 });

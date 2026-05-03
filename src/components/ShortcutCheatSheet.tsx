@@ -7,10 +7,9 @@ interface Props {
   onClose: () => void;
   dashboard:
     | "status"
+    | "portfolio"
     | "meeting_prep"
-    | "onboarding"
     | "pay_migration"
-    | "retention"
     | "bloom"
     | "search";
   variant: "briefing" | "split";
@@ -49,9 +48,9 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
   out.push({
     heading: "Switch dashboard",
     rows: [
+      { label: "Portfolio", keys: "G then T" },
       { label: "Status", keys: "G then S" },
       { label: "Meeting prep", keys: "G then M" },
-      { label: "Onboarding", keys: "G then O" },
       { label: "Lookup", keys: "G then L" },
       { label: "Pay migration", keys: "G then P" },
       { label: "Bloom", keys: "G then B" },
@@ -95,6 +94,18 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
         ],
       });
     }
+  } else if (ctx.dashboard === "portfolio") {
+    out.push({
+      heading: "Portfolio",
+      rows: [
+        { label: "Toggle signal filter", keys: "1-8" },
+        { label: "Clear all signal filters", keys: "0" },
+        { label: "Cycle sort", keys: "S" },
+        { label: "Save current as default", keys: `${modLabel} + S` },
+        { label: "Navigate rows", keys: "Up / Down" },
+        { label: "Open account", keys: "Enter" },
+      ],
+    });
   } else if (ctx.dashboard === "meeting_prep") {
     out.push({
       heading: "Meeting prep",
@@ -105,14 +116,6 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
         { label: "Move within Previous activity", keys: "↑ / ↓" },
         { label: "Toggle expand on focused activity", keys: "Enter / Space" },
         { label: "Back out of Previous activity", keys: "←" },
-      ],
-    });
-  } else if (ctx.dashboard === "onboarding") {
-    out.push({
-      heading: "Needs attention",
-      rows: [
-        { label: "Previous / next account", keys: "↑ / ↓" },
-        { label: "Open focused account", keys: "Enter" },
       ],
     });
   } else if (ctx.dashboard === "pay_migration") {

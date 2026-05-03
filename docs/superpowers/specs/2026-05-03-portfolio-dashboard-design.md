@@ -38,14 +38,14 @@ The route returns variant-agnostic rows. Future Split and Kanban layouts (see Fu
 ## Data shape
 
 ```ts
-type Stage =
+type PortfolioStage =
   | "Onboarding"
   | "Adopted"
   | "Started"
   | "Ramp Up"
   | "Established";
 
-type SignalKey =
+type PortfolioSignalKey =
   | "overdue_invoices"
   | "open_invoices"
   | "no_future_events"
@@ -62,7 +62,7 @@ interface PortfolioRow {
   ownerId: string | null;
   ownerName: string | null;
 
-  stage: Stage;
+  stage: PortfolioStage;
   daysInStage: number | null;
   customerLiveDate: string | null;
 
@@ -70,8 +70,7 @@ interface PortfolioRow {
   healthScore: number | null; // 0-100
   daysSinceContact: number | null;
 
-  signals: WatchOutSignal[];  // every firing signal, ordered bad → warn
-  signalCount: number;        // signals.length, sortable
+  signals: WatchOutSignal[];  // every firing signal, ordered bad to warn
 
   // Signal-specific values surfaced for sort key extraction.
   // Null when the corresponding signal is not firing.
@@ -89,8 +88,8 @@ interface PortfolioRow {
 interface PortfolioResponse {
   rows: PortfolioRow[];
   generatedAt: string;
-  totalsByStage: Record<Stage, number>;
-  totalsBySignal: Record<SignalKey, number>;  // unfiltered counts for pill labels
+  totalsByStage: Record<PortfolioStage, number>;
+  totalsBySignal: Record<PortfolioSignalKey, number>;  // unfiltered counts for pill labels
 }
 ```
 
@@ -181,7 +180,7 @@ Signal-specific sorts (available only when exactly one signal is selected):
 | `wish_to_churn` | Most recently flagged |
 | `gone_quiet` | Longest silence |
 
-Implementation: `getSortOptions(selectedSignals: SignalKey[]): SortOption[]`. Each option carries a `keyExtractor: (row: PortfolioRow) => number | string | null` and direction. When the filter changes such that the current sort is no longer offered (e.g. user clears the signal filter while a signal-specific sort is active), sort resets to `urgency`.
+Implementation: `getSortOptions(selectedSignals: PortfolioSignalKey[]): SortOption[]`. Each option carries a `keyExtractor: (row: PortfolioRow) => number | string | null` and direction. When the filter changes such that the current sort is no longer offered (e.g. user clears the signal filter while a signal-specific sort is active), sort resets to `urgency`.
 
 URL serialization: `?sort=oldest_outstanding`. Sort param round-trips through `popstate` like the existing dashboard/variant params.
 
@@ -192,8 +191,8 @@ Extend the existing localStorage default-filter pattern. Store under `ud-v2-port
 ```ts
 {
   filter: GlobalFilter;       // All / Region / Person: same as today
-  signals: SignalKey[];       // multi-select
-  sort: SortKey;
+  signals: PortfolioSignalKey[];       // multi-select
+  sort: PortfolioSortKey;
 }
 ```
 
@@ -279,7 +278,7 @@ Browser back/forward continues to round-trip through the existing `popstate` lis
 
 ### Updated files
 
-- `src/lib/types.ts`: add `Stage`, `SignalKey`, `PortfolioRow`, `PortfolioResponse`, `SortKey`, `PortfolioDefaults`
+- `src/lib/types.ts`: add `PortfolioStage`, `PortfolioSignalKey`, `PortfolioRow`, `PortfolioResponse`, `PortfolioSortKey`, `PortfolioDefaults`
 - `src/lib/signals.ts`: add stage applicability map, extend `SIGNALS` and `SECTION_ORDER` for 8 signals, flip `no_future_events` to bad
 - `src/lib/urgency.ts`: extend `urgencyScore` to weight new signals
 - `src/components/design/VariantPicker.tsx`: add `portfolio` entry, mark `available: true`; remove placeholder `onboarding` and `retention` entries from `DASHBOARDS`

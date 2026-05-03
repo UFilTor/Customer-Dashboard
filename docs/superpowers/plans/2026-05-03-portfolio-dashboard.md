@@ -28,7 +28,7 @@
 
 | Path | Change |
 |---|---|
-| `src/lib/types.ts` | Add `Stage`, `SignalKey`, `SortKey`, `PortfolioRow`, `PortfolioResponse`, `PortfolioDefaults`, `SignalFilter` |
+| `src/lib/types.ts` | Add `PortfolioStage`, `PortfolioSignalKey`, `PortfolioSortKey`, `PortfolioRow`, `PortfolioResponse`, `PortfolioDefaults`, `PortfolioSignalFilter` |
 | `src/lib/signals.ts` | Flip `no_future_events` severity to bad, extend `SIGNALS` + `SECTION_ORDER` to 8 entries, add `STAGE_APPLICABILITY` map |
 | `src/lib/signals.test.ts` | Update no_future_events severity assertion, add stage applicability cases |
 | `src/lib/urgency.ts` | Extend `urgencyScore` to weight all 8 signals |
@@ -59,14 +59,14 @@
 // one company. Signals attached as decoration; stage applicability gates which
 // signals can fire.
 
-export type Stage =
+export type PortfolioStage =
   | "Onboarding"
   | "Adopted"
   | "Started"
   | "Ramp Up"
   | "Established";
 
-export type SignalKey =
+export type PortfolioSignalKey =
   | "overdue_invoices"
   | "open_invoices"
   | "no_future_events"
@@ -76,7 +76,7 @@ export type SignalKey =
   | "wish_to_churn"
   | "gone_quiet";
 
-export type SortKey =
+export type PortfolioSortKey =
   // Universal
   | "urgency"
   | "name"
@@ -109,7 +109,7 @@ export interface PortfolioRow {
   ownerId: string | null;
   ownerName: string | null;
 
-  stage: Stage;
+  stage: PortfolioStage;
   daysInStage: number | null;
   customerLiveDate: string | null;
 
@@ -118,7 +118,6 @@ export interface PortfolioRow {
   daysSinceContact: number | null;
 
   signals: WatchOutSignal[];
-  signalCount: number;
 
   // Signal-specific values surfaced for sort key extraction.
   // Null when the corresponding signal is not firing.
@@ -136,18 +135,18 @@ export interface PortfolioRow {
 export interface PortfolioResponse {
   rows: PortfolioRow[];
   generatedAt: string;
-  totalsByStage: Record<Stage, number>;
-  totalsBySignal: Record<SignalKey, number>;
+  totalsByStage: Record<PortfolioStage, number>;
+  totalsBySignal: Record<PortfolioSignalKey, number>;
 }
 
 export interface PortfolioDefaults {
   filter: GlobalFilter;
-  signals: SignalKey[];
-  sort: SortKey;
+  signals: PortfolioSignalKey[];
+  sort: PortfolioSortKey;
 }
 
 // Multi-select signal filter state. Empty array means no signal filter.
-export type SignalFilter = SignalKey[];
+export type PortfolioSignalFilter = PortfolioSignalKey[];
 ```
 
 - [ ] **Step 2: Add the `GlobalFilter` import.**
@@ -172,7 +171,7 @@ git commit -m "feat(portfolio): add types for Portfolio dashboard rows + default
 
 ---
 
-## Task 2: Stage classification helper
+## Task 2: PortfolioStage classification helper
 
 **Files:**
 - Modify: `src/lib/portfolio.ts` (create)
@@ -213,7 +212,7 @@ Expected: FAIL because `portfolio.ts` does not exist yet.
 - [ ] **Step 3: Create `src/lib/portfolio.ts` with the minimal implementation.**
 
 ```ts
-import type { Stage } from "./types";
+import type { PortfolioStage } from "./types";
 
 // Maps HubSpot `customer_stage` to our 5-stage Portfolio union. Unknown
 // values fall back to "Established" so the account still appears in the
@@ -221,7 +220,7 @@ import type { Stage } from "./types";
 export function classifyPortfolioStage(
   customerStage: string,
   _customerSubstage: string | null
-): Stage {
+): PortfolioStage {
   switch (customerStage) {
     case "Onboarding":
       return "Onboarding";
@@ -337,15 +336,15 @@ export const SIGNALS: SignalMeta[] = [
 
 - [ ] **Step 4: Extend `SIGNALS` and `SECTION_ORDER` to 8 entries.**
 
-Replace the `SIGNALS` array and `SECTION_ORDER` constant in `src/lib/signals.ts`. Note that the existing `AttentionSignal` type uses `health_score`, and `WatchOutSignalKind` uses `health_dropped`. We need a unified signal-key vocabulary that the Portfolio dashboard consumes. Rather than refactor the existing two types, introduce a Portfolio-side `PortfolioSignalMeta` array keyed on `SignalKey` from `types.ts`, leaving `SIGNALS` (typed by `AttentionSignal`) untouched for the legacy Status dashboard:
+Replace the `SIGNALS` array and `SECTION_ORDER` constant in `src/lib/signals.ts`. Note that the existing `AttentionSignal` type uses `health_score`, and `WatchOutSignalKind` uses `health_dropped`. We need a unified signal-key vocabulary that the Portfolio dashboard consumes. Rather than refactor the existing two types, introduce a Portfolio-side `PortfolioSignalMeta` array keyed on `PortfolioSignalKey` from `types.ts`, leaving `SIGNALS` (typed by `AttentionSignal`) untouched for the legacy Status dashboard:
 
 Append to `src/lib/signals.ts`:
 
 ```ts
-import type { SignalKey } from "./types";
+import type { PortfolioSignalKey } from "./types";
 
 export interface PortfolioSignalMeta {
-  key: SignalKey;
+  key: PortfolioSignalKey;
   label: string;
   short: string;
   color: string;
@@ -367,14 +366,14 @@ export const PORTFOLIO_SIGNALS: PortfolioSignalMeta[] = [
   { key: "gone_quiet",         label: "Gone quiet",         short: "Quiet",       color: "#3D4E5F", severity: "warn" },
 ];
 
-export const PORTFOLIO_SIGNAL_MAP: Record<SignalKey, PortfolioSignalMeta> =
+export const PORTFOLIO_SIGNAL_MAP: Record<PortfolioSignalKey, PortfolioSignalMeta> =
   Object.fromEntries(PORTFOLIO_SIGNALS.map((s) => [s.key, s])) as Record<
-    SignalKey,
+    PortfolioSignalKey,
     PortfolioSignalMeta
   >;
 
 // Order keyboard 1-8 maps to. Identical to PORTFOLIO_SIGNALS' index sequence.
-export const PORTFOLIO_SIGNAL_ORDER: SignalKey[] = PORTFOLIO_SIGNALS.map((s) => s.key);
+export const PORTFOLIO_SIGNAL_ORDER: PortfolioSignalKey[] = PORTFOLIO_SIGNALS.map((s) => s.key);
 ```
 
 - [ ] **Step 5: Add stage applicability to `src/lib/portfolio.ts`.**
@@ -382,11 +381,11 @@ export const PORTFOLIO_SIGNAL_ORDER: SignalKey[] = PORTFOLIO_SIGNALS.map((s) => 
 Append to `src/lib/portfolio.ts`:
 
 ```ts
-import type { SignalKey, Stage } from "./types";
+import type { PortfolioSignalKey, PortfolioStage } from "./types";
 
 // Which signals can fire for each stage. A signal is dropped from a row if
 // the row's stage is not in its applicability set.
-export const STAGE_APPLICABILITY: Record<SignalKey, Stage[]> = {
+export const STAGE_APPLICABILITY: Record<PortfolioSignalKey, PortfolioStage[]> = {
   overdue_invoices:  ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
   open_invoices:     ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
   no_future_events:  ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
@@ -397,7 +396,7 @@ export const STAGE_APPLICABILITY: Record<SignalKey, Stage[]> = {
   volume_declining:  ["Ramp Up", "Established"],
 };
 
-export function isSignalApplicable(signal: SignalKey, stage: Stage): boolean {
+export function isSignalApplicable(signal: PortfolioSignalKey, stage: PortfolioStage): boolean {
   return STAGE_APPLICABILITY[signal].includes(stage);
 }
 ```
@@ -587,7 +586,6 @@ function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
     healthScore: null,
     daysSinceContact: null,
     signals: [],
-    signalCount: 0,
     overdueDays: null,
     outstandingEur: null,
     openInvoiceCount: null,
@@ -659,16 +657,16 @@ Expected: FAIL because `extractSortKey` and `getSortOptions` are not defined yet
 Append:
 
 ```ts
-import type { PortfolioRow, SortKey, SignalKey } from "./types";
+import type { PortfolioRow, PortfolioSortKey, PortfolioSignalKey } from "./types";
 
 // Pure value extractor for a row + sort key. Returns null for signal-specific
 // keys when the row is not firing that signal, sortByKey orders nulls to the
 // bottom of either ascending or descending sorts so non-firing rows never
 // outrank firing ones.
-export function extractSortKey(row: PortfolioRow, key: SortKey): number | string | null {
+export function extractSortKey(row: PortfolioRow, key: PortfolioSortKey): number | string | null {
   switch (key) {
     // Universal
-    case "urgency":         return row.signalCount * 10000 + row.revenue;
+    case "urgency":         return row.signals.length * 10000 + row.revenue;
     case "name":            return row.name;
     case "revenue":         return row.revenue;
     case "health":          return row.healthScore;
@@ -710,7 +708,7 @@ export function extractSortKey(row: PortfolioRow, key: SortKey): number | string
 }
 
 export interface SortOption {
-  key: SortKey;
+  key: PortfolioSortKey;
   label: string;
   /** Sort direction. "desc" puts higher values first. */
   direction: "asc" | "desc";
@@ -725,7 +723,7 @@ const UNIVERSAL_SORTS: SortOption[] = [
   { key: "days_in_stage", label: "Days in stage",   direction: "desc" },
 ];
 
-const SIGNAL_SPECIFIC_SORTS: Record<SignalKey, SortOption[]> = {
+const SIGNAL_SPECIFIC_SORTS: Record<PortfolioSignalKey, SortOption[]> = {
   overdue_invoices: [
     { key: "oldest_outstanding", label: "Oldest outstanding",  direction: "desc" },
     { key: "value_overdue",      label: "Value of overdue",    direction: "desc" },
@@ -763,7 +761,7 @@ const SIGNAL_SPECIFIC_SORTS: Record<SignalKey, SortOption[]> = {
 // Returns the sort options to render in the dropdown given the active signal
 // filter. With exactly one signal selected, the signal-specific sorts join
 // the universals. With 0 or 2+ signals, only universals appear.
-export function getSortOptions(selectedSignals: SignalKey[]): SortOption[] {
+export function getSortOptions(selectedSignals: PortfolioSignalKey[]): SortOption[] {
   if (selectedSignals.length !== 1) return UNIVERSAL_SORTS;
   const specific = SIGNAL_SPECIFIC_SORTS[selectedSignals[0]] ?? [];
   return [...UNIVERSAL_SORTS, ...specific];
@@ -836,7 +834,6 @@ describe("buildRow", () => {
   it("collects no signals for a healthy row", () => {
     const r = buildRow(baseInput);
     expect(r.signals).toEqual([]);
-    expect(r.signalCount).toBe(0);
     expect(r.stage).toBe("Established");
     expect(r.revenue).toBe(12000);
   });
@@ -891,7 +888,7 @@ Append:
 import { computeWatchOutSignals } from "./signals";
 import type {
   PortfolioRow,
-  SignalKey,
+  PortfolioSignalKey,
   WatchOutSignal,
   WatchOutSignalKind,
 } from "./types";
@@ -929,7 +926,7 @@ interface BuildRowInput {
   };
 }
 
-const SIGNAL_KIND_TO_KEY: Record<WatchOutSignalKind, SignalKey> = {
+const SIGNAL_KIND_TO_KEY: Record<WatchOutSignalKind, PortfolioSignalKey> = {
   overdue_invoice: "overdue_invoices",
   wish_to_churn: "wish_to_churn",
   volume_declining: "volume_declining",
@@ -1016,7 +1013,6 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     healthScore: input.company.healthScore,
     daysSinceContact: daysSilent,
     signals: applicable,
-    signalCount: applicable.length,
     overdueDays: input.deal.overdueDays,
     outstandingEur: input.deal.outstandingEur,
     openInvoiceCount: input.deal.openInvoiceCount,
@@ -1058,7 +1054,7 @@ Append to `src/lib/portfolio.ts`:
 
 ```ts
 import { Cache } from "./cache";
-import type { PortfolioResponse, Stage } from "./types";
+import type { PortfolioResponse, PortfolioStage } from "./types";
 
 const portfolioCache = new Cache<PortfolioResponse>(15 * 60 * 1000);
 
@@ -1121,10 +1117,10 @@ Append:
 
 ```ts
 function aggregatePayload(rows: PortfolioRow[]): PortfolioResponse {
-  const totalsByStage: Record<Stage, number> = {
+  const totalsByStage: Record<PortfolioStage, number> = {
     Onboarding: 0, Adopted: 0, Started: 0, "Ramp Up": 0, Established: 0,
   };
-  const totalsBySignal: Record<SignalKey, number> = {
+  const totalsBySignal: Record<PortfolioSignalKey, number> = {
     overdue_invoices: 0, open_invoices: 0, no_future_events: 0, health_dropped: 0,
     stuck_in_step: 0, volume_declining: 0, wish_to_churn: 0, gone_quiet: 0,
   };
@@ -1335,20 +1331,20 @@ The view is presentational. It receives data and event handlers from the contain
 ```tsx
 "use client";
 
-import type { PortfolioRow, SignalKey, SortKey } from "@/lib/types";
+import type { PortfolioRow, PortfolioSignalKey, PortfolioSortKey } from "@/lib/types";
 import { PORTFOLIO_SIGNALS, PORTFOLIO_SIGNAL_MAP } from "@/lib/signals";
 import { getSortOptions } from "@/lib/portfolio";
 
 interface Props {
   rows: PortfolioRow[];
-  totalsBySignal: Record<SignalKey, number>;
+  totalsBySignal: Record<PortfolioSignalKey, number>;
 
-  selectedSignals: SignalKey[];
-  toggleSignal: (key: SignalKey) => void;
+  selectedSignals: PortfolioSignalKey[];
+  toggleSignal: (key: PortfolioSignalKey) => void;
   clearSignals: () => void;
 
-  sortKey: SortKey;
-  setSortKey: (k: SortKey) => void;
+  sortKey: PortfolioSortKey;
+  setSortKey: (k: PortfolioSortKey) => void;
 
   focusedRowIndex: number | null;
   onRowClick: (row: PortfolioRow) => void;
@@ -1419,7 +1415,7 @@ export function PortfolioView(props: Props) {
           Sort
           <select
             value={props.sortKey}
-            onChange={(e) => props.setSortKey(e.target.value as SortKey)}
+            onChange={(e) => props.setSortKey(e.target.value as PortfolioSortKey)}
             style={{ padding: "4px 8px", border: "1px solid var(--moss, #022C12)", borderRadius: 8 }}
           >
             {sortOptions.map((o) => (
@@ -1617,8 +1613,8 @@ import type {
   PortfolioResponse,
   PortfolioRow,
   PortfolioDefaults,
-  SignalKey,
-  SortKey,
+  PortfolioSignalKey,
+  PortfolioSortKey,
 } from "@/lib/types";
 import { effectiveOwnerIds, type GlobalFilter, parseFilter, serializeFilter } from "@/lib/owners";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
@@ -1650,7 +1646,7 @@ function loadDefaults(): PortfolioDefaults | null {
     if (!f) return null;
     if (!Array.isArray(parsed.signals)) return null;
     if (typeof parsed.sort !== "string") return null;
-    return { filter: f, signals: parsed.signals as SignalKey[], sort: parsed.sort as SortKey };
+    return { filter: f, signals: parsed.signals as PortfolioSignalKey[], sort: parsed.sort as PortfolioSortKey };
   } catch {
     return null;
   }
@@ -1669,8 +1665,8 @@ export function PortfolioContainer({ filter, onSelectCompany }: Props) {
   const [isRevalidating, setIsRevalidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedSignals, setSelectedSignals] = useState<SignalKey[]>([]);
-  const [sortKey, setSortKey] = useState<SortKey>("urgency");
+  const [selectedSignals, setSelectedSignals] = useState<PortfolioSignalKey[]>([]);
+  const [sortKey, setSortKey] = useState<PortfolioSortKey>("urgency");
   const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
 
   const key = filterKey(filter);
@@ -1860,8 +1856,8 @@ export function PortfolioContainer({ filter, onSelectCompany }: Props) {
 
 function isCurrentEqualToSaved(
   filter: GlobalFilter,
-  signals: SignalKey[],
-  sort: SortKey
+  signals: PortfolioSignalKey[],
+  sort: PortfolioSortKey
 ): boolean {
   const saved = loadDefaults();
   if (!saved) return false;
@@ -1873,7 +1869,7 @@ function isCurrentEqualToSaved(
   return a.every((v, i) => v === b[i]);
 }
 
-function mapKindToKey(kind: string, title: string): SignalKey {
+function mapKindToKey(kind: string, title: string): PortfolioSignalKey {
   if (title === "Open invoice") return "open_invoices";
   switch (kind) {
     case "overdue_invoice":   return "overdue_invoices";
@@ -1989,8 +1985,8 @@ Find the `urlFromState` function around `page-client.tsx:108-128`. Extend the UR
 
 ```ts
 // Existing state shape additions:
-//   portfolioSignals: SignalKey[];
-//   portfolioSort: SortKey;
+//   portfolioSignals: PortfolioSignalKey[];
+//   portfolioSort: PortfolioSortKey;
 ```
 
 In `urlFromState`:
@@ -2011,9 +2007,9 @@ In the URL parser (the function that reads `?d=` and friends), add:
 ```ts
   if (out.dashboard === "portfolio") {
     const s = sp.get("s");
-    if (s) out.portfolioSignals = s.split(",") as SignalKey[];
+    if (s) out.portfolioSignals = s.split(",") as PortfolioSignalKey[];
     const sort = sp.get("sort");
-    if (sort) out.portfolioSort = sort as SortKey;
+    if (sort) out.portfolioSort = sort as PortfolioSortKey;
   }
 ```
 
@@ -2022,8 +2018,8 @@ In the URL parser (the function that reads `?d=` and friends), add:
 Near where other dashboard-specific state is declared (search for `useState<DashboardKey>`), add:
 
 ```ts
-  const [portfolioSignals, setPortfolioSignals] = useState<SignalKey[]>([]);
-  const [portfolioSort, setPortfolioSort] = useState<SortKey>("urgency");
+  const [portfolioSignals, setPortfolioSignals] = useState<PortfolioSignalKey[]>([]);
+  const [portfolioSort, setPortfolioSort] = useState<PortfolioSortKey>("urgency");
 ```
 
 Add the corresponding URL-write effect: include `portfolioSignals` and `portfolioSort` in the deps of the existing `urlFromState` write `useEffect` (search for `localStorage.setItem("ud-v2-dashboard"`).

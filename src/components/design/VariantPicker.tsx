@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   prefetchAttention,
   prefetchMeetingPrep,
-  prefetchOnboarding,
   prefetchPayMigration,
   prefetchSearch,
 } from "@/lib/prefetch";
@@ -12,9 +11,8 @@ import {
 export type Variant = "briefing" | "split";
 export type DashboardKey =
   | "status"
+  | "portfolio"
   | "meeting_prep"
-  | "onboarding"
-  | "retention"
   | "pay_migration"
   | "bloom"
   | "search";
@@ -27,13 +25,12 @@ interface DashboardDef {
 }
 
 export const DASHBOARDS: DashboardDef[] = [
-  { key: "status", label: "Status", sub: "Needs attention today", available: true },
-  { key: "meeting_prep", label: "Meeting prep", sub: "Today's meetings, prep ready", available: true },
-  { key: "onboarding", label: "Onboarding", sub: "New customers stuck or off-track", available: false },
-  { key: "retention", label: "Retention", sub: "Live customer health", available: false },
+  { key: "portfolio",     label: "Portfolio",     sub: "Every account, every signal", available: true  },
+  { key: "status",        label: "Status",        sub: "Needs attention today (legacy)", available: true },
+  { key: "meeting_prep",  label: "Meeting prep",  sub: "Today's meetings, prep ready", available: true },
   { key: "pay_migration", label: "Pay migration", sub: "Moving accounts to Understory Pay", available: true },
-  { key: "bloom", label: "Bloom", sub: "Marketing candidates to pitch", available: false },
-  { key: "search", label: "Lookup", sub: "Ask anything in plain English", available: true },
+  { key: "bloom",         label: "Bloom",         sub: "Marketing candidates to pitch", available: false },
+  { key: "search",        label: "Lookup",        sub: "Ask anything in plain English", available: true },
 ];
 
 interface VariantPickerProps {
@@ -291,7 +288,6 @@ export function DashboardPicker({
                     // resolves with both code and data already in flight.
                     if (d.key === "status") prefetchAttention();
                     else if (d.key === "pay_migration") prefetchPayMigration();
-                    else if (d.key === "onboarding") prefetchOnboarding();
                     else if (d.key === "meeting_prep") prefetchMeetingPrep();
                     else if (d.key === "search") prefetchSearch();
                   }

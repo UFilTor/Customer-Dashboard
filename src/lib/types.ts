@@ -644,14 +644,21 @@ export interface SearchTurn {
 // one company. Signals attached as decoration; stage applicability gates which
 // signals can fire.
 
-export type Stage =
+export type PortfolioStage =
   | "Onboarding"
   | "Adopted"
   | "Started"
   | "Ramp Up"
   | "Established";
 
-export type SignalKey =
+// 8-signal vocabulary used by the Portfolio dashboard. Distinct from the
+// existing `WatchOutSignalKind` (used by Onboarding/Retention briefs) for
+// two reasons:
+//   - WatchOutSignalKind uses singular forms ("overdue_invoice"); this uses
+//     plural ("overdue_invoices") to match `AttentionSignal` and the spec.
+//   - This adds `open_invoices`, which has no WatchOutSignal equivalent.
+// Translation between the two happens in the Portfolio container/view layer.
+export type PortfolioSignalKey =
   | "overdue_invoices"
   | "open_invoices"
   | "no_future_events"
@@ -661,7 +668,7 @@ export type SignalKey =
   | "wish_to_churn"
   | "gone_quiet";
 
-export type SortKey =
+export type PortfolioSortKey =
   // Universal
   | "urgency"
   | "name"
@@ -694,7 +701,7 @@ export interface PortfolioRow {
   ownerId: string | null;
   ownerName: string | null;
 
-  stage: Stage;
+  stage: PortfolioStage;
   daysInStage: number | null;
   customerLiveDate: string | null;
 
@@ -703,7 +710,6 @@ export interface PortfolioRow {
   daysSinceContact: number | null;
 
   signals: WatchOutSignal[];
-  signalCount: number;
 
   // Signal-specific values surfaced for sort key extraction.
   // Null when the corresponding signal is not firing.
@@ -721,15 +727,15 @@ export interface PortfolioRow {
 export interface PortfolioResponse {
   rows: PortfolioRow[];
   generatedAt: string;
-  totalsByStage: Record<Stage, number>;
-  totalsBySignal: Record<SignalKey, number>;
+  totalsByStage: Record<PortfolioStage, number>;
+  totalsBySignal: Record<PortfolioSignalKey, number>;
 }
 
 export interface PortfolioDefaults {
   filter: GlobalFilter;
-  signals: SignalKey[];
-  sort: SortKey;
+  signals: PortfolioSignalKey[];
+  sort: PortfolioSortKey;
 }
 
 // Multi-select signal filter state. Empty array means no signal filter.
-export type SignalFilter = SignalKey[];
+export type PortfolioSignalFilter = PortfolioSignalKey[];

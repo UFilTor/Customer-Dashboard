@@ -672,6 +672,7 @@ export type PortfolioSortKey =
   // Universal
   | "urgency"
   | "name"
+  | "stage"
   | "revenue"
   | "health"
   | "last_contact"

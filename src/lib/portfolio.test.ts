@@ -30,21 +30,42 @@ function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
   };
 }
 
+// Pipeline ids mirrored from src/lib/portfolio.ts. Inlined as literals here
+// so the tests don't depend on internal exports.
+const LIFECYCLE_PIPELINE = "166333631";
+const RETENTION_PIPELINE = "1072518362";
+
 describe("classifyPortfolioStage", () => {
-  it("maps onboarding-flavored HubSpot values", () => {
-    expect(classifyPortfolioStage("Onboarding", null)).toBe("Onboarding");
-    expect(classifyPortfolioStage("Adopted", null)).toBe("Adopted");
-    expect(classifyPortfolioStage("Started", null)).toBe("Started");
+  it("treats every Lifecycle-pipeline deal as Onboarding, regardless of customer_stage", () => {
+    expect(classifyPortfolioStage("In progress", LIFECYCLE_PIPELINE)).toBe("Onboarding");
+    expect(classifyPortfolioStage("", LIFECYCLE_PIPELINE)).toBe("Onboarding");
+    expect(classifyPortfolioStage("Adopted", LIFECYCLE_PIPELINE)).toBe("Onboarding");
   });
 
-  it("maps retention-flavored HubSpot values", () => {
-    expect(classifyPortfolioStage("Ramp Up", null)).toBe("Ramp Up");
-    expect(classifyPortfolioStage("Established", null)).toBe("Established");
+  it("maps Retention customer_stage values directly", () => {
+    expect(classifyPortfolioStage("Adopted", RETENTION_PIPELINE)).toBe("Adopted");
+    expect(classifyPortfolioStage("Started", RETENTION_PIPELINE)).toBe("Started");
+    expect(classifyPortfolioStage("Ramp Up", RETENTION_PIPELINE)).toBe("Ramp Up");
+    expect(classifyPortfolioStage("Established", RETENTION_PIPELINE)).toBe("Established");
   });
 
-  it("falls back to Established for unknown stages so the row still appears", () => {
-    expect(classifyPortfolioStage("", null)).toBe("Established");
-    expect(classifyPortfolioStage("Some Future Stage", null)).toBe("Established");
+  it("recovers underlying stage from substage when customer_stage is an overlay", () => {
+    expect(classifyPortfolioStage("Hibernation", RETENTION_PIPELINE, "Started"))
+      .toBe("Started");
+    expect(classifyPortfolioStage("Product Hold", RETENTION_PIPELINE, "ramp up"))
+      .toBe("Ramp Up");
+    expect(classifyPortfolioStage("Hibernation", RETENTION_PIPELINE, "established"))
+      .toBe("Established");
+  });
+
+  it("falls back to Adopted (not Established) for overlay stages without recoverable substage", () => {
+    expect(classifyPortfolioStage("Hibernation", RETENTION_PIPELINE)).toBe("Adopted");
+    expect(classifyPortfolioStage("Product Hold", RETENTION_PIPELINE, null)).toBe("Adopted");
+  });
+
+  it("falls back to Adopted for empty / unrecognised customer_stage on a Retention deal", () => {
+    expect(classifyPortfolioStage("", RETENTION_PIPELINE)).toBe("Adopted");
+    expect(classifyPortfolioStage("Some Future Stage", RETENTION_PIPELINE)).toBe("Adopted");
   });
 });
 
@@ -145,6 +166,7 @@ describe("buildRow", () => {
     deal: {
       customerStage: "Established",
       customerSubstage: null as string | null,
+      pipelineId: RETENTION_PIPELINE,
       enteredStageDate: "2026-04-01T00:00:00.000Z",
       customerLiveDate: "2025-09-01T00:00:00.000Z",
       unpaidInvoice: false,

@@ -3,6 +3,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import type { PayMigrationData, PayDeal, PayOwnerSummary, PayStage, CompanySearchResult } from "@/lib/types";
 import { CountUpPct, AnimBar, Stagger } from "../Motion";
+import { DashboardBanner } from "../DashboardBanner";
 import { Kpi } from "../Kpi";
 
 type PayFilter = "default" | "all" | string; // "default" = key owners, "all" = everyone, otherwise ownerId
@@ -135,64 +136,37 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
       style={{
         background: "var(--beige-new)",
         minHeight: "calc(100vh - 120px)",
-        padding: "32px 28px 60px",
       }}
     >
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        {/* HEADER */}
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20, marginBottom: 24 }}>
-          <div>
-            <div
+      <DashboardBanner
+        eyebrow="Pay migration"
+        maxWidth={1280}
+        headline={
+          <>
+            Moving {topline.deals.length} {topline.deals.length === 1 ? "deal" : "deals"} to Understory Pay.
+          </>
+        }
+        detail={
+          <>
+            <span
               style={{
-                fontFamily: "var(--font-display)",
-                textTransform: "uppercase",
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "0.12em",
-                color: "var(--green-100)",
-                marginBottom: 8,
+                color: "var(--citrus)",
+                borderBottom: "1px dashed color-mix(in oklch, var(--citrus) 55%, transparent)",
+                paddingBottom: 1,
               }}
             >
-              Understory Pay migration
-            </div>
-            <h1
-              style={{
-                margin: "0 0 6px",
-                fontFamily: "var(--font-display)",
-                fontSize: 40,
-                fontWeight: 700,
-                color: "var(--moss)",
-                textTransform: "uppercase",
-                letterSpacing: "-0.01em",
-                lineHeight: 1,
-              }}
-            >
-              Moving{" "}
-              <span
-                style={{
-                  fontFamily: "var(--font-editorial)",
-                  fontWeight: 400,
-                  fontStyle: "italic",
-                  textTransform: "none",
-                }}
-              >
-                {topline.deals.length}
-              </span>{" "}
-              deals to Pay
-            </h1>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 13.5,
-                color: "var(--green-100)",
-                fontFamily: "var(--font-editorial)",
-                fontStyle: "italic",
-              }}
-            >
-              {data.updatedAt ? `Updated ${timeAgo(data.updatedAt)}` : ""}
-              {" · "}Adopted stage and beyond.
-            </p>
-          </div>
+              {Math.round(topline.pctLc)}% live or verified
+            </span>
+            {" "}of eligible book value. Adopted stage and beyond.
+            {data.updatedAt && <> Updated {timeAgo(data.updatedAt)}.</>}
+          </>
+        }
+      />
+
+      <div style={{ padding: "20px 28px 60px" }}>
+        <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        {/* HEADER ROW — refresh control */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 18 }}>
           <button
             onClick={onRefresh}
             disabled={isRefreshing}
@@ -388,6 +362,7 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
               />
             );
           })}
+        </div>
         </div>
       </div>
     </div>

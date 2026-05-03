@@ -224,6 +224,18 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
     return () => window.removeEventListener("ud-filter-pill-state", onState);
   }, []);
 
+  // Same pattern for Portfolio's Signals/Sort popups: when one is open the
+  // page-level ↑/↓/Enter list-nav must yield so the popup can move its own
+  // internal focus instead.
+  const portfolioPopupOpenRef = useRef(false);
+  useEffect(() => {
+    function onState(e: Event) {
+      portfolioPopupOpenRef.current = (e as CustomEvent<boolean>).detail === true;
+    }
+    window.addEventListener("ud-portfolio-popup-state", onState);
+    return () => window.removeEventListener("ud-portfolio-popup-state", onState);
+  }, []);
+
   // Meeting prep focus levels. Drives whether ←/→/↑/↓/Enter route
   // to day-shift, meeting-nav, history-nav, or toggle-expand.
   const meetingFocusedRef = useRef(false);
@@ -691,7 +703,9 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
           window.dispatchEvent(new Event("ud-portfolio-signal-clear"));
           return;
         }
-        if (e.key.toLowerCase() === "s") {
+        // Plain S cycles the sort order; Shift+S opens the sort selector
+        // popup (handled by PortfolioView's Toolbar local listener).
+        if (e.key.toLowerCase() === "s" && !e.shiftKey) {
           e.preventDefault();
           window.dispatchEvent(new Event("ud-portfolio-sort-cycle"));
           return;
@@ -760,12 +774,16 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
 
       // List navigation in full-page views (Briefing, Portfolio).
       // The active view subscribes to ud-list-nav / ud-list-open
-      // and manages its own focused state.
+      // and manages its own focused state. When the Portfolio Signals or
+      // Sort popup is open, ↑/↓/Enter belong to the popup, not the list.
       const inListView =
         !s.selectedCompanyId &&
         ((s.dashboard === "status" && s.variant === "briefing") ||
           s.dashboard === "portfolio");
+      const portfolioPopupActive =
+        s.dashboard === "portfolio" && portfolioPopupOpenRef.current;
       if (inListView && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        if (portfolioPopupActive) return;
         e.preventDefault();
         window.dispatchEvent(
           new CustomEvent("ud-list-nav", { detail: e.key === "ArrowUp" ? "prev" : "next" })
@@ -773,6 +791,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         return;
       }
       if (inListView && e.key === "Enter") {
+        if (portfolioPopupActive) return;
         e.preventDefault();
         window.dispatchEvent(new Event("ud-list-open"));
         return;
@@ -840,8 +859,10 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       // F — open the LEFT filter pill (kind picker). Once a kind is chosen,
       // the right pill auto-opens for the value selection.
       // Shift+F — cycle through filter kinds (All → Region → Person → All)
-      // without opening the pill, for fast filter sweeps.
+      // without opening the pill, for fast filter sweeps. Skipped on Portfolio,
+      // where Shift+F opens the local signals selector instead.
       if (e.key.toLowerCase() === "f") {
+        if (e.shiftKey && s.dashboard === "portfolio") return;
         e.preventDefault();
         if (e.shiftKey) {
           const current = s.filter;
@@ -1007,6 +1028,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       <PortfolioContainer
         filter={globalFilter}
         filterLabel={filterLabel}
+        showAvatar={globalFilter.kind !== "person"}
         onSelectCompany={(id) => selectCompany(id)}
       />
     );

@@ -1,6 +1,7 @@
 "use client";
 
 import type { SearchDiagnostic, SearchResult, SearchTurn } from "@/lib/types";
+import { DashboardBanner } from "../DashboardBanner";
 
 // Pure presentation. Container owns query state + the chain; SearchView
 // renders the input, refinement breadcrumb, examples, results list, loading
@@ -66,44 +67,30 @@ export function SearchView({
       style={{
         background: "var(--beige-new)",
         minHeight: "calc(100vh - 120px)",
-        padding: "32px 28px 60px",
       }}
     >
-      <div style={{ maxWidth: 1080, margin: "0 auto" }}>
-        {/* HEADER LINE — same shape as Briefing/Onboarding morning bands */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            gap: 10,
-            margin: "0 0 18px",
-          }}
-        >
-          <span
-            style={{
-              fontFamily: "var(--font-display)",
-              textTransform: "uppercase",
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              color: "var(--green-100)",
-            }}
-          >
-            Lookup
-          </span>
-          <span aria-hidden="true" style={{ color: "var(--green-100)", opacity: 0.5 }}>·</span>
-          <span
-            style={{
-              fontFamily: "var(--font-editorial)",
-              fontStyle: "italic",
-              fontSize: 13,
-              color: "var(--moss)",
-            }}
-          >
-            Ask anything in plain English
-          </span>
-        </div>
+      <DashboardBanner
+        eyebrow="Lookup"
+        headline={<>Ask anything in plain English.</>}
+        detail={
+          <>
+            Companies, deals, calls, notes. Refine with{" "}
+            <span
+              style={{
+                color: "var(--citrus)",
+                borderBottom: "1px dashed color-mix(in oklch, var(--citrus) 55%, transparent)",
+                paddingBottom: 1,
+              }}
+            >
+              follow-up questions
+            </span>
+            .
+          </>
+        }
+      />
 
+      <div style={{ padding: "20px 28px 60px" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         {/* REFINEMENT BREADCRUMB — clickable chips that rewind the chain */}
         {hasChain && (
           <div
@@ -167,22 +154,8 @@ export function SearchView({
           </div>
         )}
 
-        {/* INPUT */}
-        <label
-          htmlFor="ud-lookup-query"
-          style={{
-            display: "block",
-            fontFamily: "var(--font-display)",
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-            color: "var(--green-100)",
-            marginBottom: 6,
-          }}
-        >
-          Ask anything in plain English
-        </label>
+        {/* INPUT — banner headline doubles as the visible label, so the input
+            carries an aria-label for screen reader users. */}
         <div
           style={{
             display: "flex",
@@ -197,6 +170,7 @@ export function SearchView({
           <input
             id="ud-lookup-query"
             type="text"
+            aria-label="Ask anything in plain English"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKey}
@@ -354,6 +328,7 @@ export function SearchView({
         {!loading && !error && hasChain && results.length === 0 && (
           <EmptyDiagnosticPanel diagnostic={diagnostic} />
         )}
+        </div>
       </div>
     </div>
   );

@@ -1,20 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { PortfolioRow, PortfolioSignalKey, PortfolioSortKey } from "@/lib/types";
 import { PORTFOLIO_SIGNALS, PORTFOLIO_SIGNAL_MAP } from "@/lib/signals";
 import { getSortOptions } from "@/lib/portfolio";
 import { OWNER_MAP } from "@/lib/owners";
+import { Avatar } from "../Avatar";
+import { DashboardBanner } from "../DashboardBanner";
+import { EditorialEmpty } from "../EditorialEmpty";
 
 interface Props {
   rows: PortfolioRow[];
   totalsBySignal: Record<PortfolioSignalKey, number>;
+
+  // When false (typically a person filter), the OWNER column is dropped from
+  // the grid because every row would show the same avatar.
+  showAvatar?: boolean;
 
   selectedSignals: PortfolioSignalKey[];
   toggleSignal: (key: PortfolioSignalKey) => void;
   clearSignals: () => void;
 
   sortKey: PortfolioSortKey;
+  // Current sort direction; column-header arrows + sort-dropdown active marker
+  // reflect this. Toggling is owned by the parent's setSortKey: re-clicking
+  // the active key flips direction, clicking a new key resets to that option's
+  // natural default.
+  sortDirection: "asc" | "desc";
   setSortKey: (k: PortfolioSortKey) => void;
 
   focusedRowIndex: number | null;
@@ -26,26 +38,40 @@ interface Props {
   onResetDefaults: () => void;
 }
 
-// Stage chip palette. Calm cream-toned swatches; meaning carries through label.
+// Stage chip palette. Reads tokens from globals.css so the lifecycle palette
+// stays in one place and parallels the --pay-stage-* family.
 const STAGE_BADGE: Record<PortfolioRow["stage"], { bg: string; fg: string }> = {
-  Onboarding:   { bg: "#FCE9C2", fg: "#7A4A00" },
-  Adopted:      { bg: "#FFE2C2", fg: "#7A3F00" },
-  Started:      { bg: "#FFE6E0", fg: "#8B2A14" },
-  "Ramp Up":    { bg: "#D7E9D2", fg: "#1F4A22" },
-  Established:  { bg: "#D5DFCA", fg: "#022C12" },
+  Onboarding:   { bg: "var(--stage-onboarding-bg)",  fg: "var(--stage-onboarding-fg)" },
+  Adopted:      { bg: "var(--stage-adopted-bg)",     fg: "var(--stage-adopted-fg)" },
+  Started:      { bg: "var(--stage-started-bg)",     fg: "var(--stage-started-fg)" },
+  "Ramp Up":    { bg: "var(--stage-rampup-bg)",      fg: "var(--stage-rampup-fg)" },
+  Established: { bg: "var(--stage-established-bg)", fg: "var(--stage-established-fg)" },
 };
 
 // Universal sort keys that map to clickable column headers.
 const COL_SORT_MAP: Partial<Record<string, PortfolioSortKey>> = {
+  stage: "stage",
   name: "name",
   health: "health",
   revenue: "revenue",
   last_contact: "last_contact",
 };
 
-const COLS_GRID = "76px 1fr 220px 90px 110px 60px 28px 16px";
+// Column grid for header + rows. Two variants based on `showAvatar`:
+//
+//   STAGE 96 · ACCOUNT 1fr · SIGNALS 280 · HEALTH 60 · REVENUE 80 · LAST 50 · OWNER 44
+//   STAGE 96 · ACCOUNT 1fr · SIGNALS 280 · HEALTH 60 · REVENUE 80 · LAST 50
+//
+// SIGNALS widened from 200 → 280 to fit the primary pill plus up to 2 inline
+// labeled secondaries (dot + short label) plus an optional "+N" overflow.
+// STAGE is 96 so "ESTABLISHED" (longest stage label) fits with breathing
+// room. The chevron disclosure is absolute-positioned on the row so it
+// doesn't need its own column.
+const COLS_GRID_WITH_OWNER = "96px 1fr 280px 60px 80px 50px 44px";
+const COLS_GRID_NO_OWNER   = "96px 1fr 280px 60px 80px 50px";
 
 export function PortfolioView(props: Props) {
+  const showAvatar = props.showAvatar ?? true;
   const sortOptions = getSortOptions(props.selectedSignals);
 
   // Aggregate metrics for the editorial banner.
@@ -54,17 +80,13 @@ export function PortfolioView(props: Props) {
     () => props.rows.filter((r) => r.signals.some((s) => s.severity === "bad")).length,
     [props.rows]
   );
-  const totalRevenue = useMemo(
-    () => props.rows.reduce((sum, r) => sum + (r.revenue || 0), 0),
-    [props.rows]
-  );
 
   return (
     <div style={{ background: "var(--page-bg)", minHeight: "calc(100vh - 120px)" }}>
-      <Banner totalRows={totalRows} urgentCount={urgentCount} totalRevenue={totalRevenue} />
+      <Banner totalRows={totalRows} urgentCount={urgentCount} />
 
       <div style={{ padding: "0 28px 60px" }}>
-        <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <div className="pf-sticky">
             <Toolbar
               selectedSignals={props.selectedSignals}
@@ -72,6 +94,7 @@ export function PortfolioView(props: Props) {
               clearSignals={props.clearSignals}
               totalsBySignal={props.totalsBySignal}
               sortKey={props.sortKey}
+              sortDirection={props.sortDirection}
               setSortKey={props.setSortKey}
               sortOptions={sortOptions}
             />
@@ -84,7 +107,12 @@ export function PortfolioView(props: Props) {
               onSaveDefaults={props.onSaveDefaults}
               onResetDefaults={props.onResetDefaults}
             />
-            <ColumnHeaders sortKey={props.sortKey} setSortKey={props.setSortKey} />
+            <ColumnHeaders
+              sortKey={props.sortKey}
+              sortDirection={props.sortDirection}
+              setSortKey={props.setSortKey}
+              showAvatar={showAvatar}
+            />
           </div>
 
           <div
@@ -99,7 +127,10 @@ export function PortfolioView(props: Props) {
             }}
           >
             {props.rows.length === 0 ? (
-              <EmptyState />
+              <EditorialEmpty
+                headline="No accounts match."
+                caption="Try removing a filter or clearing your search."
+              />
             ) : (
               props.rows.map((row, i) => (
                 <Row
@@ -108,6 +139,7 @@ export function PortfolioView(props: Props) {
                   focused={props.focusedRowIndex === i}
                   onClick={() => props.onRowClick(row)}
                   isLast={i === props.rows.length - 1}
+                  showAvatar={showAvatar}
                 />
               ))
             )}
@@ -122,146 +154,43 @@ export function PortfolioView(props: Props) {
 
 // ---------- Editorial banner ----------
 
-function Banner({ totalRows, urgentCount, totalRevenue }: { totalRows: number; urgentCount: number; totalRevenue: number }) {
-  const dateStr = useDateLabel();
-  const greeting = useGreeting();
-  const calmCount = Math.max(0, totalRows - urgentCount);
+function Banner({ totalRows, urgentCount }: { totalRows: number; urgentCount: number }) {
+  if (totalRows === 0) {
+    return (
+      <DashboardBanner
+        eyebrow="Portfolio"
+        maxWidth={1200}
+        headline={<>No accounts in scope.</>}
+        detail={<>Try a different filter to widen the search.</>}
+      />
+    );
+  }
 
   return (
-    <div style={{ padding: "20px 28px 24px" }}>
-      <div
-        style={{
-          maxWidth: 1080,
-          margin: "0 auto",
-          background: "linear-gradient(135deg, #022C12 0%, #1D261F 100%)",
-          color: "var(--page-bg)",
-          borderRadius: 18,
-          padding: "26px 36px 28px",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: -60,
-            right: -60,
-            width: 220,
-            height: 220,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle at 30% 30%, rgba(241,249,126,0.06), rgba(241,249,126,0) 60%), #1D261F",
-            border: "1px solid rgba(241,249,126,0.12)",
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            width: 96,
-            height: 96,
-            borderRadius: "50%",
-            background: "#0A3A1B",
-            border: "1px solid rgba(241,249,126,0.2)",
-          }}
-        />
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative", zIndex: 1 }}>
-          <span
-            style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: 700,
-              fontSize: 9.5,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: "var(--citrus)",
-            }}
-          >
-            Portfolio
-          </span>
-          <span style={{ width: 28, height: 1, background: "rgba(241,249,126,0.5)" }} />
-          <span
-            style={{
-              fontFamily: "var(--font-editorial)",
-              fontStyle: "italic",
-              fontSize: 12,
-              color: "rgba(255,255,255,0.7)",
-            }}
-          >
-            {dateStr}
-          </span>
-        </div>
-
-        <div style={{ marginTop: 14, position: "relative", zIndex: 1 }}>
-          <div
-            style={{
-              fontFamily: "var(--font-editorial)",
-              fontStyle: "italic",
-              fontSize: 30,
-              fontWeight: 400,
-              color: "var(--page-bg)",
-              lineHeight: 1.1,
-              letterSpacing: "-0.005em",
-            }}
-          >
-            {greeting}.
-          </div>
-        </div>
-
-        <h1
-          style={{
-            margin: "8px 0 0",
-            fontFamily: "var(--font-display)",
-            textTransform: "uppercase",
-            fontSize: 32,
-            fontWeight: 700,
-            letterSpacing: "-0.005em",
-            lineHeight: 1.05,
-            color: "var(--page-bg)",
-            position: "relative",
-            zIndex: 1,
-            maxWidth: 720,
-          }}
-        >
-          <span style={{ color: "var(--citrus)" }}>{totalRows} {totalRows === 1 ? "customer" : "customers"}</span> across your book.
-        </h1>
-
-        <div
-          style={{
-            marginTop: 14,
-            fontSize: 13.5,
-            color: "rgba(255,255,255,0.78)",
-            lineHeight: 1.65,
-            maxWidth: 720,
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
+    <DashboardBanner
+      eyebrow="Portfolio"
+      maxWidth={1200}
+      headline={
+        <>
+          {totalRows} {totalRows === 1 ? "customer" : "customers"} across your book.
+        </>
+      }
+      detail={
+        <>
           You have{" "}
           <span
             style={{
               color: "var(--citrus)",
-              borderBottom: "1px dashed rgba(241,249,126,0.55)",
+              borderBottom: "1px dashed color-mix(in oklch, var(--citrus) 55%, transparent)",
               paddingBottom: 1,
             }}
           >
             {urgentCount} urgent
           </span>
-          {urgentCount > 0 ? " — overdue invoices, churn intent, and volume drops." : "."}{" "}
-          {calmCount > 0 ? `${calmCount} ${calmCount === 1 ? "is" : "are"} tracking calm.` : ""}
-          {totalRevenue > 0 && (
-            <>
-              <br />
-              Combined trailing revenue:{" "}
-              <span style={{ color: "var(--citrus)" }}>€{formatNum(totalRevenue)}</span>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+          {urgentCount > 0 ? ": overdue invoices, churn intent, and volume drops." : "."}
+        </>
+      }
+    />
   );
 }
 
@@ -273,6 +202,7 @@ interface ToolbarProps {
   clearSignals: () => void;
   totalsBySignal: Record<PortfolioSignalKey, number>;
   sortKey: PortfolioSortKey;
+  sortDirection: "asc" | "desc";
   setSortKey: (k: PortfolioSortKey) => void;
   sortOptions: ReturnType<typeof getSortOptions>;
 }
@@ -283,6 +213,7 @@ function Toolbar({
   clearSignals,
   totalsBySignal,
   sortKey,
+  sortDirection,
   setSortKey,
   sortOptions,
 }: ToolbarProps) {
@@ -295,13 +226,33 @@ function Toolbar({
   useOutsideClose(filterRef, filterOpen, () => setFilterOpen(false));
   useOutsideClose(sortRef, sortOpen, () => setSortOpen(false));
 
+  // Mirror open-state to page-client so the page-level ↑/↓/Enter list-nav
+  // yields to the popup while one is open.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("ud-portfolio-popup-state", { detail: filterOpen || sortOpen })
+    );
+  }, [filterOpen, sortOpen]);
+
   // Local Shift+F / Shift+S handlers to mirror the kbd hints shown in the
   // trigger pills. Doesn't conflict with the page-level S (sort cycle) or
   // Cmd+S (save defaults) because we gate on shiftKey + !meta + !ctrl.
+  // Escape dismisses whichever dropdown is open so keyboard users can back
+  // out without round-tripping through the toggle.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      const inInput =
+        target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+
+      if (e.key === "Escape" && (filterOpen || sortOpen)) {
+        setFilterOpen(false);
+        setSortOpen(false);
+        e.preventDefault();
+        return;
+      }
+
+      if (inInput) return;
       if (!e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "F" || e.key === "f") {
         setFilterOpen((v) => !v);
@@ -315,7 +266,7 @@ function Toolbar({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [filterOpen, sortOpen]);
 
   const filterLabel =
     selectedSignals.length === 0
@@ -334,7 +285,9 @@ function Toolbar({
         gap: 10,
         flexWrap: "wrap",
         background: "var(--page-bg)",
-        padding: "16px 0 12px",
+        // Symmetric vertical padding: same breathing room above and below the
+        // signal/sort selector row.
+        padding: "12px 0",
       }}
     >
       <div ref={filterRef} style={{ position: "relative" }}>
@@ -356,6 +309,7 @@ function Toolbar({
             toggleSignal={toggleSignal}
             clearSignals={clearSignals}
             totalsBySignal={totalsBySignal}
+            onClose={() => setFilterOpen(false)}
           />
         )}
       </div>
@@ -378,11 +332,10 @@ function Toolbar({
         {sortOpen && (
           <SortDropdown
             sortKey={sortKey}
+            sortDirection={sortDirection}
             sortOptions={sortOptions}
-            setSortKey={(k) => {
-              setSortKey(k);
-              setSortOpen(false);
-            }}
+            setSortKey={setSortKey}
+            onClose={() => setSortOpen(false)}
             anchorRight
           />
         )}
@@ -398,15 +351,62 @@ function FilterDropdown({
   toggleSignal,
   clearSignals,
   totalsBySignal,
+  onClose,
 }: {
   selectedSignals: PortfolioSignalKey[];
   toggleSignal: (k: PortfolioSignalKey) => void;
   clearSignals: () => void;
   totalsBySignal: Record<PortfolioSignalKey, number>;
+  onClose: () => void;
 }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [focusedIdx, setFocusedIdx] = useState(() => {
+    const firstSelected = PORTFOLIO_SIGNALS.findIndex((m) => selectedSignals.includes(m.key));
+    return firstSelected >= 0 ? firstSelected : 0;
+  });
+
+  // Move native focus to whichever row is at focusedIdx so the visible focus
+  // ring + screen-reader cue follow keyboard nav.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const buttons = list.querySelectorAll<HTMLButtonElement>("button.pf-pop-row");
+    buttons[focusedIdx]?.focus();
+  }, [focusedIdx]);
+
+  // Local ↑↓/Space/Enter handler. Space toggles the focused signal (multi-
+  // select), Enter replaces selection with only the focused signal and closes.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowDown") {
+        setFocusedIdx((i) => Math.min(i + 1, PORTFOLIO_SIGNALS.length - 1));
+        e.preventDefault();
+      } else if (e.key === "ArrowUp") {
+        setFocusedIdx((i) => Math.max(i - 1, 0));
+        e.preventDefault();
+      } else if (e.key === " ") {
+        const k = PORTFOLIO_SIGNALS[focusedIdx]?.key;
+        if (k) toggleSignal(k);
+        e.preventDefault();
+      } else if (e.key === "Enter") {
+        const k = PORTFOLIO_SIGNALS[focusedIdx]?.key;
+        if (k) {
+          // Replace selection with only the focused signal. clearSignals +
+          // toggleSignal in one event get batched so the queued result is [k].
+          clearSignals();
+          toggleSignal(k);
+        }
+        onClose();
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusedIdx, toggleSignal, clearSignals, onClose]);
+
   return (
-    <div className="pf-pop" style={{ left: 0, minWidth: 360 }}>
-      <div style={{ padding: "16px 20px 10px", borderBottom: "1px solid var(--hairline)" }}>
+    <div className="pf-pop" style={{ left: 0, minWidth: 280 }}>
+      <div style={{ padding: "12px 20px 8px", borderBottom: "1px solid var(--hairline)" }}>
         <div style={eyebrowStyle}>Filter by signal</div>
         <div
           style={{
@@ -420,7 +420,7 @@ function FilterDropdown({
           Multi-select. Press <span className="pf-num-badge" style={{ fontSize: 11, height: 20, minWidth: 32 }}>1–8</span> to toggle.
         </div>
       </div>
-      <div style={{ padding: 8, maxHeight: 420, overflowY: "auto" }}>
+      <div ref={listRef} style={{ padding: 6, maxHeight: 420, overflowY: "auto" }}>
         {PORTFOLIO_SIGNALS.map((meta, i) => {
           const isOn = selectedSignals.includes(meta.key);
           const count = totalsBySignal[meta.key] ?? 0;
@@ -492,7 +492,7 @@ function FilterDropdown({
             style={{
               background: "transparent",
               color: "var(--moss)",
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: 600,
               padding: "5px 8px",
               borderRadius: 6,
@@ -512,42 +512,93 @@ function FilterDropdown({
 
 function SortDropdown({
   sortKey,
+  sortDirection,
   sortOptions,
   setSortKey,
+  onClose,
   anchorRight,
 }: {
   sortKey: PortfolioSortKey;
+  sortDirection: "asc" | "desc";
   sortOptions: ReturnType<typeof getSortOptions>;
   setSortKey: (k: PortfolioSortKey) => void;
+  onClose: () => void;
   anchorRight?: boolean;
 }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [focusedIdx, setFocusedIdx] = useState(() => {
+    const idx = sortOptions.findIndex((o) => o.key === sortKey);
+    return idx >= 0 ? idx : 0;
+  });
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const buttons = list.querySelectorAll<HTMLButtonElement>("button.pf-pop-row");
+    buttons[focusedIdx]?.focus();
+  }, [focusedIdx]);
+
+  // Space follows the focused row: if it's already the active sort, flip
+  // direction (a-z ↔ z-a); otherwise apply that sort. Either way the popup
+  // stays open so the user can keep tweaking. Enter applies the focused sort
+  // and closes.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowDown") {
+        setFocusedIdx((i) => Math.min(i + 1, sortOptions.length - 1));
+        e.preventDefault();
+      } else if (e.key === "ArrowUp") {
+        setFocusedIdx((i) => Math.max(i - 1, 0));
+        e.preventDefault();
+      } else if (e.key === " ") {
+        const k = sortOptions[focusedIdx]?.key;
+        if (k) setSortKey(k);
+        e.preventDefault();
+      } else if (e.key === "Enter") {
+        const k = sortOptions[focusedIdx]?.key;
+        if (k) setSortKey(k);
+        onClose();
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusedIdx, sortOptions, setSortKey, onClose]);
+
   return (
     <div
       className="pf-pop"
-      style={{ ...(anchorRight ? { right: 0 } : { left: 0 }), minWidth: 240 }}
+      style={{ ...(anchorRight ? { right: 0 } : { left: 0 }), minWidth: 200 }}
     >
-      <div style={{ padding: "16px 20px 10px", borderBottom: "1px solid var(--hairline)" }}>
+      <div style={{ padding: "12px 20px 8px", borderBottom: "1px solid var(--hairline)" }}>
         <div style={eyebrowStyle}>Sort by</div>
       </div>
-      <div style={{ padding: 8, maxHeight: 420, overflowY: "auto" }}>
+      <div ref={listRef} style={{ padding: 6, maxHeight: 420, overflowY: "auto" }}>
         {sortOptions.map((o) => {
           const on = o.key === sortKey;
           return (
             <button
               key={o.key}
-              onClick={() => setSortKey(o.key)}
+              onClick={() => {
+                setSortKey(o.key);
+                // Mouse click on a different sort closes the menu; clicking
+                // the active sort flips direction and stays open.
+                if (!on) onClose();
+              }}
+              title={on ? "Click again to flip direction" : undefined}
               className={`pf-pop-row${on ? " selected" : ""}`}
             >
               <span
                 style={{
                   width: 18,
                   color: "var(--moss)",
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: 700,
                   textAlign: "center",
+                  fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {on ? "✓" : ""}
+                {on ? (sortDirection === "desc" ? "↓" : "↑") : ""}
               </span>
               <span style={{ flex: 1 }}>{o.label}</span>
             </button>
@@ -592,15 +643,17 @@ function ResultsBar({
     >
       <span
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
+          // DESIGN.md reserves --font-mono for kbd hints. Inter at 12px with
+          // tabular-nums keeps the figure scannable and aligned with peers.
+          fontSize: 12,
           color: "var(--green-100)",
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
+          fontVariantNumeric: "tabular-nums",
         }}
       >
-        <strong style={{ color: "var(--moss)", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+        <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
           {rowCount}
         </strong>
         <span>{rowCount === 1 ? "account" : "accounts"}</span>
@@ -638,10 +691,14 @@ function ResultsBar({
 
 function ColumnHeaders({
   sortKey,
+  sortDirection,
   setSortKey,
+  showAvatar,
 }: {
   sortKey: PortfolioSortKey;
+  sortDirection: "asc" | "desc";
   setSortKey: (k: PortfolioSortKey) => void;
+  showAvatar: boolean;
 }) {
   function header(label: string, col: string, align: "start" | "end" = "start") {
     const target = COL_SORT_MAP[col];
@@ -653,14 +710,18 @@ function ColumnHeaders({
         </span>
       );
     }
+    // Direction-aware arrow on the active column; bidirectional ↕ on inactive
+    // sortable columns to advertise that a click sorts.
+    const arrow = sorted ? (sortDirection === "desc" ? "↓" : "↑") : "↕";
     return (
       <button
         onClick={() => setSortKey(target)}
+        title={sorted ? "Click again to flip direction" : `Sort by ${label.toLowerCase()}`}
         className={`pf-col-head${sorted ? " sorted" : ""}`}
         style={{ justifySelf: align === "end" ? "end" : "start" }}
       >
         <span>{label}</span>
-        <span className="arrow">{sorted ? "▼" : "↕"}</span>
+        <span className="arrow">{arrow}</span>
       </button>
     );
   }
@@ -668,7 +729,7 @@ function ColumnHeaders({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: COLS_GRID,
+        gridTemplateColumns: showAvatar ? COLS_GRID_WITH_OWNER : COLS_GRID_NO_OWNER,
         gap: 12,
         padding: "10px 18px 8px",
         background: "var(--card-bg)",
@@ -683,8 +744,9 @@ function ColumnHeaders({
       {header("Health", "health", "end")}
       {header("Revenue", "revenue", "end")}
       {header("Last", "last_contact", "end")}
-      <span style={eyebrowStyle}>Owner</span>
-      <span />
+      {showAvatar && (
+        <span style={{ ...eyebrowStyle, justifySelf: "end" }}>Owner</span>
+      )}
     </div>
   );
 }
@@ -696,11 +758,13 @@ function Row({
   focused,
   onClick,
   isLast,
+  showAvatar,
 }: {
   row: PortfolioRow;
   focused: boolean;
   onClick: () => void;
   isLast: boolean;
+  showAvatar: boolean;
 }) {
   const stage = STAGE_BADGE[row.stage];
   const primary = row.signals[0];
@@ -716,45 +780,53 @@ function Row({
             ? "var(--rust)"
             : "var(--red)";
 
+  // Resolve to an OwnerLike for the shared Avatar. Falls back to a synthetic
+  // { name } if the row carries an ownerName but no canonical map entry, so
+  // the initial still renders.
   const owner = row.ownerId ? OWNER_MAP[row.ownerId] : null;
-  const initials = ownerInitials(row.ownerName);
-  const ownerColor = owner?.color ?? "var(--lichen)";
+  const ownerForAvatar = owner ?? (row.ownerName ? { name: row.ownerName } : null);
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
       className={`pf-row${focused ? " focused" : ""}`}
       style={{
+        position: "relative",
         display: "grid",
-        gridTemplateColumns: COLS_GRID,
+        gridTemplateColumns: showAvatar ? COLS_GRID_WITH_OWNER : COLS_GRID_NO_OWNER,
         gap: 12,
         alignItems: "center",
+        width: "100%",
         padding: "12px 18px",
+        border: "none",
         borderBottom: isLast ? "none" : "1px solid var(--hairline)",
+        background: "transparent",
+        color: "inherit",
+        font: "inherit",
+        textAlign: "left",
         cursor: "pointer",
+        // DESIGN.md "13px Floor": body type sits at 13. Numeric cells
+        // (Health, Revenue, Last) don't set their own fontSize, so set the
+        // row default here instead of letting them inherit body's ~16px.
+        fontSize: 13,
       }}
     >
       <span
         style={{
-          padding: "5px 12px",
+          padding: "4px 10px",
           borderRadius: 6,
           background: stage.bg,
           color: stage.fg,
-          fontFamily: "var(--font-display)",
-          fontSize: 10.5,
+          // DESIGN.md "Label" type: Inter 700, 10px, +0.06em uppercase. Keeps
+          // row chrome in Inter; Oswald is reserved for display moments.
+          fontSize: 10,
           fontWeight: 700,
           textTransform: "uppercase",
-          letterSpacing: "0.08em",
+          letterSpacing: "0.06em",
+          lineHeight: 1.2,
           whiteSpace: "nowrap",
-          justifySelf: "start",
+          textAlign: "center",
         }}
       >
         {row.stage}
@@ -764,7 +836,10 @@ function Row({
         <div
           style={{
             fontSize: 14,
-            fontWeight: 600,
+            // Match the peer convention (BriefingView, SplitView): 500 by
+            // default, 600 only when the row is focused/active. Painting every
+            // row at 600 makes the table read as if every row is selected.
+            fontWeight: focused ? 600 : 500,
             color: "var(--moss)",
             letterSpacing: "-0.005em",
             whiteSpace: "nowrap",
@@ -777,7 +852,7 @@ function Row({
         {(primary?.detail || row.domain) && (
           <div
             style={{
-              fontSize: 11.5,
+              fontSize: 12,
               color: "var(--green-100)",
               marginTop: 2,
               whiteSpace: "nowrap",
@@ -790,7 +865,17 @@ function Row({
         )}
       </div>
 
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, justifySelf: "start" }}>
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 10,
+          minWidth: 0,
+          justifySelf: "start",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+        }}
+      >
         {primary ? (
           <SignalPill
             kind={primary.kind}
@@ -804,35 +889,44 @@ function Row({
         )}
         {extras.length > 0 && (
           <span
-            title={extras.map((s) => s.title).join(" · ")}
-            style={{ display: "inline-flex", alignItems: "center", gap: 3 }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 11,
+              color: "var(--green-100)",
+              minWidth: 0,
+            }}
           >
-            {extras.slice(0, 3).map((s, i) => {
+            {extras.slice(0, 2).map((s, i) => {
               const meta = signalMetaFor(s.kind, s.title);
               return (
                 <span
                   key={i}
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: "50%",
-                    background: meta.color,
-                    display: "inline-block",
-                    flex: "0 0 auto",
-                  }}
-                />
+                  title={s.title}
+                  aria-label={s.title}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: meta.color,
+                      flex: "0 0 auto",
+                    }}
+                  />
+                  {meta.short}
+                </span>
               );
             })}
-            {extras.length > 3 && (
+            {extras.length > 2 && (
               <span
-                style={{
-                  fontSize: 10,
-                  color: "var(--green-100)",
-                  fontWeight: 500,
-                  marginLeft: 2,
-                }}
+                title={extras.slice(2).map((s) => s.title).join(" · ")}
+                style={{ fontSize: 10, color: "var(--green-100)", fontWeight: 500 }}
               >
-                +{extras.length - 3}
+                +{extras.length - 2}
               </span>
             )}
           </span>
@@ -874,30 +968,30 @@ function Row({
         {row.daysSinceContact == null ? "—" : `${row.daysSinceContact}d`}
       </span>
 
+      {showAvatar && (
+        <span style={{ justifySelf: "end" }}>
+          <Avatar owner={ownerForAvatar} size={22} />
+        </span>
+      )}
+
+      {/* Chevron sits outside the grid so its hover-only opacity doesn't
+          push the avatar around. Absolute-positioned to the row's right
+          gutter (the 18px row padding leaves room). */}
       <span
-        title={row.ownerName ?? undefined}
+        className="row-chevron"
+        aria-hidden="true"
         style={{
-          width: 22,
-          height: 22,
-          borderRadius: "50%",
-          background: ownerColor,
-          color: "var(--moss)",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 10,
-          fontWeight: 700,
-          flex: "0 0 auto",
-          justifySelf: "start",
+          position: "absolute",
+          right: 4,
+          top: "50%",
+          transform: "translateY(-50%)",
+          fontSize: 14,
+          pointerEvents: "none",
         }}
       >
-        {initials}
-      </span>
-
-      <span className="row-chevron" style={{ fontSize: 14, justifySelf: "end" }}>
         ›
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -920,6 +1014,7 @@ function SignalPill({
   return (
     <span
       title={title}
+      aria-label={title}
       style={{
         background: palette.bg,
         color: palette.fg,
@@ -941,7 +1036,7 @@ function SignalPill({
 }
 
 const TONE_PALETTE: Record<"bad" | "warn", { bg: string; fg: string }> = {
-  bad:  { bg: "rgba(184, 74, 45, 0.10)", fg: "var(--rust)" },
+  bad:  { bg: "color-mix(in oklch, var(--rust) 12%, transparent)", fg: "var(--rust)" },
   warn: { bg: "var(--status-warn-bg)", fg: "var(--status-warn-fg)" },
 };
 
@@ -958,28 +1053,8 @@ function pillText(kind: string, title: string, _severity: "bad" | "warn"): strin
   return title;
 }
 
-// ---------- Empty state ----------
-
-function EmptyState() {
-  return (
-    <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--green-100)" }}>
-      <div
-        style={{
-          fontFamily: "var(--font-editorial)",
-          fontStyle: "italic",
-          fontSize: 18,
-          color: "var(--moss)",
-          marginBottom: 8,
-        }}
-      >
-        No accounts match.
-      </div>
-      <div style={{ fontSize: 13 }}>
-        Try removing a filter or clearing your search.
-      </div>
-    </div>
-  );
-}
+// Empty state now uses the shared <EditorialEmpty /> primitive so wording
+// and rhythm stay consistent with Briefing, Onboarding, and the detail pane.
 
 // ---------- Keyboard hints footer ----------
 
@@ -1022,39 +1097,8 @@ function signalMetaFor(kind: string, title: string) {
   }
 }
 
-function ownerInitials(name: string | null): string {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/).slice(0, 2);
-  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
-}
-
 function formatNum(n: number): string {
   return Math.round(n).toLocaleString("en-US").replace(/,/g, " ");
-}
-
-// Mounted flag via useSyncExternalStore. Returns false on the server and on
-// the first client render (matching SSR), then true on subsequent renders.
-// Mirrors the pattern used in BriefingView for clock-dependent values, which
-// avoids hydration mismatch and the react-hooks/set-state-in-effect lint.
-function useMounted(): boolean {
-  return useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  );
-}
-
-function useDateLabel(): string {
-  const mounted = useMounted();
-  if (!mounted) return "";
-  return new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-}
-
-function useGreeting(): string {
-  const mounted = useMounted();
-  if (!mounted) return "";
-  const h = new Date().getHours();
-  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
 function useOutsideClose(
@@ -1109,13 +1153,18 @@ function pillTriggerStyle(active: boolean): CSSProperties {
     background: "var(--card-bg)",
     border: `1px solid ${active ? "var(--moss)" : "var(--hairline)"}`,
     color: "var(--moss)",
-    fontSize: 13,
+    // Peer chip / pill labels sit at 12px so the trigger reads as inline
+    // chrome rather than a body-size element. Don't add `font: inherit` here:
+    // the shorthand resets font-size to the inherited value (~16px from body)
+    // and silently overrides this fontSize. Family already inherits via
+    // `button { font-family: inherit }` in globals.css.
+    fontSize: 12,
+    lineHeight: 1,
     padding: "8px 14px",
     // Match the TopBar pills + cards radius family (10-14px). The reference
     // shape is a soft rectangle, not a capsule.
     borderRadius: 10,
     cursor: "pointer",
-    font: "inherit",
     transition: "border-color 120ms var(--ease-out), background 120ms var(--ease-out)",
   };
 }
@@ -1128,9 +1177,9 @@ const ghostBtnStyle: CSSProperties = {
   color: "var(--green-100)",
   fontSize: 11,
   fontWeight: 600,
+  lineHeight: 1,
   padding: "3px 6px",
   borderRadius: 6,
   border: 0,
   cursor: "pointer",
-  font: "inherit",
 };

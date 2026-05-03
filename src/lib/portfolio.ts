@@ -14,36 +14,77 @@ import type {
   WatchOutSignalKind,
 } from "./types";
 
-// Maps HubSpot `customer_stage` to our 5-stage Portfolio union. Unknown
-// values fall back to "Established" so the account still appears in the
-// portfolio rather than being silently dropped.
+// Pipelines that source the Portfolio universe. Lifecycle (166333631) covers
+// onboarding-stage customers; Retention (1072518362) covers Adopted/Started/
+// Ramp Up/Established. We union both pipelines and skip Churned client-side.
+// Hoisted here so `classifyPortfolioStage` can use Lifecycle as the empty-
+// stage fallback signal.
+const LIFECYCLE_PIPELINE_ID = "166333631";
+const RETENTION_PIPELINE_ID = "1072518362";
+
+// Maps a deal to one of the 5 Portfolio stages.
+//
+// The two pipelines have different stage semantics:
+//   - Lifecycle (the onboarding pipeline) is always "Onboarding" at the
+//     Portfolio level. Its `customer_stage` values (Book meeting / Create
+//     account / Create experience / Awaiting meeting / In progress) are
+//     onboarding sub-steps that we don't surface in the row chip.
+//   - Retention deals carry the post-onboarding progression in
+//     `customer_stage`: Adopted → Started → Ramp Up → Established.
+//
+// `Hibernation` and `Product Hold` are overlay states, not stages: a deal
+// can be Adopted-and-hibernating or In-progress-and-on-hold. When the
+// overlay shows up in `customer_stage`, the underlying stage is sometimes
+// preserved in `customer_substage`; we look there first, then fall back to
+// the pipeline's entry stage (Onboarding / Adopted) so the row never
+// misclassifies as Established just because a deal is on hold.
 export function classifyPortfolioStage(
   customerStage: string,
-  _customerSubstage: string | null
+  pipelineId: string,
+  customerSubstage: string | null = null
 ): PortfolioStage {
+  // Lifecycle = Onboarding, regardless of customer_stage.
+  if (pipelineId === LIFECYCLE_PIPELINE_ID) return "Onboarding";
+
+  // Retention pipeline: customer_stage drives the progression.
   switch (customerStage) {
-    case "Onboarding":
-      return "Onboarding";
-    case "Adopted":
-      return "Adopted";
-    case "Started":
-      return "Started";
-    case "Ramp Up":
-      return "Ramp Up";
-    case "Established":
-      return "Established";
-    default:
-      return "Established";
+    case "Adopted": return "Adopted";
+    case "Started": return "Started";
+    case "Ramp Up": return "Ramp Up";
+    case "Established": return "Established";
   }
+
+  // Overlay states. Try to recover the underlying stage from substage; if
+  // we can't, fall back to "Adopted" — the entry point of Retention. This
+  // is conservative (account stays visible to CS) without claiming the
+  // company is fully Established.
+  if (customerStage === "Hibernation" || customerStage === "Product Hold") {
+    const substageLower = (customerSubstage ?? "").toLowerCase();
+    if (substageLower.includes("established")) return "Established";
+    if (substageLower.includes("ramp")) return "Ramp Up";
+    if (substageLower.includes("started")) return "Started";
+    return "Adopted";
+  }
+
+  // Empty / unrecognised customer_stage on a Retention deal. Default to
+  // Adopted (the pipeline's entry point) rather than Established (the
+  // bottom). Same reasoning as the overlay fallback.
+  return "Adopted";
 }
 
 // Which signals can fire for each stage. A signal is dropped from a row if
 // the row's stage is not in its applicability set.
+//
+// Both `no_future_events` and `health_dropped` exclude Onboarding. In early
+// onboarding it's normal not to have events scheduled yet (creating them is
+// often one of the last steps before progressing to Adopted), and the health
+// score hasn't had time to stabilise, so a "drop" off a fresh baseline isn't
+// meaningful. Flagging either produces noise rather than insight at this stage.
 export const STAGE_APPLICABILITY: Record<PortfolioSignalKey, PortfolioStage[]> = {
   overdue_invoices:  ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
   open_invoices:     ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
-  no_future_events:  ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
-  health_dropped:    ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
+  no_future_events:  ["Adopted", "Started", "Ramp Up", "Established"],
+  health_dropped:    ["Adopted", "Started", "Ramp Up", "Established"],
   gone_quiet:        ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
   wish_to_churn:     ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
   stuck_in_step:     ["Onboarding", "Adopted", "Started"],
@@ -59,11 +100,22 @@ export function isSignalApplicable(signal: PortfolioSignalKey, stage: PortfolioS
 // non-firing rows must be ordered last regardless of sort direction so they
 // never outrank firing ones. The Portfolio container's sort comparator
 // (Task 11) is responsible for honoring this.
+// Numeric ordering for the 5 portfolio stages so "stage" can be a sort key.
+// asc puts Onboarding first; desc puts Established first.
+const STAGE_ORDER: Record<PortfolioRow["stage"], number> = {
+  Onboarding: 0,
+  Adopted: 1,
+  Started: 2,
+  "Ramp Up": 3,
+  Established: 4,
+};
+
 export function extractSortKey(row: PortfolioRow, key: PortfolioSortKey): number | string | null {
   switch (key) {
     // Universal
     case "urgency":         return row.signals.length * 10000 + row.revenue;
     case "name":            return row.name;
+    case "stage":           return STAGE_ORDER[row.stage];
     case "revenue":         return row.revenue;
     case "health":          return row.healthScore;
     case "last_contact":    return row.daysSinceContact;
@@ -111,12 +163,13 @@ export interface SortOption {
 }
 
 const UNIVERSAL_SORTS: SortOption[] = [
-  { key: "urgency",       label: "Urgency",         direction: "desc" },
-  { key: "name",          label: "Name (A→Z)",      direction: "asc"  },
-  { key: "revenue",       label: "Revenue (high)",  direction: "desc" },
-  { key: "health",        label: "Health (low)",    direction: "asc" },
-  { key: "last_contact",  label: "Last contact",    direction: "desc" },
-  { key: "days_in_stage", label: "Days in stage",   direction: "desc" },
+  { key: "urgency",       label: "Urgency",        direction: "desc" },
+  { key: "stage",         label: "Stage",          direction: "asc"  },
+  { key: "name",          label: "Name",           direction: "asc"  },
+  { key: "revenue",       label: "Revenue",        direction: "desc" },
+  { key: "health",        label: "Health",         direction: "asc"  },
+  { key: "last_contact",  label: "Last contact",   direction: "desc" },
+  { key: "days_in_stage", label: "Days in stage",  direction: "desc" },
 ];
 
 const SIGNAL_SPECIFIC_SORTS: Record<PortfolioSignalKey, SortOption[]> = {
@@ -181,6 +234,7 @@ interface BuildRowInput {
   deal: {
     customerStage: string;
     customerSubstage: string | null;
+    pipelineId: string;
     enteredStageDate: string | null;
     customerLiveDate: string | null;
     unpaidInvoice: boolean;
@@ -215,7 +269,11 @@ function daysBetween(now: string, then: string | null): number | null {
 }
 
 export function buildRow(input: BuildRowInput): PortfolioRow {
-  const stage = classifyPortfolioStage(input.deal.customerStage, input.deal.customerSubstage);
+  const stage = classifyPortfolioStage(
+    input.deal.customerStage,
+    input.deal.pipelineId,
+    input.deal.customerSubstage
+  );
   const daysSilent = daysBetween(input.nowIso, input.company.notesLastContacted);
 
   // Build the full watch-out list, then drop entries whose signal is not
@@ -325,12 +383,6 @@ export async function buildPortfolioPayload(
   });
 }
 
-// Pipelines that source the Portfolio universe. Lifecycle (166333631) covers
-// onboarding-stage customers; Retention (1072518362) covers Adopted/Started/
-// Ramp Up/Established. We union both pipelines and skip Churned client-side.
-const LIFECYCLE_PIPELINE_ID = "166333631";
-const RETENTION_PIPELINE_ID = "1072518362";
-
 const PORTFOLIO_DEAL_PROPS = [
   "customer_stage",
   "customer_substage",
@@ -345,6 +397,15 @@ const PORTFOLIO_DEAL_PROPS = [
   "churn_date",
   "dealstage",
   "pipeline",
+  // Owner of the *deal* (the CSM working the account), not the company. The
+  // company-level hubspot_owner_id is typically the AE; using deal owner
+  // matches the peer onboarding flow (`onboarding.ts:466`) and gives the
+  // person filter accurate results for CS work.
+  "hubspot_owner_id",
+  // Calculated property: HubSpot sets this to "true" when the deal is in a
+  // closed stage (won/lost). We filter closed deals out so the Portfolio only
+  // surfaces deals that are still actionable.
+  "hs_is_closed",
   "confirmed__contract_mrr",
   "deal_currency_code",
   "booking_fee",
@@ -418,16 +479,22 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
     fetchPortfolioDealsForPipeline(LIFECYCLE_PIPELINE_ID),
     fetchPortfolioDealsForPipeline(RETENTION_PIPELINE_ID),
   ]);
-  // Exclude churned deals. Two signals matter:
+  // Drop deals that aren't actionable today:
   //   1. customer_stage === "Churned" (the canonical case)
   //   2. churn_date is set (HubSpot lets customer_stage freeze at pre-churn
   //      values like "Hibernation" when a churn_date is filled in, so the
   //      stage check alone misses these). Any non-empty churn_date counts.
+  //   3. hs_is_closed === "true" — closed-won or closed-lost deals that no
+  //      longer represent the company's current CS state. Without this
+  //      filter, an old closed Retention deal can win out over an active
+  //      Lifecycle deal under a person filter (since each deal becomes a row
+  //      and the closed deal happens to be owned by the filtered person).
   const allDeals = [...lifecycleDeals, ...retentionDeals].filter((d) => {
     const stage = d.properties.customer_stage;
     const churnDate = d.properties.churn_date;
     if (stage === "Churned") return false;
     if (churnDate && churnDate.trim() !== "") return false;
+    if (d.properties.hs_is_closed === "true") return false;
     return true;
   });
   if (allDeals.length === 0) return [];
@@ -497,13 +564,14 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
     ? new Set(ownerIdsCsv.split(",").map((s) => s.trim()).filter(Boolean))
     : null;
 
-  // Step 2e: owner directory (request-level cached).
+  // Step 2e: owner directory (request-level cached). fetchOwnerNames returns
+  // the full directory regardless of input, so passing the deal-owner ids
+  // alongside company-owner ids is purely belt-and-braces.
   const ownerNames = await fetchOwnerNames(
-    Array.from(new Set(
-      Array.from(companyProps.values())
-        .map((p) => p.hubspot_owner_id)
-        .filter((id): id is string => Boolean(id))
-    ))
+    Array.from(new Set([
+      ...Array.from(companyProps.values()).map((p) => p.hubspot_owner_id),
+      ...allDeals.map((d) => d.properties.hubspot_owner_id),
+    ].filter((id): id is string => Boolean(id))))
   );
 
   // Step 2f: assemble rows.
@@ -512,15 +580,18 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
   const rows: PortfolioRow[] = [];
 
   for (const deal of allDeals) {
+    const dealProps = deal.properties;
+
+    // Owner attribution: use the *deal* owner (CSM working the account), not
+    // the company owner (typically the AE). Mirrors the peer onboarding flow
+    // and produces accurate person-filter results for CS work.
+    const ownerId = dealProps.hubspot_owner_id || null;
+    if (ownerFilter && (!ownerId || !ownerFilter.has(ownerId))) continue;
+
     const companyId = dealToCompany.get(deal.id);
     if (!companyId) continue;
     const props = companyProps.get(companyId);
     if (!props) continue;
-
-    const ownerId = props.hubspot_owner_id || null;
-    if (ownerFilter && (!ownerId || !ownerFilter.has(ownerId))) continue;
-
-    const dealProps = deal.properties;
 
     // Revenue via the shared computation (booking-fee revenue + MRR * tenure).
     const revenue = computeGeneratedRevenue(
@@ -611,6 +682,7 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
       deal: {
         customerStage: dealProps.customer_stage || "",
         customerSubstage: dealProps.customer_substage || null,
+        pipelineId: dealProps.pipeline || "",
         enteredStageDate: dealProps.hs_v2_date_entered_current_stage || null,
         customerLiveDate: dealProps.customer_live_date || null,
         unpaidInvoice,

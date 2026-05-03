@@ -17,6 +17,9 @@ import { PortfolioView } from "./PortfolioView";
 interface Props {
   filter: GlobalFilter;
   filterLabel: string | null;
+  // When false (typically when the global filter is a single-person filter),
+  // the OWNER column hides because every row would show the same avatar.
+  showAvatar?: boolean;
   onSelectCompany: (companyId: string) => void;
 }
 
@@ -51,7 +54,7 @@ function saveDefaults(d: PortfolioDefaults): void {
   );
 }
 
-export function PortfolioContainer({ filter, onSelectCompany }: Props) {
+export function PortfolioContainer({ filter, showAvatar = true, onSelectCompany }: Props) {
   const [data, setData] = useState<PortfolioResponse | null>(null);
   const [isFirstLoading, setIsFirstLoading] = useState(true);
   const [, setIsRevalidating] = useState(false);
@@ -59,7 +62,24 @@ export function PortfolioContainer({ filter, onSelectCompany }: Props) {
 
   const [selectedSignals, setSelectedSignals] = useState<PortfolioSignalKey[]>([]);
   const [sortKey, setSortKey] = useState<PortfolioSortKey>("urgency");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
+
+  // Click handler for sort selection. Re-clicking the active sort key flips
+  // direction (asc↔desc); clicking a different key resets direction to that
+  // option's natural default.
+  const setSort = useCallback(
+    (k: PortfolioSortKey) => {
+      if (k === sortKey) {
+        setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+        return;
+      }
+      const opt = getSortOptions(selectedSignals).find((o) => o.key === k);
+      setSortKey(k);
+      setSortDirection(opt?.direction ?? "desc");
+    },
+    [sortKey, selectedSignals]
+  );
 
   const key = filterKey(filter);
 
@@ -121,7 +141,7 @@ export function PortfolioContainer({ filter, onSelectCompany }: Props) {
 
     const sortOpt = getSortOptions(selectedSignals).find((o) => o.key === sortKey);
     if (!sortOpt) return filtered;
-    const dir = sortOpt.direction === "desc" ? -1 : 1;
+    const dir = sortDirection === "desc" ? -1 : 1;
     return [...filtered].sort((a, b) => {
       const av = extractSortKey(a, sortKey);
       const bv = extractSortKey(b, sortKey);
@@ -131,7 +151,7 @@ export function PortfolioContainer({ filter, onSelectCompany }: Props) {
       if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
       return ((av as number) - (bv as number)) * dir;
     });
-  }, [data, selectedSignals, sortKey]);
+  }, [data, selectedSignals, sortKey, sortDirection]);
 
   const stateRef = useRef({ rows: filteredSortedRows, focused: focusedRowIndex });
   useEffect(() => {
@@ -168,7 +188,11 @@ export function PortfolioContainer({ filter, onSelectCompany }: Props) {
       const opts = getSortOptions(selectedSignals);
       const idx = opts.findIndex((o) => o.key === sortKey);
       const next = opts[(idx + 1) % opts.length];
-      if (next) setSortKey(next.key);
+      if (next) {
+        // Cycle key + reset direction to the new option's natural default.
+        setSortKey(next.key);
+        setSortDirection(next.direction);
+      }
     }
     function onSaveDefaults() {
       saveDefaults({ filter, signals: selectedSignals, sort: sortKey });
@@ -196,6 +220,9 @@ export function PortfolioContainer({ filter, onSelectCompany }: Props) {
     if (d) {
       setSelectedSignals(d.signals);
       setSortKey(d.sort);
+      // Direction isn't persisted; restore the option's natural default.
+      const opt = getSortOptions(d.signals).find((o) => o.key === d.sort);
+      setSortDirection(opt?.direction ?? "desc");
       setHasSavedDefault(true);
     }
   }, []);
@@ -206,13 +233,14 @@ export function PortfolioContainer({ filter, onSelectCompany }: Props) {
   };
 
   if (error && !data) return <div style={{ padding: 24 }}>{error}</div>;
-  if (isFirstLoading) return <div style={{ padding: 24 }}>Loading…</div>;
+  if (isFirstLoading) return <PortfolioSkeleton />;
   if (!data) return null;
 
   return (
     <PortfolioView
       rows={filteredSortedRows}
       totalsBySignal={totalsBySignal}
+      showAvatar={showAvatar}
       selectedSignals={selectedSignals}
       toggleSignal={(k) =>
         setSelectedSignals((prev) =>
@@ -221,7 +249,8 @@ export function PortfolioContainer({ filter, onSelectCompany }: Props) {
       }
       clearSignals={() => setSelectedSignals([])}
       sortKey={sortKey}
-      setSortKey={setSortKey}
+      sortDirection={sortDirection}
+      setSortKey={setSort}
       focusedRowIndex={focusedRowIndex}
       onRowClick={(row) => onSelectCompany(row.id)}
       hasSavedDefault={hasSavedDefault}
@@ -235,6 +264,8 @@ export function PortfolioContainer({ filter, onSelectCompany }: Props) {
         if (!d) return;
         setSelectedSignals(d.signals);
         setSortKey(d.sort);
+        const opt = getSortOptions(d.signals).find((o) => o.key === d.sort);
+        setSortDirection(opt?.direction ?? "desc");
       }}
     />
   );
@@ -253,6 +284,88 @@ function isCurrentEqualToSaved(
   const a = [...saved.signals].sort();
   const b = [...signals].sort();
   return a.every((v, i) => v === b[i]);
+}
+
+function PortfolioSkeleton() {
+  // Mirrors the live Portfolio shape: moss banner + toolbar pills + column
+  // header + 8 placeholder rows. animate-pulse comes from Tailwind utilities
+  // already in globals.css.
+  return (
+    <div style={{ background: "var(--page-bg)", minHeight: "calc(100vh - 120px)" }}>
+      <div style={{ padding: "20px 28px 0" }}>
+        <div
+          className="animate-pulse"
+          style={{
+            maxWidth: 1200,
+            margin: "0 auto",
+            background: "var(--moss)",
+            borderRadius: 18,
+            height: 154,
+            opacity: 0.85,
+          }}
+        />
+      </div>
+      <div className="animate-pulse" style={{ padding: "0 28px 60px" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <div style={{ display: "flex", gap: 10, padding: "12px 0" }}>
+            <div style={{ height: 36, width: 180, background: "var(--hairline)", borderRadius: 10 }} />
+            <div style={{ flex: 1 }} />
+            <div style={{ height: 36, width: 180, background: "var(--hairline)", borderRadius: 10 }} />
+          </div>
+          <div
+            style={{
+              height: 36,
+              background: "var(--card-bg)",
+              border: "1px solid var(--hairline)",
+              borderTopLeftRadius: 14,
+              borderTopRightRadius: 14,
+              marginBottom: 0,
+            }}
+          />
+          <div
+            style={{
+              height: 32,
+              background: "var(--card-bg)",
+              borderLeft: "1px solid var(--hairline)",
+              borderRight: "1px solid var(--hairline)",
+              borderBottom: "1px solid var(--hairline-strong)",
+            }}
+          />
+          <div
+            style={{
+              border: "1px solid var(--hairline)",
+              borderTop: 0,
+              borderBottomLeftRadius: 14,
+              borderBottomRightRadius: 14,
+              overflow: "hidden",
+            }}
+          >
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "96px 1fr 280px 60px 80px 50px 44px",
+                  gap: 12,
+                  alignItems: "center",
+                  padding: "12px 18px",
+                  borderBottom: i === 7 ? "none" : "1px solid var(--hairline)",
+                }}
+              >
+                <span style={{ height: 18, background: "var(--hairline)", borderRadius: 6 }} />
+                <span style={{ height: 14, background: "var(--hairline)", borderRadius: 4, width: "70%" }} />
+                <span style={{ height: 16, background: "var(--hairline)", borderRadius: 6, width: "55%" }} />
+                <span style={{ height: 12, background: "var(--hairline)", borderRadius: 4, justifySelf: "end", width: 28 }} />
+                <span style={{ height: 12, background: "var(--hairline)", borderRadius: 4, justifySelf: "end", width: 50 }} />
+                <span style={{ height: 12, background: "var(--hairline)", borderRadius: 4, justifySelf: "end", width: 30 }} />
+                <span style={{ height: 22, width: 22, background: "var(--hairline)", borderRadius: "50%", justifySelf: "end" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function mapKindToKey(kind: string, title: string): PortfolioSignalKey {

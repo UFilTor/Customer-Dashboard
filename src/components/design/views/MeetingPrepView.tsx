@@ -3,6 +3,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { MeetingPrepMeetingEntry } from "@/lib/types";
 import { CountUpInt, Stagger } from "../Motion";
+import { DashboardBanner } from "../DashboardBanner";
 import { EditorialEmpty } from "../EditorialEmpty";
 import { Icon } from "../Icon";
 import { Kpi } from "../Kpi";
@@ -59,7 +60,6 @@ function MeetingsPanel({
   lifecycleDealsTotal,
   retentionDealsTotal,
   meetings,
-  filterLabel,
   fetchedDays,
   fetchingDays,
   onFetchDay,
@@ -226,44 +226,47 @@ function MeetingsPanel({
   const lifecycleDeals = lifecycleDealsTotal;
   const retentionDeals = retentionDealsTotal;
 
+  const firstMeetingToday = meetingsTodayCount > 0
+    ? fmtTime24(new Date((meetingsByDay.get(dayKey(today)) || [])[0].meeting.startsAt))
+    : null;
+
   return (
     <div
       style={{
         background: "var(--beige-new)",
         minHeight: "calc(100vh - 120px)",
-        padding: "32px 28px 60px",
       }}
     >
-      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-        <Hero
-          eyebrow="Meeting prep"
-          filterLabel={filterLabel}
-          line1Number={total}
-          line1Suffix={total === 1 ? "customer in scope" : "customers in scope"}
-          body={
-            <>
-              <strong style={{ fontWeight: 600 }}>
-                {meetingsTodayCount} meeting{meetingsTodayCount === 1 ? "" : "s"} today
-              </strong>
-              {meetingsTodayCount > 0 && (
-                <>
-                  , first at{" "}
-                  {fmtTime24(
-                    new Date((meetingsByDay.get(dayKey(today)) || [])[0].meeting.startsAt)
-                  )}
-                </>
-              )}
-              . {meetings.length} across the next 5 work days
-              {lifecycleDeals > 0 && retentionDeals > 0 && (
-                <>
-                  {" "}({lifecycleDeals} onboarding, {retentionDeals} live)
-                </>
-              )}
-              .
-            </>
-          }
-        />
+      <DashboardBanner
+        eyebrow="Meeting prep"
+        headline={
+          <>
+            {total} {total === 1 ? "customer" : "customers"} in scope.
+          </>
+        }
+        detail={
+          <>
+            <span
+              style={{
+                color: "var(--citrus)",
+                borderBottom: meetingsTodayCount > 0 ? "1px dashed color-mix(in oklch, var(--citrus) 55%, transparent)" : "none",
+                paddingBottom: 1,
+              }}
+            >
+              {meetingsTodayCount} meeting{meetingsTodayCount === 1 ? "" : "s"} today
+            </span>
+            {firstMeetingToday && <>, first at {firstMeetingToday}</>}
+            . {meetings.length} across the next 5 work days
+            {lifecycleDeals > 0 && retentionDeals > 0 && (
+              <> ({lifecycleDeals} onboarding, {retentionDeals} live)</>
+            )}
+            .
+          </>
+        }
+      />
 
+      <div style={{ padding: "20px 28px 60px" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         <Stagger
           delay={70}
           initial={120}
@@ -409,6 +412,7 @@ function MeetingsPanel({
             </div>
           )}
         </Section>
+        </div>
       </div>
     </div>
   );
@@ -634,103 +638,6 @@ function ArrowButton({
   );
 }
 
-function Hero({
-  eyebrow,
-  filterLabel,
-  line1Number,
-  line1Suffix,
-  body,
-}: {
-  eyebrow: string;
-  filterLabel?: string | null;
-  line1Number: number;
-  line1Suffix: string;
-  // Kept in the type signature so callers can supply a richer summary; the
-  // morning-band render only uses the inline counts in `body`.
-  line2?: string;
-  body: React.ReactNode;
-}) {
-  // Distilled from the previous moss-drenched hero panel. The morning band
-  // matches Briefing's pattern: eyebrow + Fraunces date + filter chip + a
-  // single sentence carrying the meaningful counts. The KPI strip below
-  // already carries the headline number, so the hero doesn't need to.
-  const dateStr =
-    typeof window === "undefined"
-      ? ""
-      : new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-  return (
-    <div style={{ marginBottom: 18 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: 10,
-          flexWrap: "wrap",
-          color: "var(--moss)",
-        }}
-      >
-        <span
-          style={{
-            fontFamily: "var(--font-display)",
-            textTransform: "uppercase",
-            fontSize: 10.5,
-            fontWeight: 700,
-            letterSpacing: "0.08em",
-            color: "var(--green-100)",
-          }}
-        >
-          {eyebrow}
-        </span>
-        <span aria-hidden="true" style={{ color: "var(--green-100)", opacity: 0.5 }}>·</span>
-        <span
-          suppressHydrationWarning
-          style={{
-            fontFamily: "var(--font-editorial)",
-            fontStyle: "italic",
-            fontSize: 13,
-            color: "var(--moss)",
-          }}
-        >
-          {dateStr}
-        </span>
-        {filterLabel && (
-          <>
-            <span aria-hidden="true" style={{ color: "var(--green-100)", opacity: 0.5 }}>·</span>
-            <span
-              style={{
-                fontFamily: "var(--font-display)",
-                textTransform: "uppercase",
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: "0.08em",
-                color: "var(--moss)",
-                background: "var(--hairline)",
-                padding: "3px 7px",
-                borderRadius: 6,
-              }}
-            >
-              {filterLabel}
-            </span>
-          </>
-        )}
-      </div>
-      <p
-        style={{
-          margin: "10px 0 0",
-          fontSize: 14,
-          lineHeight: 1.55,
-          maxWidth: 720,
-          color: "var(--moss)",
-        }}
-      >
-        <strong style={{ fontWeight: 600 }}>
-          <CountUpInt value={line1Number} duration={500} /> {line1Suffix}
-        </strong>
-        {body && <> · {body}</>}
-      </p>
-    </div>
-  );
-}
 
 function Section({
   title,

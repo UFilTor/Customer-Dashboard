@@ -84,6 +84,21 @@
   --pay-stage-unwilling: #8C5746;
   --pay-stage-ineligible: #8C8F8B;
 
+  /* Portfolio lifecycle stage palette. Used by row stage chips in PortfolioView.
+     Pairs are bg + matching foreground; foregrounds tested ≥4.5:1 on the bg.
+     Saturation stays calm to live on cream surfaces; the label next to each
+     swatch carries the meaning. */
+  --stage-onboarding-bg: #FCE9C2;
+  --stage-onboarding-fg: #7A4A00;
+  --stage-adopted-bg: #FFE2C2;
+  --stage-adopted-fg: #7A3F00;
+  --stage-started-bg: #FFE6E0;
+  --stage-started-fg: #8B2A14;
+  --stage-rampup-bg: #D7E9D2;
+  --stage-rampup-fg: #1F4A22;
+  --stage-established-bg: #D5DFCA;
+  --stage-established-fg: #022C12;
+
   /* Easing — DESIGN.md §6 specifies the ease-out-quart family. Centralised
      so component code references the name, not the bezier. */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -252,8 +267,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    Used by PortfolioView. Class-based to escape inline-style-only hover and
    sticky positioning, and to host the popover entry animation. */
 .pf-row { transition: background 120ms var(--ease-out), box-shadow 120ms var(--ease-out); }
-.pf-row:hover { background: var(--beige-new); }
-.pf-row.focused { background: var(--lichen); box-shadow: inset 3px 0 0 var(--moss); }
+/* Tints aligned with the peer .hrow / focused-row convention so list rows
+   feel consistent across Portfolio, Briefing, Onboarding, and Pay views. */
+.pf-row:hover { background: var(--light-grey); }
+.pf-row.focused { background: var(--beige-new); box-shadow: inset 3px 0 0 var(--moss); }
 .pf-row .row-chevron { opacity: 0; transition: opacity 120ms var(--ease-out); color: var(--green-100); }
 .pf-row:hover .row-chevron, .pf-row.focused .row-chevron { opacity: 0.7; }
 
@@ -288,7 +305,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   box-shadow: var(--shadow-modal);
   overflow: hidden;
   z-index: 50;
-  min-width: 320px;
+  min-width: 240px;
   transform-origin: top left;
   animation: pfPopIn 140ms var(--ease-out) both;
 }
@@ -299,9 +316,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .pf-pop-row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
-  border-radius: 10px;
+  gap: 12px;
+  /* Tighter vertical padding so each option claims less menu height; menus
+     surface 8 signals + 6 sort options, so the savings compound. */
+  padding: 5px 14px;
+  border-radius: 8px;
   cursor: pointer;
   user-select: none;
   color: var(--moss);
@@ -310,12 +329,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   width: 100%;
   text-align: left;
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  /* Menu-item weight matches peer popovers (CommandPalette / dropdowns):
+     500 by default, the .selected modifier already carries the meaning. */
+  font-weight: 500;
   transition: background 120ms var(--ease-out);
 }
 .pf-pop-row:hover, .pf-pop-row.focused { background: var(--beige-new); }
-.pf-pop-row.selected { background: var(--lichen); }
+.pf-pop-row.selected { background: var(--lichen); font-weight: 600; }
 
 .pf-checkbox {
   width: 20px;

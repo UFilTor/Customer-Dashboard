@@ -66,12 +66,14 @@ export function VariantPicker({
   const showLayout = dashboard === "status";
   const showPayFilter = dashboard === "pay_migration" && setPayFilter && payFilter;
 
+  // Dashboards without variant tabs (Portfolio, Meeting Prep, Lookup) skip
+  // the sub-bar entirely. DashboardPicker in the TopBar already names the
+  // current dashboard, so a second bar with no controls was empty chrome.
+  if (!showLayout && !showPayFilter) return null;
+
   return (
     <div
       style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 20,
         background: "var(--light-grey)",
         borderBottom: "1px solid var(--beige-gray)",
       }}
@@ -99,7 +101,7 @@ export function VariantPicker({
               </button>
             ))}
           </SegLight>
-        ) : showPayFilter ? (
+        ) : (
           <SegLight label="Pay migration scope">
             {([
               { key: "default", label: "Default" },
@@ -116,33 +118,7 @@ export function VariantPicker({
               </button>
             ))}
           </SegLight>
-        ) : (
-          <span
-            style={{
-              fontSize: 12,
-              color: "var(--green-100)",
-              fontStyle: "italic",
-              fontFamily: "var(--font-editorial)",
-            }}
-          >
-            {DASHBOARDS.find((d) => d.key === dashboard)?.sub}
-          </span>
         )}
-
-        <div
-          style={{
-            marginLeft: "auto",
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-          }}
-        >
-          {/* Status: count summary intentionally omitted here. The same
-              numbers live in the Briefing morning band + StatTile band, and
-              in Split's sidebar header. Showing them three times was noise.
-              DashboardPicker lives in the dark TopBar; this sub-bar carries
-              only view-specific tabs on the left. */}
-        </div>
       </div>
     </div>
   );

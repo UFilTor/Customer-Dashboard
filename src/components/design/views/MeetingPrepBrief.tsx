@@ -54,6 +54,72 @@ function stepLabel(step: string | null): string {
   return STEP_LABELS[step] ?? step;
 }
 
+// Map a brief's pipeline + customerStage to the 5-stage Portfolio taxonomy so
+// the same stage-chip palette shows up in both dashboards. Mirrors the rules
+// in src/lib/portfolio.ts:mapToPortfolioStage but operates on the runtime
+// shape we already have here (no pipeline-id lookup needed).
+function briefPortfolioStage(
+  pipeline: "lifecycle" | "retention",
+  customerStage: string
+): "Onboarding" | "Started" | "Adopted" | "Ramp Up" | "Established" {
+  if (pipeline === "lifecycle") return "Onboarding";
+  switch (customerStage) {
+    case "Adopted":     return "Adopted";
+    case "Started":     return "Started";
+    case "Ramp Up":     return "Ramp Up";
+    case "Established": return "Established";
+    default:            return "Adopted";
+  }
+}
+
+// Stage chip palette, identical to PortfolioView.tsx STAGE_BADGE so the chip
+// reads as the same component in both dashboards.
+const STAGE_CHIP_BG: Record<string, { bg: string; fg: string }> = {
+  Onboarding:  { bg: "var(--stage-onboarding-bg)", fg: "var(--stage-onboarding-fg)" },
+  Started:     { bg: "var(--sky-blue)",            fg: "var(--moss)" },
+  Adopted:     { bg: "var(--beige)",               fg: "var(--moss)" },
+  "Ramp Up":   { bg: "var(--beige)",               fg: "var(--moss)" },
+  Established: { bg: "var(--beige)",               fg: "var(--moss)" },
+};
+
+function StageChip({ stage }: { stage: string }) {
+  const palette = STAGE_CHIP_BG[stage] ?? STAGE_CHIP_BG.Adopted;
+  return (
+    <span
+      style={{
+        padding: "3px 9px",
+        borderRadius: 6,
+        background: palette.bg,
+        color: palette.fg,
+        fontSize: 10,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        lineHeight: 1.2,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {stage}
+    </span>
+  );
+}
+
+// Health-score figure for the metadata line. Color tracks the same threshold
+// as Portfolio (≥65 moss, otherwise green-100). Hidden when the deal lacks a
+// score so we don't show "—" filler.
+function HealthFigure({ healthScore }: { healthScore: number | null }) {
+  if (healthScore == null) return null;
+  const color = healthScore >= 65 ? "var(--moss)" : "var(--green-100)";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontVariantNumeric: "tabular-nums" }}>
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--green-100)" }}>
+        Health
+      </span>
+      <span style={{ fontWeight: 700, color }}>{Math.round(healthScore)}</span>
+    </span>
+  );
+}
+
 export function MeetingPrepBrief({
   entry,
   isFocused,
@@ -164,19 +230,23 @@ export function MeetingPrepBrief({
                 color: "var(--moss)",
                 cursor: "pointer",
                 textAlign: "left",
-                textDecoration: "underline dotted",
+                // React 19 warns when shorthand (textDecoration) and longhand
+                // (textDecorationColor / textDecorationThickness) are both
+                // present on the same element. Use longhands only.
+                textDecorationLine: "underline",
+                textDecorationStyle: "dotted",
                 textDecorationColor: "rgba(2, 44, 18, 0.3)",
                 textUnderlineOffset: 5,
                 textDecorationThickness: 1,
-                transition: "text-decoration-color 120ms ease, text-decoration-style 120ms ease",
+                transition: "text-decoration-color 120ms ease, text-decoration-style 120ms ease, text-decoration-thickness 120ms ease",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.textDecoration = "underline";
+                e.currentTarget.style.textDecorationStyle = "solid";
                 e.currentTarget.style.textDecorationColor = "var(--moss)";
                 e.currentTarget.style.textDecorationThickness = "2px";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.textDecoration = "underline dotted";
+                e.currentTarget.style.textDecorationStyle = "dotted";
                 e.currentTarget.style.textDecorationColor = "rgba(2, 44, 18, 0.3)";
                 e.currentTarget.style.textDecorationThickness = "1px";
               }}
@@ -215,7 +285,22 @@ export function MeetingPrepBrief({
             <Dot />
             <span>{deal.country || "—"}</span>
             <Dot />
-            <span style={{ fontWeight: 700 }}>{deal.customerStage}</span>
+            {/* Stage chip mirrors Portfolio's STAGE_BADGE so both dashboards
+                read as one system. Customer-stage substring (the HubSpot raw
+                value) drops here in favour of the 5-stage Portfolio taxonomy
+                because that's the system both views now share. */}
+            <StageChip stage={briefPortfolioStage(deal.pipeline, deal.customerStage)} />
+            {(() => {
+              const raw = deal.companyProps?.health_score;
+              const num = raw != null && raw !== "" ? Number(raw) : null;
+              const hs = num != null && Number.isFinite(num) ? num : null;
+              return hs == null ? null : (
+                <>
+                  <Dot />
+                  <HealthFigure healthScore={hs} />
+                </>
+              );
+            })()}
             <Dot />
             {deal.pipeline === "lifecycle" && deal.step ? (
               <span>
@@ -314,7 +399,10 @@ export function MeetingPrepBrief({
           />
           <div>
             <SectionHeader>Watch out for</SectionHeader>
-            <WatchOutFor signals={deal.watchOuts} />
+            <WatchOutFor
+              signals={deal.watchOuts}
+              stage={briefPortfolioStage(deal.pipeline, deal.customerStage)}
+            />
           </div>
         </div>
       </div>

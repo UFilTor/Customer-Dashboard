@@ -3,7 +3,11 @@ import { computeGeneratedRevenue, TO_EUR } from "./attention";
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { searchObjectsPage } from "./hubspot-search";
 import { fetchOwnerNames } from "./onboarding";
-import { computeWatchOutSignals } from "./signals";
+import {
+  computeWatchOutSignals,
+  STAGE_APPLICABILITY as SHARED_STAGE_APPLICABILITY,
+  isSignalApplicable as sharedIsSignalApplicable,
+} from "./signals";
 import type {
   PortfolioResponse,
   PortfolioRow,
@@ -72,28 +76,11 @@ export function classifyPortfolioStage(
   return "Adopted";
 }
 
-// Which signals can fire for each stage. A signal is dropped from a row if
-// the row's stage is not in its applicability set.
-//
-// Both `no_future_events` and `health_dropped` exclude Onboarding. In early
-// onboarding it's normal not to have events scheduled yet (creating them is
-// often one of the last steps before progressing to Adopted), and the health
-// score hasn't had time to stabilise, so a "drop" off a fresh baseline isn't
-// meaningful. Flagging either produces noise rather than insight at this stage.
-export const STAGE_APPLICABILITY: Record<PortfolioSignalKey, PortfolioStage[]> = {
-  overdue_invoices:  ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
-  open_invoices:     ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
-  no_future_events:  ["Adopted", "Started", "Ramp Up", "Established"],
-  health_dropped:    ["Adopted", "Started", "Ramp Up", "Established"],
-  gone_quiet:        ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
-  wish_to_churn:     ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
-  stuck_in_step:     ["Onboarding", "Adopted", "Started"],
-  volume_declining:  ["Ramp Up", "Established"],
-};
-
-export function isSignalApplicable(signal: PortfolioSignalKey, stage: PortfolioStage): boolean {
-  return STAGE_APPLICABILITY[signal].includes(stage);
-}
+// Stage applicability now lives in signals.ts so every consumer of
+// computeWatchOutSignals sees the same gating. Re-exported here for
+// back-compat with callers that already import from this module.
+export const STAGE_APPLICABILITY = SHARED_STAGE_APPLICABILITY;
+export const isSignalApplicable = sharedIsSignalApplicable;
 
 // Pure value extractor for a row + sort key. Returns null when the requested
 // signal-specific value is unavailable for this row. CONTRACT for callers:
@@ -295,10 +282,11 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
   );
   const daysSilent = daysBetween(input.nowIso, input.company.notesLastContacted);
 
-  // Build the full watch-out list, then drop entries whose signal is not
-  // applicable to this row's stage. open_invoices is not a WatchOutSignalKind
-  // (it's a Portfolio-only concept); we synthesize it from the same data.
-  const computed = computeWatchOutSignals({
+  // Stage-aware compute: signals not applicable for `stage` are dropped by
+  // computeWatchOutSignals itself, so we no longer post-filter here.
+  // open_invoices is not a WatchOutSignalKind (it's a Portfolio-only concept)
+  // and is synthesized below from the same data.
+  const applicable: WatchOutSignal[] = computeWatchOutSignals({
     nowIso: input.nowIso,
     unpaidInvoice: input.deal.unpaidInvoice,
     invoiceDueDate: input.deal.invoiceDueDate,
@@ -313,11 +301,8 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     notesLastContacted: input.company.notesLastContacted,
     daysInStep: input.deal.daysInStep,
     expectedDaysInStep: input.deal.expectedDaysInStep,
+    stage,
   });
-
-  const applicable: WatchOutSignal[] = computed.filter((s) =>
-    isSignalApplicable(SIGNAL_KIND_TO_KEY[s.kind], stage)
-  );
 
   // open_invoices: synthesized when there is an open invoice that is not
   // already overdue (overdue is covered by the overdue_invoice WatchOut).

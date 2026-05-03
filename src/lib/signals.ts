@@ -5,7 +5,48 @@ import type {
   WatchOutSignal,
   WatchOutSignalSeverity,
   PortfolioSignalKey,
+  PortfolioStage,
 } from "./types";
+
+// Stage gating, system-wide. The Portfolio dashboard pioneered this set of
+// rules to silence noisy signals on stages where they don't carry useful
+// meaning (e.g. health drops on Onboarding, where the score isn't stable
+// yet). Now lifted into signals.ts so every consumer of computeWatchOutSignals
+// gets the same gating applied — Portfolio and Meeting Prep stay in sync
+// without a per-call duplicate filter.
+export const STAGE_APPLICABILITY: Record<PortfolioSignalKey, PortfolioStage[]> = {
+  overdue_invoices:  ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
+  open_invoices:     ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
+  no_future_events:  ["Adopted", "Started", "Ramp Up", "Established"],
+  health_dropped:    ["Adopted", "Started", "Ramp Up", "Established"],
+  gone_quiet:        ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
+  wish_to_churn:     ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
+  stuck_in_step:     ["Onboarding", "Adopted", "Started"],
+  volume_declining:  ["Ramp Up", "Established"],
+};
+
+export function isSignalApplicable(signal: PortfolioSignalKey, stage: PortfolioStage): boolean {
+  return STAGE_APPLICABILITY[signal].includes(stage);
+}
+
+// Internal: map a watch-out signal back to its PortfolioSignalKey so the
+// stage filter can apply by key. The "Open invoice" title overrides the
+// underlying overdue_invoice kind because we synthesize open-invoice as a
+// sibling of overdue at the call site, but compute does not produce the
+// open-invoice variant directly — open invoice handling stays where it was.
+function watchOutToKey(s: WatchOutSignal): PortfolioSignalKey {
+  if (s.title === "Open invoice") return "open_invoices";
+  switch (s.kind) {
+    case "overdue_invoice":   return "overdue_invoices";
+    case "wish_to_churn":     return "wish_to_churn";
+    case "volume_declining":  return "volume_declining";
+    case "no_future_events":  return "no_future_events";
+    case "stuck_in_step":     return "stuck_in_step";
+    case "health_dropped":    return "health_dropped";
+    case "gone_quiet":        return "gone_quiet";
+    default:                  return "gone_quiet";
+  }
+}
 
 export interface SignalMeta {
   key: AttentionSignal;
@@ -119,6 +160,10 @@ export interface WatchOutContext {
   // Onboarding only
   daysInStep: number | null;
   expectedDaysInStep: number | null;
+  // Optional. When provided, the result is filtered through STAGE_APPLICABILITY
+  // so callers don't have to re-apply the gate. Omit to opt out (legacy
+  // behaviour: all triggered signals returned regardless of stage).
+  stage?: PortfolioStage;
 }
 
 const SEVERITY_ORDER: Record<WatchOutSignalSeverity, number> = { bad: 0, warn: 1 };
@@ -223,9 +268,16 @@ export function computeWatchOutSignals(ctx: WatchOutContext): WatchOutSignal[] {
     });
   }
 
+  // Stage gating: drop signals not applicable for the deal's stage. Caller
+  // must pass `stage` to opt in; legacy callers without stage receive the
+  // full unfiltered list (matches pre-Option-1 behaviour).
+  const filtered = ctx.stage
+    ? out.filter((s) => isSignalApplicable(watchOutToKey(s), ctx.stage as PortfolioStage))
+    : out;
+
   // Stable order: bad first, then warn, preserving insertion order within each
   // severity (matches the order of rules above).
-  return [...out].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+  return [...filtered].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 }
 
 export interface PortfolioSignalMeta {

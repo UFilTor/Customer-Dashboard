@@ -47,6 +47,9 @@
   --lilac: #D1BEE7;
   --sky-blue: #CFE8FF;
   --rust: #933F29;
+  /* Cream paired with --rust whenever rust is used as a fill (e.g. severity
+     pill). Warm to honor The No White Rule; AA-safe at >6:1 vs --rust. */
+  --rust-fg: #FBF6EE;
   --red: #7E0C04;
   --focus-blue: #4D65FF;
   --border-radius: 0.75rem;
@@ -271,10 +274,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    feel consistent across Portfolio, Briefing, Onboarding, and Pay views. */
 .pf-row:hover { background: var(--light-grey); }
 .pf-row.focused { background: var(--beige-new); box-shadow: inset 3px 0 0 var(--moss); }
-.pf-row .row-chevron { opacity: 0; transition: opacity 120ms var(--ease-out); color: var(--green-100); }
-.pf-row:hover .row-chevron, .pf-row.focused .row-chevron { opacity: 0.7; }
 
-.pf-sticky { position: sticky; top: 0; z-index: 30; background: var(--page-bg); }
+.pf-sticky { position: sticky; top: 0; z-index: 30; background: var(--page-bg); transition: box-shadow 160ms var(--ease-out); }
+/* Once the page scrolls, the sticky strip otherwise butts flush against the
+   global TopBar above. A 1px hairline + soft shadow underneath restores the
+   separation between the chrome layers. */
+.pf-sticky.scrolled { box-shadow: 0 1px 0 var(--hairline), 0 6px 12px -8px rgba(2, 44, 18, 0.10); }
+
+.pf-banner-frag {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 120ms var(--ease-out), color 120ms var(--ease-out);
+}
+.pf-banner-frag:hover { background: color-mix(in oklch, var(--moss) 8%, transparent); }
+.pf-banner-frag.active { color: var(--rust); }
 
 .pf-col-head {
   cursor: pointer;
@@ -282,11 +300,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-family: var(--font-display);
+  /* Inter (inherited) per DESIGN.md Label spec. Display font reserved for
+     numerical hero moments only. */
   text-transform: uppercase;
   font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   color: var(--green-100);
   background: transparent;
   border: 0;

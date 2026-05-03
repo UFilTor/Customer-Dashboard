@@ -17,6 +17,7 @@ colors:
   lilac: "#D1BEE7"
   sky-blue: "#CFE8FF"
   rust: "#933F29"
+  rust-fg: "#FBF6EE"
   red: "#7E0C04"
   focus-blue: "#4D65FF"
   hairline: "#022C1214"
@@ -153,7 +154,8 @@ Used for category swatches, sparklines, and row tints. Selected by hue, not by s
 - **Lilac** (`#D1BEE7`): Secondary category.
 - **Sky Blue** (`#CFE8FF`): Tertiary category.
 - **Beige** (`#EDE8D0`): Quaternary category and soft callout backgrounds.
-- **Rust** (`#933F29`): Warning text and warning sparkline.
+- **Rust** (`#933F29`): Warning text, warning sparkline, **and the system's single severity-pill fill**. The Portfolio dashboard uses rust as a solid pill background paired with `--rust-fg` (`#FBF6EE`, warm cream — never `#fff`) for its primary urgency signal (overdue invoices, wish-to-churn, etc.). This is the one place where rust escapes its "warning text" role to do load-bearing severity work, and only here. Other surfaces keep rust as text/stroke.
+- **Rust FG** (`#FBF6EE`): The cream paired with `--rust` whenever rust is used as a fill. Honors The No White Rule (no `#fff`) while keeping ≥6:1 contrast for AA.
 - **Red** (`#7E0C04`): Error / overdue text. Never as a fill larger than 8px.
 
 ### Neutral (warm cream stack)

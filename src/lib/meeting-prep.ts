@@ -23,6 +23,7 @@ import {
   type ContactInfo,
 } from "./onboarding";
 import { computeWatchOutSignals } from "./signals";
+import { classifyPortfolioStage } from "./portfolio";
 import type {
   MeetingPrepDeal,
   MeetingPrepMeetingEntry,
@@ -571,11 +572,31 @@ function buildMeetingPrepDeal(
   const invoices = extractInvoiceState(dp, nowIso);
   const futureEvents = parseUpcomingEventsScore(cp.understory_health_score_upcoming_events);
 
-  // Lifecycle-only fields
+  // Pipeline + customer-stage → 5-stage Portfolio taxonomy. Used both to
+  // gate signals via STAGE_APPLICABILITY and to drive the brief's stage chip.
+  const portfolioStage = classifyPortfolioStage(
+    dp.customer_stage || "",
+    dp.pipeline || "",
+    dp.customer_substage || null
+  );
+
+  // Stuck-in-step inputs. Lifecycle deals always populate daysInStep via the
+  // OnboardingStep classifier below; retention deals get it computed here so
+  // STAGE_APPLICABILITY.stuck_in_step ["Onboarding","Adopted","Started"]
+  // fires for all three. Ramp Up + Established stay null (signal gated off
+  // for those stages anyway, but keeping the input null is the principled
+  // way to express "stuck-in-step doesn't apply here").
   let step: OnboardingStep | null = null;
   let daysInStep: number | null = null;
   let expectedDaysInStep: number | null = null;
   let obNotes: OnboardingObNotesExtended | null = null;
+
+  // Retention-stage expected step durations. Mirrors PORTFOLIO_EXPECTED_DAYS
+  // in portfolio.ts; inlined to avoid a cross-lib import for two numbers.
+  const RETENTION_EXPECTED_DAYS: Record<string, number> = {
+    Adopted: 14,
+    Started: 30,
+  };
 
   // Retention-only fields
   const liveDate = dp.customer_live_date || null;
@@ -611,6 +632,15 @@ function buildMeetingPrepDeal(
       storefrontLink: nullable(dp.storefront),
       payStatus: nullable(dp.understory_pay_status__customer),
     };
+  } else if (portfolioStage === "Adopted" || portfolioStage === "Started") {
+    // Retention deal in a stuck-applicable stage: derive daysInStep from
+    // hs_v2_date_entered_current_stage so stuck_in_step can fire for these
+    // stages too (Portfolio already does this; Meeting Prep was missing it).
+    const enteredStageDate = nullable(dp.hs_v2_date_entered_current_stage);
+    if (enteredStageDate != null) {
+      daysInStep = daysSince(enteredStageDate);
+      expectedDaysInStep = RETENTION_EXPECTED_DAYS[portfolioStage] ?? null;
+    }
   }
 
   const watchOuts: WatchOutSignal[] = computeWatchOutSignals({
@@ -626,8 +656,13 @@ function buildMeetingPrepDeal(
     healthScore: parseFloat(cp.health_score || "") || null,
     upcomingEvents: futureEvents,
     notesLastContacted: cp.notes_last_contacted || dp.notes_last_contacted || null,
-    daysInStep: isLifecycle ? daysInStep : null,
-    expectedDaysInStep: isLifecycle ? expectedDaysInStep : null,
+    // daysInStep / expectedDaysInStep are populated for lifecycle deals AND
+    // for retention deals in stages where stuck_in_step is applicable
+    // (Adopted, Started). STAGE_APPLICABILITY in computeWatchOutSignals does
+    // the final gate, so passing the values here is safe for any stage.
+    daysInStep,
+    expectedDaysInStep,
+    stage: portfolioStage,
   });
 
   const ownerId = dp.hubspot_owner_id || "";

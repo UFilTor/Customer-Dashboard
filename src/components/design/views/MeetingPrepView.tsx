@@ -221,6 +221,22 @@ function MeetingsPanel({
 
   const isToday = dayKey(selectedDay) === dayKey(today);
 
+  // Sticky day-selector shadow. Mirrors the Portfolio pattern (a 1px sentinel
+  // above the sticky wrapper observed via IntersectionObserver) so the shadow
+  // flips on the exact frame the strip pins, regardless of TopBar layout.
+  const daySentinelRef = useRef<HTMLDivElement | null>(null);
+  const [dayScrolled, setDayScrolled] = useState(false);
+  useEffect(() => {
+    const node = daySentinelRef.current;
+    if (!node) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setDayScrolled(!entry.isIntersecting),
+      { threshold: 0 }
+    );
+    obs.observe(node);
+    return () => obs.disconnect();
+  }, []);
+
   // Population breakdown comes pre-computed from the server (no client-side
   // deals array to filter through).
   const lifecycleDeals = lifecycleDealsTotal;
@@ -316,42 +332,59 @@ function MeetingsPanel({
           />
         </Stagger>
 
+        <div ref={daySentinelRef} aria-hidden="true" style={{ height: 1, marginBottom: -1 }} />
         <div
+          className={`mp-sticky${dayScrolled ? " scrolled" : ""}`}
           style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            alignItems: "center",
-            marginBottom: 6,
-            minHeight: 32,
+            position: "sticky",
+            top: 0,
+            zIndex: 30,
+            background: "var(--beige-new)",
+            paddingTop: 8,
+            paddingBottom: 10,
+            transition: "box-shadow 160ms var(--ease-out)",
+            boxShadow: dayScrolled
+              ? "0 1px 0 var(--hairline), 0 6px 12px -8px rgba(2, 44, 18, 0.10)"
+              : "none",
           }}
         >
-          <button
-            onClick={() => setSelectedIdx(todayIdx)}
-            aria-label="Back to today"
+          <div
             style={{
-              visibility: selectedIdx === todayIdx ? "hidden" : "visible",
-              padding: "6px 12px",
-              borderRadius: 8,
-              background: "var(--moss)",
-              color: "var(--text-on-moss)",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              marginBottom: 6,
+              minHeight: 32,
             }}
           >
-            Back to today
-          </button>
+            <button
+              onClick={() => setSelectedIdx(todayIdx)}
+              aria-label="Back to today"
+              style={{
+                visibility: selectedIdx === todayIdx ? "hidden" : "visible",
+                padding: "6px 12px",
+                borderRadius: 8,
+                background: "var(--moss)",
+                color: "var(--text-on-moss)",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Back to today
+            </button>
+          </div>
+          <DayStrip
+            weekdays={weekdays}
+            meetingsByDay={meetingsByDay}
+            selectedIdx={selectedIdx}
+            setSelectedIdx={setSelectedIdx}
+            today={today}
+            todayIdx={todayIdx}
+            fetchedDays={fetchedDays}
+          />
         </div>
-        <DayStrip
-          weekdays={weekdays}
-          meetingsByDay={meetingsByDay}
-          selectedIdx={selectedIdx}
-          setSelectedIdx={setSelectedIdx}
-          today={today}
-          todayIdx={todayIdx}
-          fetchedDays={fetchedDays}
-        />
 
         <Section
           title={
@@ -363,8 +396,6 @@ function MeetingsPanel({
                   day: "numeric",
                 })
           }
-          subtitle="Your full brief before you join"
-          count={dayMeetings.length}
         >
           {fetchedDays && !fetchedDays.has(selectedKey) ? (
             <FetchDayButton

@@ -1,4 +1,12 @@
-import type { PortfolioRow, PortfolioStage, PortfolioSignalKey, PortfolioSortKey } from "./types";
+import { computeWatchOutSignals } from "./signals";
+import type {
+  PortfolioRow,
+  PortfolioSignalKey,
+  PortfolioSortKey,
+  PortfolioStage,
+  WatchOutSignal,
+  WatchOutSignalKind,
+} from "./types";
 
 // Maps HubSpot `customer_stage` to our 5-stage Portfolio union. Unknown
 // values fall back to "Established" so the account still appears in the
@@ -147,4 +155,141 @@ export function getSortOptions(selectedSignals: PortfolioSignalKey[]): SortOptio
   if (selectedSignals.length !== 1) return UNIVERSAL_SORTS;
   const specific = SIGNAL_SPECIFIC_SORTS[selectedSignals[0]] ?? [];
   return [...UNIVERSAL_SORTS, ...specific];
+}
+
+interface BuildRowInput {
+  nowIso: string;
+  company: {
+    id: string;
+    name: string;
+    domain: string | null;
+    ownerId: string | null;
+    ownerName: string | null;
+    healthScore: number | null;
+    revenue: number;
+    notesLastContacted: string | null;
+    volume3m: number;
+    volume6m: number;
+    upcomingEvents: number | null;
+  };
+  deal: {
+    customerStage: string;
+    customerSubstage: string | null;
+    enteredStageDate: string | null;
+    customerLiveDate: string | null;
+    unpaidInvoice: boolean;
+    invoiceDueDate: string | null;
+    outstandingEur: number | null;
+    overdueDays: number | null;
+    daysUntilDue: number | null;
+    openInvoiceCount: number | null;
+    wishToChurn: boolean;
+    churnReason: string | null;
+    wishToChurnAt: string | null;
+    daysInStep: number | null;
+    expectedDaysInStep: number | null;
+  };
+}
+
+const SIGNAL_KIND_TO_KEY: Record<WatchOutSignalKind, PortfolioSignalKey> = {
+  overdue_invoice: "overdue_invoices",
+  wish_to_churn: "wish_to_churn",
+  volume_declining: "volume_declining",
+  health_dropped: "health_dropped",
+  no_future_events: "no_future_events",
+  gone_quiet: "gone_quiet",
+  stuck_in_step: "stuck_in_step",
+};
+
+function daysBetween(now: string, then: string | null): number | null {
+  if (!then) return null;
+  const t = new Date(then).getTime();
+  if (isNaN(t)) return null;
+  return Math.max(0, Math.floor((new Date(now).getTime() - t) / 86400000));
+}
+
+export function buildRow(input: BuildRowInput): PortfolioRow {
+  const stage = classifyPortfolioStage(input.deal.customerStage, input.deal.customerSubstage);
+  const daysSilent = daysBetween(input.nowIso, input.company.notesLastContacted);
+
+  // Build the full watch-out list, then drop entries whose signal is not
+  // applicable to this row's stage. open_invoices is not a WatchOutSignalKind
+  // (it's a Portfolio-only concept); we synthesize it from the same data.
+  const computed = computeWatchOutSignals({
+    nowIso: input.nowIso,
+    unpaidInvoice: input.deal.unpaidInvoice,
+    invoiceDueDate: input.deal.invoiceDueDate,
+    outstandingEur: input.deal.outstandingEur,
+    overdueDays: input.deal.overdueDays,
+    wishToChurn: input.deal.wishToChurn,
+    churnReason: input.deal.churnReason,
+    volume3m: input.company.volume3m,
+    volume6m: input.company.volume6m,
+    healthScore: input.company.healthScore,
+    upcomingEvents: input.company.upcomingEvents,
+    notesLastContacted: input.company.notesLastContacted,
+    daysInStep: input.deal.daysInStep,
+    expectedDaysInStep: input.deal.expectedDaysInStep,
+  });
+
+  const applicable: WatchOutSignal[] = computed.filter((s) =>
+    isSignalApplicable(SIGNAL_KIND_TO_KEY[s.kind], stage)
+  );
+
+  // open_invoices: synthesized when there is an open invoice that is not
+  // already overdue (overdue is covered by the overdue_invoice WatchOut).
+  const hasOpenNonOverdue =
+    (input.deal.openInvoiceCount ?? 0) > 0 &&
+    !applicable.some((s) => s.kind === "overdue_invoice");
+  if (hasOpenNonOverdue && isSignalApplicable("open_invoices", stage)) {
+    applicable.push({
+      kind: "overdue_invoice", // reuse the kind union; severity + title differentiate
+      severity: "warn",
+      title: "Open invoice",
+      detail: `${input.deal.openInvoiceCount} open invoice${input.deal.openInvoiceCount === 1 ? "" : "s"}`,
+    });
+  }
+
+  const volumeDropPct =
+    input.company.volume6m > 0 &&
+    input.company.volume3m < (input.company.volume6m - input.company.volume3m) * 0.5
+      ? 1 - input.company.volume3m / Math.max(1, input.company.volume6m - input.company.volume3m)
+      : null;
+
+  const healthDrop =
+    input.company.healthScore != null && input.company.healthScore < 60
+      ? 60 - input.company.healthScore
+      : null;
+
+  const daysPastExpectedStep =
+    input.deal.daysInStep != null &&
+    input.deal.expectedDaysInStep != null &&
+    input.deal.daysInStep > input.deal.expectedDaysInStep
+      ? input.deal.daysInStep - input.deal.expectedDaysInStep
+      : null;
+
+  return {
+    id: input.company.id,
+    name: input.company.name,
+    domain: input.company.domain,
+    ownerId: input.company.ownerId,
+    ownerName: input.company.ownerName,
+    stage,
+    daysInStage: daysBetween(input.nowIso, input.deal.enteredStageDate),
+    customerLiveDate: input.deal.customerLiveDate,
+    revenue: input.company.revenue,
+    healthScore: input.company.healthScore,
+    daysSinceContact: daysSilent,
+    signals: applicable,
+    overdueDays: input.deal.overdueDays,
+    daysUntilDue: input.deal.daysUntilDue,
+    outstandingEur: input.deal.outstandingEur,
+    openInvoiceCount: input.deal.openInvoiceCount,
+    daysSilent,
+    healthDrop,
+    daysPastExpectedStep,
+    volumeDropPct,
+    prior3mVolume: Math.max(0, input.company.volume6m - input.company.volume3m) || null,
+    wishToChurnAt: input.deal.wishToChurnAt,
+  };
 }

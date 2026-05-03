@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyPortfolioStage, isSignalApplicable, extractSortKey, getSortOptions } from "./portfolio";
+import { classifyPortfolioStage, isSignalApplicable, extractSortKey, getSortOptions, buildRow } from "./portfolio";
 import type { PortfolioRow } from "./types";
 
 function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
@@ -121,5 +121,85 @@ describe("getSortOptions", () => {
     expect(keys).toContain("urgency");
     expect(keys).not.toContain("oldest_outstanding");
     expect(keys).not.toContain("wish_flagged_recent");
+  });
+});
+
+const nowIso = "2026-05-03T00:00:00.000Z";
+
+describe("buildRow", () => {
+  const baseInput = {
+    nowIso,
+    company: {
+      id: "100",
+      name: "Acme",
+      domain: "acme.com",
+      ownerId: "1939229547",
+      ownerName: "Filip",
+      healthScore: null as number | null,
+      revenue: 12000,
+      notesLastContacted: null as string | null,
+      volume3m: 0,
+      volume6m: 0,
+      upcomingEvents: 5 as number | null,
+    },
+    deal: {
+      customerStage: "Established",
+      customerSubstage: null as string | null,
+      enteredStageDate: "2026-04-01T00:00:00.000Z",
+      customerLiveDate: "2025-09-01T00:00:00.000Z",
+      unpaidInvoice: false,
+      invoiceDueDate: null as string | null,
+      outstandingEur: null as number | null,
+      overdueDays: null as number | null,
+      daysUntilDue: null as number | null,
+      openInvoiceCount: null as number | null,
+      wishToChurn: false,
+      churnReason: null as string | null,
+      wishToChurnAt: null as string | null,
+      daysInStep: null as number | null,
+      expectedDaysInStep: null as number | null,
+    },
+  };
+
+  it("collects no signals for a healthy row", () => {
+    const r = buildRow(baseInput);
+    expect(r.signals).toEqual([]);
+    expect(r.stage).toBe("Established");
+    expect(r.revenue).toBe(12000);
+  });
+
+  it("drops volume_declining on Onboarding stage even if data would fire it", () => {
+    const r = buildRow({
+      ...baseInput,
+      company: { ...baseInput.company, volume3m: 1000, volume6m: 5000 },
+      deal: { ...baseInput.deal, customerStage: "Onboarding" },
+    });
+    expect(r.signals.find((s) => s.kind === "volume_declining")).toBeUndefined();
+  });
+
+  it("drops stuck_in_step on Established stage even if days exceed expected", () => {
+    const r = buildRow({
+      ...baseInput,
+      deal: { ...baseInput.deal, customerStage: "Established", daysInStep: 90, expectedDaysInStep: 30 },
+    });
+    expect(r.signals.find((s) => s.kind === "stuck_in_step")).toBeUndefined();
+  });
+
+  it("populates signal-specific sort fields when overdue invoice fires", () => {
+    const r = buildRow({
+      ...baseInput,
+      deal: {
+        ...baseInput.deal,
+        unpaidInvoice: true,
+        invoiceDueDate: "2026-04-20T00:00:00.000Z",
+        outstandingEur: 4500,
+        overdueDays: 13,
+        openInvoiceCount: 2,
+      },
+    });
+    expect(r.signals[0].kind).toBe("overdue_invoice");
+    expect(r.overdueDays).toBe(13);
+    expect(r.outstandingEur).toBe(4500);
+    expect(r.openInvoiceCount).toBe(2);
   });
 });

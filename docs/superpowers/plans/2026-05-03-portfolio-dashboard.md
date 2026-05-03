@@ -121,7 +121,8 @@ export interface PortfolioRow {
 
   // Signal-specific values surfaced for sort key extraction.
   // Null when the corresponding signal is not firing.
-  overdueDays: number | null;
+  overdueDays: number | null;       // days past due (positive); null when not overdue
+  daysUntilDue: number | null;      // days until due (positive); null when not open or already overdue
   outstandingEur: number | null;
   openInvoiceCount: number | null;
   daysSilent: number | null;
@@ -587,6 +588,7 @@ function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
     daysSinceContact: null,
     signals: [],
     overdueDays: null,
+    daysUntilDue: null,
     outstandingEur: null,
     openInvoiceCount: null,
     daysSilent: null,
@@ -679,7 +681,7 @@ export function extractSortKey(row: PortfolioRow, key: PortfolioSortKey): number
     case "count_overdue":      return row.openInvoiceCount;
 
     // Open invoices (overlaps fields with overdue, but the filter side limits scope)
-    case "due_soonest":        return row.overdueDays;       // negative-ish meaning, handled in sort dir
+    case "due_soonest":        return row.daysUntilDue;
     case "value_open":         return row.outstandingEur;
     case "count_open":         return row.openInvoiceCount;
 
@@ -822,6 +824,7 @@ describe("buildRow", () => {
       invoiceDueDate: null as string | null,
       outstandingEur: null as number | null,
       overdueDays: null as number | null,
+      daysUntilDue: null as number | null,
       openInvoiceCount: null as number | null,
       wishToChurn: false,
       churnReason: null as string | null,
@@ -917,6 +920,7 @@ interface BuildRowInput {
     invoiceDueDate: string | null;
     outstandingEur: number | null;
     overdueDays: number | null;
+    daysUntilDue: number | null;
     openInvoiceCount: number | null;
     wishToChurn: boolean;
     churnReason: string | null;
@@ -1014,6 +1018,7 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     daysSinceContact: daysSilent,
     signals: applicable,
     overdueDays: input.deal.overdueDays,
+    daysUntilDue: input.deal.daysUntilDue,
     outstandingEur: input.deal.outstandingEur,
     openInvoiceCount: input.deal.openInvoiceCount,
     daysSilent,

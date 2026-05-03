@@ -74,7 +74,8 @@ interface PortfolioRow {
 
   // Signal-specific values surfaced for sort key extraction.
   // Null when the corresponding signal is not firing.
-  overdueDays: number | null;
+  overdueDays: number | null;       // days past due (positive); null when not overdue
+  daysUntilDue: number | null;      // days until due (positive); null when not open or already overdue
   outstandingEur: number | null;
   openInvoiceCount: number | null;
   daysSilent: number | null;        // for no_future_events / gone_quiet

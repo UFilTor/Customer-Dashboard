@@ -77,7 +77,7 @@ describe("computeWatchOutSignals", () => {
 
   it("flags no_future_events only when upcomingEvents score is exactly 0", () => {
     const out = computeWatchOutSignals(ctx({ upcomingEvents: 0 }));
-    expect(out[0]).toMatchObject({ kind: "no_future_events", severity: "warn" });
+    expect(out[0]).toMatchObject({ kind: "no_future_events", severity: "bad" });
     // Score 0.20 = 1 event scheduled, must NOT fire
     const out020 = computeWatchOutSignals(ctx({ upcomingEvents: 0.2 }));
     expect(out020).toEqual([]);
@@ -105,7 +105,12 @@ describe("computeWatchOutSignals", () => {
       invoiceDueDate: "2026-04-24T00:00:00.000Z",
       outstandingEur: 100,
       overdueDays: 8,
+      upcomingEvents: 0,                  // bad (now)
     }));
-    expect(out.map((s) => s.kind)).toEqual(["overdue_invoice", "health_dropped"]);
+    expect(out.map((s) => s.kind)).toEqual([
+      "overdue_invoice",
+      "no_future_events",
+      "health_dropped",
+    ]);
   });
 });

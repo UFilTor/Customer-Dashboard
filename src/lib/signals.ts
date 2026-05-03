@@ -4,6 +4,7 @@ import type {
   AttentionCompany,
   WatchOutSignal,
   WatchOutSignalSeverity,
+  PortfolioSignalKey,
 } from "./types";
 
 export interface SignalMeta {
@@ -17,7 +18,7 @@ export interface SignalMeta {
 export const SIGNALS: SignalMeta[] = [
   { key: "overdue_invoices", label: "Overdue invoices", short: "Overdue inv.", color: "#B84A2D", urgent: true },
   { key: "open_invoices", label: "Open invoices", short: "Open inv.", color: "#B8761F", urgent: false },
-  { key: "no_future_events", label: "No future events", short: "No events", color: "#3D4E5F", urgent: false },
+  { key: "no_future_events", label: "No future events", short: "No events", color: "#B84A2D", urgent: true },
   { key: "health_score", label: "Health decline", short: "Health drop", color: "#2F5C3E", urgent: false },
 ];
 
@@ -177,13 +178,13 @@ export function computeWatchOutSignals(ctx: WatchOutContext): WatchOutSignal[] {
     });
   }
 
-  // 5. No future events — warn. The HubSpot field is a 0-1 score where
+  // 5. No future events - bad. The HubSpot field is a 0-1 score where
   // 0 means literally zero events scheduled. Anything > 0 (even 0.20 = 1
   // event) does not trigger; null means data is missing, also no trigger.
   if (ctx.upcomingEvents === 0) {
     out.push({
       kind: "no_future_events",
-      severity: "warn",
+      severity: "bad",
       title: "No upcoming events",
       detail: "Storefront has nothing scheduled",
     });
@@ -226,3 +227,35 @@ export function computeWatchOutSignals(ctx: WatchOutContext): WatchOutSignal[] {
   // severity (matches the order of rules above).
   return [...out].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 }
+
+export interface PortfolioSignalMeta {
+  key: PortfolioSignalKey;
+  label: string;
+  short: string;
+  color: string;
+  severity: "bad" | "warn";
+}
+
+// 8-signal taxonomy used by the Portfolio dashboard. Order is load-bearing:
+// the keyboard 1-8 shortcut maps to this array index, and Daily-Brief-style
+// section ordering renders bad-severity signals first within priority. See
+// the spec at docs/superpowers/specs/2026-05-03-portfolio-dashboard-design.md.
+export const PORTFOLIO_SIGNALS: PortfolioSignalMeta[] = [
+  { key: "overdue_invoices",   label: "Overdue invoices",   short: "Overdue",     color: "#B84A2D", severity: "bad"  },
+  { key: "wish_to_churn",      label: "Wish to churn",      short: "Wish churn",  color: "#B84A2D", severity: "bad"  },
+  { key: "volume_declining",   label: "Volume declining",   short: "Vol. drop",   color: "#B84A2D", severity: "bad"  },
+  { key: "no_future_events",   label: "No future events",   short: "No events",   color: "#B84A2D", severity: "bad"  },
+  { key: "open_invoices",      label: "Open invoices",      short: "Open inv.",   color: "#B8761F", severity: "warn" },
+  { key: "stuck_in_step",      label: "Stuck in step",      short: "Stuck",       color: "#B8761F", severity: "warn" },
+  { key: "health_dropped",     label: "Health drop",        short: "Health",      color: "#2F5C3E", severity: "warn" },
+  { key: "gone_quiet",         label: "Gone quiet",         short: "Quiet",       color: "#3D4E5F", severity: "warn" },
+];
+
+export const PORTFOLIO_SIGNAL_MAP: Record<PortfolioSignalKey, PortfolioSignalMeta> =
+  Object.fromEntries(PORTFOLIO_SIGNALS.map((s) => [s.key, s])) as Record<
+    PortfolioSignalKey,
+    PortfolioSignalMeta
+  >;
+
+// Order keyboard 1-8 maps to. Identical to PORTFOLIO_SIGNALS' index sequence.
+export const PORTFOLIO_SIGNAL_ORDER: PortfolioSignalKey[] = PORTFOLIO_SIGNALS.map((s) => s.key);

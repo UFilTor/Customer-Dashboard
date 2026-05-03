@@ -21,11 +21,22 @@ export class Cache<T> {
       this.store.delete(key);
       return null;
     }
+    // True LRU: move-to-end on read so a flood of unique-key fetches can't
+    // evict legitimate hot entries. Map preserves insertion order, so
+    // delete-then-set re-inserts at the tail (most-recently-used position).
+    // Adversarial QA caught the previous FIFO behavior — 70 fake ownerIds
+    // could push the legit "all" key off the bottom.
+    this.store.delete(key);
+    this.store.set(key, entry);
     return entry.data;
   }
 
   set(key: string, data: T): void {
-    if (this.store.size >= this.maxKeys && !this.store.has(key)) {
+    if (this.store.has(key)) {
+      // Re-set: drop stale slot first so the new entry lands at the tail.
+      this.store.delete(key);
+    } else if (this.store.size >= this.maxKeys) {
+      // Capacity hit: evict the least-recently-used (head of insertion order).
       const oldest = this.store.keys().next().value;
       if (oldest !== undefined) this.store.delete(oldest);
     }

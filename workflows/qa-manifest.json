@@ -1,29 +1,32 @@
 {
   "version": 1,
   "created": "2026-04-28T14:15:00Z",
+  "updated": "2026-05-03T18:35:00Z",
   "base_url": "http://localhost:3000",
+  "scope": "portfolio-dashboard",
+  "scope_notes": "Scoped run focused on the Portfolio dashboard view and its detail pane interaction. Uses the `?d=portfolio` URL param on the single-page client root. Detail pane opens via row click and is reflected as `?d=portfolio&c=<companyId>` in the URL.",
   "screens": [
     {
-      "url": "/",
-      "name": "Dashboard root (Status / Onboarding / Pay Migration)",
+      "url": "/?d=portfolio",
+      "name": "Portfolio dashboard",
       "auth_required": false,
-      "source_file": "src/app/page.tsx",
+      "source_file": "src/components/design/views/PortfolioView.tsx",
       "discovered_from": ["codebase"],
       "workflow_refs": [],
       "params": {},
-      "example_url": "/",
-      "notes": "Single-page client root. Dashboard, variant, and global filter all live here. Hosts: Status (briefing/split/kanban), Onboarding, Pay Migration."
+      "example_url": "/?d=portfolio",
+      "notes": "Banner + signal filter + sort dropdown + 774-row list with stage chip, signal pill, dot-encoded extras, health/revenue/last-contact, owner avatar. Power-user keyboard surface (⇧F, ⇧S, ↑↓, ↵, 1-8, 0, S, ⌘S)."
     },
     {
-      "url": "/auth/signin",
-      "name": "Sign-in page",
+      "url": "/?d=portfolio&c=<companyId>",
+      "name": "Portfolio dashboard + company detail pane",
       "auth_required": false,
-      "source_file": "src/app/auth/signin/page.tsx",
+      "source_file": "src/components/design/CompanyDetail.tsx",
       "discovered_from": ["codebase"],
       "workflow_refs": [],
-      "params": {},
-      "example_url": "/auth/signin",
-      "notes": "HubSpot OAuth entry. Unused on localhost (no auth gate)."
+      "params": { "companyId": "" },
+      "example_url": "/?d=portfolio",
+      "notes": "Side-panel detail. Opens by clicking a row or pressing ↵ on the focused row in the portfolio list. Companion of PortfolioView — agents should navigate to /?d=portfolio first, then click the first row to open the detail pane and audit it in context."
     }
   ]
 }

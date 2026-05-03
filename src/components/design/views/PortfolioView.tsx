@@ -1,17 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import type { PortfolioRow, PortfolioSignalKey, PortfolioSortKey } from "@/lib/types";
-import { PORTFOLIO_SIGNALS, PORTFOLIO_SIGNAL_MAP } from "@/lib/signals";
-import { getSortOptions } from "@/lib/portfolio";
+import { PORTFOLIO_SIGNALS, PORTFOLIO_SIGNAL_MAP, PORTFOLIO_SIGNAL_ORDER } from "@/lib/signals";
+import { getSortOptions, mapKindToKey } from "@/lib/portfolio";
 import { OWNER_MAP } from "@/lib/owners";
 import { Avatar } from "../Avatar";
 import { DashboardBanner } from "../DashboardBanner";
 import { EditorialEmpty } from "../EditorialEmpty";
 
 interface Props {
+  // The slice of rows for the current page (already filtered + sorted by
+  // the container). Section grouping happens here, downstream of the slice,
+  // so a row that matches multiple selected signals lands in its highest-
+  // priority signal section without duplication.
   rows: PortfolioRow[];
+  // Full filtered+sorted row count across all pages. Used by the results
+  // bar caption and the pagination math. Container computes this from the
+  // pre-pagination list.
+  totalRowCount: number;
   totalsBySignal: Record<PortfolioSignalKey, number>;
+
+  // Filter scope label rendered as a banner-eyebrow tail ("Portfolio · Filip's
+  // book"). Null/undefined drops the tail and the eyebrow reads "Portfolio".
+  filterLabel?: string | null;
 
   // When false (typically a person filter), the OWNER column is dropped from
   // the grid because every row would show the same avatar.
@@ -36,16 +49,36 @@ interface Props {
   defaultsAreCurrent: boolean;
   onSaveDefaults: () => void;
   onResetDefaults: () => void;
+
+  // Pagination. Top + bottom selectors share this state; bottom mirror lets
+  // a user who scrolled to the end switch pages without scrolling back up.
+  page: number;
+  totalPages: number;
+  pageSize: number;
+  onPageChange: (next: number) => void;
 }
 
-// Stage chip palette. Reads tokens from globals.css so the lifecycle palette
-// stays in one place and parallels the --pay-stage-* family.
+// One item in the rendered list. Plain rows when one (or zero) signals are
+// selected; rows interleaved with section headers when 2+ signals are
+// selected so the eye scans by category like the old Status By-signal view.
+type ListItem =
+  | { kind: "row"; row: PortfolioRow; index: number; key: string }
+  | { kind: "section-header"; signal: PortfolioSignalKey; count: number; key: string };
+
+// Stage chip palette. Action stages keep a distinct color so the eye finds
+// accounts CS needs to touch; healthy steady-state stages collapse to a
+// shared neutral beige chip so they glide past without competing for the
+// retina the way the rust severity pills do.
 const STAGE_BADGE: Record<PortfolioRow["stage"], { bg: string; fg: string }> = {
-  Onboarding:   { bg: "var(--stage-onboarding-bg)",  fg: "var(--stage-onboarding-fg)" },
-  Adopted:      { bg: "var(--stage-adopted-bg)",     fg: "var(--stage-adopted-fg)" },
-  Started:      { bg: "var(--stage-started-bg)",     fg: "var(--stage-started-fg)" },
-  "Ramp Up":    { bg: "var(--stage-rampup-bg)",      fg: "var(--stage-rampup-fg)" },
-  Established: { bg: "var(--stage-established-bg)", fg: "var(--stage-established-fg)" },
+  Onboarding:  { bg: "var(--stage-onboarding-bg)", fg: "var(--stage-onboarding-fg)" },
+  // Started lives next to a rust signal pill on most rows. Sky-blue keeps
+  // "brand new" visible without painting red-on-red.
+  Started:     { bg: "var(--sky-blue)",            fg: "var(--moss)" },
+  // Healthy steady-state trio: identical neutral chip. Stage column should
+  // not pull attention when nothing is wrong.
+  Adopted:     { bg: "var(--beige)",               fg: "var(--moss)" },
+  "Ramp Up":   { bg: "var(--beige)",               fg: "var(--moss)" },
+  Established: { bg: "var(--beige)",               fg: "var(--moss)" },
 };
 
 // Universal sort keys that map to clickable column headers.
@@ -74,20 +107,184 @@ export function PortfolioView(props: Props) {
   const showAvatar = props.showAvatar ?? true;
   const sortOptions = getSortOptions(props.selectedSignals);
 
-  // Aggregate metrics for the editorial banner.
-  const totalRows = props.rows.length;
-  const urgentCount = useMemo(
-    () => props.rows.filter((r) => r.signals.some((s) => s.severity === "bad")).length,
-    [props.rows]
-  );
+  const pageRowCount = props.rows.length;
+
+  // Stable row-click handler so memo'd Row stays cheap. Parent already passes
+  // a referentially stable onRowClick (useCallback in PortfolioContainer).
+  const onSelect = props.onRowClick;
+  const { rows, focusedRowIndex, selectedSignals } = props;
+
+  // When 2+ signals are selected, group rows into sections so the eye scans
+  // by signal category like the old Status By-signal Kanban. Single-signal
+  // (and unfiltered) views stay flat — sectioning would be redundant chrome.
+  // Tiebreak rule for rows that match multiple selected signals: place each
+  // row in its highest-priority matching signal's section (priority follows
+  // PORTFOLIO_SIGNAL_ORDER, which is the keyboard 1-8 order). No dup.
+  const items = useMemo<ListItem[]>(() => {
+    if (selectedSignals.length < 2) {
+      return rows.map((row, i) => ({ kind: "row", row, index: i, key: row.id }));
+    }
+    // Group preserving the parent's sort order within each section.
+    const grouped = new Map<PortfolioSignalKey, { row: PortfolioRow; index: number }[]>();
+    rows.forEach((row, i) => {
+      const sigs = Array.isArray(row.signals) ? row.signals : [];
+      const rowKeys = new Set(sigs.map((s) => mapKindToKey(s.kind, s.title)));
+      let placedKey: PortfolioSignalKey | null = null;
+      for (const k of PORTFOLIO_SIGNAL_ORDER) {
+        if (selectedSignals.includes(k) && rowKeys.has(k)) {
+          placedKey = k;
+          break;
+        }
+      }
+      // Defensive fallback for rows whose kind doesn't surface in any
+      // selected signal (shouldn't happen given the container's filter,
+      // but keeps a malformed row visible instead of dropping it silently).
+      if (!placedKey) placedKey = selectedSignals[0];
+      if (!grouped.has(placedKey)) grouped.set(placedKey, []);
+      grouped.get(placedKey)!.push({ row, index: i });
+    });
+
+    const out: ListItem[] = [];
+    for (const sig of PORTFOLIO_SIGNAL_ORDER) {
+      const sectionRows = grouped.get(sig);
+      if (!sectionRows || sectionRows.length === 0) continue;
+      out.push({
+        kind: "section-header",
+        signal: sig,
+        count: sectionRows.length,
+        key: `header-${sig}`,
+      });
+      sectionRows.forEach(({ row, index }) => {
+        out.push({ kind: "row", row, index, key: row.id });
+      });
+    }
+    return out;
+  }, [rows, selectedSignals]);
+
+  // Virtualize the items (rows + section headers) so DOM stays bounded.
+  // estimateSize is per-index so headers (~36px) and rows (~50px) get the
+  // right initial layout before measureElement refines.
+  //
+  // The strict `react-hooks/refs` lint forbids reading `.current` during
+  // render, so we capture the list's page-offset via a callback ref into
+  // state instead of reading from a ref.
+  const [listOffsetTop, setListOffsetTop] = useState(0);
+  const measureList = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    setListOffsetTop(node.getBoundingClientRect().top + window.scrollY);
+  }, []);
+  const virtualizer = useWindowVirtualizer({
+    count: items.length,
+    estimateSize: (i) => (items[i]?.kind === "section-header" ? 36 : 50),
+    overscan: 8,
+    scrollMargin: listOffsetTop,
+  });
+
+  // Keep the focused row in view when keyboard nav moves outside the viewport.
+  // focusedRowIndex is over `rows` (the page slice) — translate to items
+  // index so virtualizer.scrollToIndex lands on the correct virtual item.
+  useEffect(() => {
+    if (focusedRowIndex == null) return;
+    const itemIndex = items.findIndex(
+      (it) => it.kind === "row" && it.index === focusedRowIndex
+    );
+    if (itemIndex < 0) return;
+    virtualizer.scrollToIndex(itemIndex, { align: "auto" });
+  }, [focusedRowIndex, items, virtualizer]);
+
+  // Sticky section header. When sectioning is active, track which section
+  // is currently visible and pin its header just below the column-headers
+  // strip so the user always knows what category they're scrolling through.
+  // Tracking is rAF-throttled to keep scroll cheap; the inline section
+  // headers in the row list also still render so the user sees boundaries
+  // when crossing into a new section.
+  const stickyRef = useRef<HTMLDivElement | null>(null);
+  const [activeSection, setActiveSection] = useState<{
+    sig: PortfolioSignalKey;
+    count: number;
+  } | null>(null);
+
+  useEffect(() => {
+    // When sectioning is off, the listener is simply not attached. The
+    // render guard `selectedSignals.length >= 2 && activeSection` prevents
+    // any stale state from showing, so we don't need to clear it here.
+    if (selectedSignals.length < 2) return;
+    let raf = 0;
+
+    function compute() {
+      raf = 0;
+      // Cursor position = page scroll + height of the sticky toolbar block
+      // (toolbar + results + columns), measured at the moment we calculate.
+      // We want to know which section's first row is currently sitting at
+      // the top of the visible row list.
+      const stickyHeight = stickyRef.current?.offsetHeight ?? 200;
+      const cursor = window.scrollY + stickyHeight - listOffsetTop;
+
+      // Read MEASURED offsets from the virtualizer, not fixed estimates.
+      // Row heights vary (rows with vs. without secondary detail lines),
+      // so accumulating estimateSize values drifts further the deeper you
+      // scroll: cumulative estimate < cumulative reality, so the walk
+      // marks a section "past" hundreds of pixels before the user actually
+      // reaches it. measurementsCache holds real measured sizes for every
+      // item that has been rendered (which by definition includes every
+      // item above the current viewport).
+      const measurements = virtualizer.measurementsCache;
+      // A section header counts as "scrolled past" only once its BOTTOM
+      // edge is at or above the cursor (header fully out of view).
+      let last: { sig: PortfolioSignalKey; count: number } | null = null;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const m = measurements[i];
+        if (!m) break;
+        if (item.kind === "section-header" && m.end <= cursor) {
+          last = { sig: item.signal, count: item.count };
+        }
+        if (m.start > cursor) break;
+      }
+      setActiveSection((prev) => {
+        // Only update when the section actually changed — avoids a re-render
+        // every scroll frame.
+        if (prev?.sig === last?.sig && prev?.count === last?.count) return prev;
+        return last;
+      });
+    }
+
+    function onScroll() {
+      if (raf) return;
+      raf = requestAnimationFrame(compute);
+    }
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    compute();
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [selectedSignals.length, items, listOffsetTop, virtualizer]);
+
+  const virtualItems = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
+  const scrollOffset = virtualizer.options.scrollMargin;
+
+  // Range labels for the results bar: "Showing 1-50 of 774 accounts".
+  // First and last 1-based row positions on the current page.
+  const firstOnPage = props.totalRowCount === 0
+    ? 0
+    : (props.page - 1) * props.pageSize + 1;
+  const lastOnPage = Math.min(props.page * props.pageSize, props.totalRowCount);
+  const isPaginated = props.totalPages > 1;
 
   return (
     <div style={{ background: "var(--page-bg)", minHeight: "calc(100vh - 120px)" }}>
-      <Banner totalRows={totalRows} urgentCount={urgentCount} />
+      <Banner
+        totalRows={props.totalRowCount}
+        totalsBySignal={props.totalsBySignal}
+        filterLabel={props.filterLabel ?? null}
+      />
 
       <div style={{ padding: "0 28px 60px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div className="pf-sticky">
+          <div className="pf-sticky" ref={stickyRef}>
             <Toolbar
               selectedSignals={props.selectedSignals}
               toggleSignal={props.toggleSignal}
@@ -97,10 +294,16 @@ export function PortfolioView(props: Props) {
               sortDirection={props.sortDirection}
               setSortKey={props.setSortKey}
               sortOptions={sortOptions}
+              page={props.page}
+              totalPages={props.totalPages}
+              onPageChange={props.onPageChange}
             />
             <ResultsBar
-              rowCount={totalRows}
+              firstOnPage={firstOnPage}
+              lastOnPage={lastOnPage}
+              totalRowCount={props.totalRowCount}
               isFiltered={props.selectedSignals.length > 0}
+              isPaginated={isPaginated}
               clearSignals={props.clearSignals}
               hasSavedDefault={props.hasSavedDefault}
               defaultsAreCurrent={props.defaultsAreCurrent}
@@ -113,9 +316,19 @@ export function PortfolioView(props: Props) {
               setSortKey={props.setSortKey}
               showAvatar={showAvatar}
             />
+            {/* Sticky indicator for the section currently being scrolled
+                through. Renders only when sectioning is active (2+ signals
+                selected) and a section is visible in the row list. */}
+            {selectedSignals.length >= 2 && activeSection && (
+              <SectionHeader
+                signal={activeSection.sig}
+                count={activeSection.count}
+              />
+            )}
           </div>
 
           <div
+            ref={measureList}
             style={{
               background: "var(--card-bg)",
               border: "1px solid var(--hairline)",
@@ -126,24 +339,62 @@ export function PortfolioView(props: Props) {
               overflow: "hidden",
             }}
           >
-            {props.rows.length === 0 ? (
+            {pageRowCount === 0 ? (
               <EditorialEmpty
                 headline="No accounts match."
                 caption="Try removing a filter or clearing your search."
               />
             ) : (
-              props.rows.map((row, i) => (
-                <Row
-                  key={row.id}
-                  row={row}
-                  focused={props.focusedRowIndex === i}
-                  onClick={() => props.onRowClick(row)}
-                  isLast={i === props.rows.length - 1}
-                  showAvatar={showAvatar}
-                />
-              ))
+              <div
+                style={{
+                  height: totalSize,
+                  width: "100%",
+                  position: "relative",
+                }}
+              >
+                {virtualItems.map((virtualRow) => {
+                  const item = items[virtualRow.index];
+                  if (!item) return null;
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={virtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start - scrollOffset}px)`,
+                      }}
+                    >
+                      {item.kind === "section-header" ? (
+                        <SectionHeader signal={item.signal} count={item.count} />
+                      ) : (
+                        <Row
+                          row={item.row}
+                          focused={focusedRowIndex === item.index}
+                          onSelect={onSelect}
+                          isLast={item.index === pageRowCount - 1}
+                          showAvatar={showAvatar}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
+
+          {isPaginated && (
+            <div style={{ display: "flex", justifyContent: "center", padding: "16px 0 8px" }}>
+              <Pagination
+                page={props.page}
+                totalPages={props.totalPages}
+                onPageChange={props.onPageChange}
+              />
+            </div>
+          )}
 
           <KeyboardHints />
         </div>
@@ -154,11 +405,21 @@ export function PortfolioView(props: Props) {
 
 // ---------- Editorial banner ----------
 
-function Banner({ totalRows, urgentCount }: { totalRows: number; urgentCount: number }) {
+function Banner({
+  totalRows,
+  totalsBySignal,
+  filterLabel,
+}: {
+  totalRows: number;
+  totalsBySignal: Record<PortfolioSignalKey, number>;
+  filterLabel: string | null;
+}) {
+  const eyebrow = filterLabel ? `Portfolio · ${filterLabel}` : "Portfolio";
+
   if (totalRows === 0) {
     return (
       <DashboardBanner
-        eyebrow="Portfolio"
+        eyebrow={eyebrow}
         maxWidth={1200}
         headline={<>No accounts in scope.</>}
         detail={<>Try a different filter to widen the search.</>}
@@ -166,9 +427,25 @@ function Banner({ totalRows, urgentCount }: { totalRows: number; urgentCount: nu
     );
   }
 
+  // Categorical breakdown of the four bad-severity signal counts. We dropped
+  // the single "X urgent" total because at scale (53% of book) the word
+  // stopped meaning anything; per-category counts let the eye find the
+  // cluster that matters today and skip past quiet days entirely. Sorted
+  // descending so the heaviest category lands first (left-to-right reading
+  // order = priority order); same-style fragments rely on position alone to
+  // rank because making the top number bigger competed with the headline.
+  const breakdown = [
+    { count: totalsBySignal.overdue_invoices, label: "overdue" },
+    { count: totalsBySignal.wish_to_churn,    label: "wish to churn" },
+    { count: totalsBySignal.volume_declining, label: "volume drops" },
+    { count: totalsBySignal.no_future_events, label: "no events" },
+  ]
+    .filter((x) => x.count > 0)
+    .sort((a, b) => b.count - a.count);
+
   return (
     <DashboardBanner
-      eyebrow="Portfolio"
+      eyebrow={eyebrow}
       maxWidth={1200}
       headline={
         <>
@@ -176,19 +453,20 @@ function Banner({ totalRows, urgentCount }: { totalRows: number; urgentCount: nu
         </>
       }
       detail={
-        <>
-          You have{" "}
-          <span
-            style={{
-              color: "var(--citrus)",
-              borderBottom: "1px dashed color-mix(in oklch, var(--citrus) 55%, transparent)",
-              paddingBottom: 1,
-            }}
-          >
-            {urgentCount} urgent
+        breakdown.length === 0 ? (
+          <>Nothing flagged today.</>
+        ) : (
+          <span style={{ display: "inline-flex", flexWrap: "wrap", alignItems: "baseline" }}>
+            {breakdown.map((item, i) => (
+              <span key={item.label} style={{ whiteSpace: "nowrap" }}>
+                {i > 0 && (
+                  <span aria-hidden="true" style={{ opacity: 0.45, padding: "0 8px" }}>·</span>
+                )}
+                <span style={{ fontWeight: 600 }}>{item.count}</span> {item.label}
+              </span>
+            ))}
           </span>
-          {urgentCount > 0 ? ": overdue invoices, churn intent, and volume drops." : "."}
-        </>
+        )
       }
     />
   );
@@ -205,6 +483,9 @@ interface ToolbarProps {
   sortDirection: "asc" | "desc";
   setSortKey: (k: PortfolioSortKey) => void;
   sortOptions: ReturnType<typeof getSortOptions>;
+  page: number;
+  totalPages: number;
+  onPageChange: (next: number) => void;
 }
 
 function Toolbar({
@@ -216,6 +497,9 @@ function Toolbar({
   sortDirection,
   setSortKey,
   sortOptions,
+  page,
+  totalPages,
+  onPageChange,
 }: ToolbarProps) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
@@ -275,7 +559,7 @@ function Toolbar({
         ? PORTFOLIO_SIGNAL_MAP[selectedSignals[0]]?.label
         : `${selectedSignals.length} selected`;
 
-  const sortLabel = sortOptions.find((o) => o.key === sortKey)?.label ?? "—";
+  const sortLabel = sortOptions.find((o) => o.key === sortKey)?.label ?? "·";
 
   return (
     <div
@@ -313,6 +597,16 @@ function Toolbar({
           />
         )}
       </div>
+
+      <span style={{ flex: 1 }} />
+
+      {totalPages > 1 && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+        />
+      )}
 
       <span style={{ flex: 1 }} />
 
@@ -406,19 +700,13 @@ function FilterDropdown({
 
   return (
     <div className="pf-pop" style={{ left: 0, minWidth: 280 }}>
+      {/* Eyebrow alone is enough header chrome here. The italic helper that
+          used to live below ("Multi-select. Press 1-8 to toggle.") was a
+          third Fraunces use per viewport and a misleading scope cue (numbers
+          fire globally, not popover-scoped) — the per-row kbd badges next to
+          each signal already advertise the binding. */}
       <div style={{ padding: "12px 20px 8px", borderBottom: "1px solid var(--hairline)" }}>
         <div style={eyebrowStyle}>Filter by signal</div>
-        <div
-          style={{
-            fontFamily: "var(--font-editorial)",
-            fontStyle: "italic",
-            fontSize: 12,
-            color: "var(--green-100)",
-            marginTop: 4,
-          }}
-        >
-          Multi-select. Press <span className="pf-num-badge" style={{ fontSize: 11, height: 20, minWidth: 32 }}>1–8</span> to toggle.
-        </div>
       </div>
       <div ref={listRef} style={{ padding: 6, maxHeight: 420, overflowY: "auto" }}>
         {PORTFOLIO_SIGNALS.map((meta, i) => {
@@ -605,6 +893,30 @@ function SortDropdown({
           );
         })}
       </div>
+      {/* Mirrors the FilterDropdown footer so both popovers teach the same
+          surface. Recognition over recall: the in-popover hint announces
+          space flips direction without the user having to discover it. */}
+      <div
+        style={{
+          padding: "10px 16px",
+          borderTop: "1px solid var(--hairline)",
+          display: "flex",
+          gap: 14,
+          fontSize: 11,
+          color: "var(--green-100)",
+          alignItems: "center",
+        }}
+      >
+        <span>
+          <span className="kbd">↑↓</span> nav
+        </span>
+        <span>
+          <span className="kbd">↵</span> apply
+        </span>
+        <span>
+          <span className="kbd">space</span> apply/flip
+        </span>
+      </div>
     </div>
   );
 }
@@ -612,16 +924,22 @@ function SortDropdown({
 // ---------- Results bar ----------
 
 function ResultsBar({
-  rowCount,
+  firstOnPage,
+  lastOnPage,
+  totalRowCount,
   isFiltered,
+  isPaginated,
   clearSignals,
   hasSavedDefault,
   defaultsAreCurrent,
   onSaveDefaults,
   onResetDefaults,
 }: {
-  rowCount: number;
+  firstOnPage: number;
+  lastOnPage: number;
+  totalRowCount: number;
   isFiltered: boolean;
+  isPaginated: boolean;
   clearSignals: () => void;
   hasSavedDefault: boolean;
   defaultsAreCurrent: boolean;
@@ -653,10 +971,25 @@ function ResultsBar({
           fontVariantNumeric: "tabular-nums",
         }}
       >
-        <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
-          {rowCount}
-        </strong>
-        <span>{rowCount === 1 ? "account" : "accounts"}</span>
+        {isPaginated ? (
+          <>
+            <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
+              {firstOnPage}–{lastOnPage}
+            </strong>
+            <span>of</span>
+            <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
+              {totalRowCount}
+            </strong>
+            <span>{totalRowCount === 1 ? "account" : "accounts"}</span>
+          </>
+        ) : (
+          <>
+            <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
+              {totalRowCount}
+            </strong>
+            <span>{totalRowCount === 1 ? "account" : "accounts"}</span>
+          </>
+        )}
         {isFiltered && <span style={{ opacity: 0.65 }}>· filtered</span>}
       </span>
       <span style={{ flex: 1 }} />
@@ -678,10 +1011,16 @@ function ResultsBar({
         title={hasSavedDefault ? "Update saved default" : "Save current state as default"}
         style={ghostBtnStyle}
       >
+        {/* Confirmation reads via state, not animation: ☆ → ★ in moss + the
+            label change "Save view" → "Saved". The citrus-wipe we tried for
+            this moment created a One Lime Rule collision with the active
+            TopBar dashboard pill (also citrus), so the animation moved out
+            and the persistent state cues carry the success signal. */}
         <span className={`pf-star${hasSavedDefault ? " on" : ""}`}>
           {hasSavedDefault ? "★" : "☆"}
         </span>
         <span>{hasSavedDefault ? "Saved" : "Save view"}</span>
+        <span className="kbd" style={{ marginLeft: 2 }}>⌘S</span>
       </button>
     </div>
   );
@@ -753,32 +1092,41 @@ function ColumnHeaders({
 
 // ---------- Row ----------
 
-function Row({
+// Wrapped in React.memo because Portfolio renders this hundreds of times.
+// `onSelect` is taken as a stable callback (parent useCallbacks it) so the
+// memoization stays effective when filter/sort/focused state changes around
+// the list. Without memoization an arrow-key focus shift re-renders all
+// rendered rows; with memo + stable callback, only the previously-focused
+// and newly-focused rows re-render.
+const Row = memo(function Row({
   row,
   focused,
-  onClick,
+  onSelect,
   isLast,
   showAvatar,
 }: {
   row: PortfolioRow;
   focused: boolean;
-  onClick: () => void;
+  onSelect: (row: PortfolioRow) => void;
   isLast: boolean;
   showAvatar: boolean;
 }) {
   const stage = STAGE_BADGE[row.stage];
-  const primary = row.signals[0];
-  const extras = row.signals.slice(1);
+  // Defensive default — adversarial QA caught a crash when an upstream
+  // payload returned `signals: null`. Coerce here so a malformed row doesn't
+  // tear the whole list down.
+  const safeSignals = Array.isArray(row.signals) ? row.signals : [];
+  const primary = safeSignals[0];
+  const extras = safeSignals.slice(1);
+  // Health number is exact, so the column doesn't need to encode severity in
+  // color too. Keeping rust on the row's signal pill as the single severity
+  // moment per row; weak scores read in the muted green-100 to drop back.
   const healthColor =
     row.healthScore == null
       ? "var(--green-100)"
-      : row.healthScore >= 80
+      : row.healthScore >= 65
         ? "var(--moss)"
-        : row.healthScore >= 65
-          ? "var(--green-100)"
-          : row.healthScore >= 50
-            ? "var(--rust)"
-            : "var(--red)";
+        : "var(--green-100)";
 
   // Resolve to an OwnerLike for the shared Avatar. Falls back to a synthetic
   // { name } if the row carries an ownerName but no canonical map entry, so
@@ -789,7 +1137,7 @@ function Row({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onSelect(row)}
       className={`pf-row${focused ? " focused" : ""}`}
       style={{
         position: "relative",
@@ -883,7 +1231,7 @@ function Row({
             severity={primary.severity}
           />
         ) : (
-          <span style={{ fontSize: 11, color: "var(--green-100)", fontStyle: "italic", fontFamily: "var(--font-editorial)" }}>
+          <span style={{ fontSize: 11, color: "var(--green-100)" }}>
             calm
           </span>
         )}
@@ -942,7 +1290,7 @@ function Row({
           justifySelf: "end",
         }}
       >
-        {row.healthScore == null ? "—" : Math.round(row.healthScore)}
+        {row.healthScore == null ? "·" : Math.round(row.healthScore)}
       </span>
 
       <span
@@ -954,7 +1302,7 @@ function Row({
           justifySelf: "end",
         }}
       >
-        {row.revenue ? `€${formatNum(row.revenue)}` : "—"}
+        {row.revenue ? `€${formatNum(row.revenue)}` : "·"}
       </span>
 
       <span
@@ -965,7 +1313,7 @@ function Row({
           justifySelf: "end",
         }}
       >
-        {row.daysSinceContact == null ? "—" : `${row.daysSinceContact}d`}
+        {row.daysSinceContact == null ? "·" : `${row.daysSinceContact}d`}
       </span>
 
       {showAvatar && (
@@ -993,7 +1341,7 @@ function Row({
       </span>
     </button>
   );
-}
+});
 
 // ---------- Signal pill ----------
 
@@ -1076,6 +1424,7 @@ function KeyboardHints() {
       <span><span className="kbd">1-8</span> filter</span>
       <span><span className="kbd">0</span> clear</span>
       <span><span className="kbd">S</span> sort</span>
+      <span><span className="kbd">[</span> <span className="kbd">]</span> page</span>
       <span><span className="kbd">⌘S</span> save</span>
     </div>
   );
@@ -1139,7 +1488,7 @@ function Caret({ open }: { open: boolean }) {
 const eyebrowStyle: CSSProperties = {
   fontFamily: "var(--font-display)",
   textTransform: "uppercase",
-  fontSize: 10.5,
+  fontSize: 10,
   fontWeight: 700,
   letterSpacing: "0.08em",
   color: "var(--green-100)",
@@ -1183,3 +1532,245 @@ const ghostBtnStyle: CSSProperties = {
   border: 0,
   cursor: "pointer",
 };
+
+// ---------- Pagination ----------
+
+// Top + bottom selectors share the same component and the same page state,
+// so a user who scrolled to the end of a page never has to scroll back to
+// the top to switch — the bottom selector mirrors the top one. Style follows
+// the Filter / Sort pill pattern (card-bg, hairline border, 10px radius)
+// so the toolbar reads as one consistent strip of chrome.
+//
+// The "Page X of Y" label is clickable: a single click swaps it for a
+// numeric input so a user can jump straight to a page rather than chevron-
+// stepping through 16 of them. Enter applies the typed page; Escape /
+// blur cancels back to the label without changing the current page.
+function Pagination({
+  page,
+  totalPages,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  onPageChange: (next: number) => void;
+}) {
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus + select-all when entering edit mode so the user can immediately
+  // type the target page without manually clearing the field.
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  function commitDraft() {
+    const trimmed = draft.trim();
+    if (trimmed.length > 0) {
+      const parsed = Number.parseInt(trimmed, 10);
+      if (Number.isFinite(parsed)) {
+        const clamped = Math.max(1, Math.min(totalPages, parsed));
+        if (clamped !== page) onPageChange(clamped);
+      }
+    }
+    setEditing(false);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+  }
+
+  const navBtnStyle: CSSProperties = {
+    background: "transparent",
+    border: 0,
+    fontFamily: "inherit",
+    fontSize: 14,
+    color: "var(--moss)",
+    lineHeight: 1,
+    padding: "0 4px",
+    minWidth: 16,
+  };
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        background: "var(--card-bg)",
+        border: "1px solid var(--hairline)",
+        borderRadius: 10,
+        padding: "6px 10px",
+        fontSize: 12,
+        lineHeight: 1,
+        color: "var(--moss)",
+      }}
+    >
+      <button
+        type="button"
+        aria-label="Previous page"
+        onClick={() => canPrev && onPageChange(page - 1)}
+        disabled={!canPrev}
+        style={{
+          ...navBtnStyle,
+          cursor: canPrev ? "pointer" : "default",
+          opacity: canPrev ? 1 : 0.3,
+        }}
+      >
+        ‹
+      </button>
+      {editing ? (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            fontVariantNumeric: "tabular-nums",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span>Page</span>
+          <input
+            ref={inputRef}
+            // type=text + inputMode=numeric avoids the native number-input
+            // spinner arrows (which can't be styled cleanly across browsers
+            // and clash with the calm pill chrome). Validation happens in
+            // commitDraft via parseInt + clamp.
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={draft}
+            maxLength={String(totalPages).length}
+            onChange={(e) => {
+              // Strip non-digits so the field never accepts garbage.
+              const cleaned = e.target.value.replace(/[^0-9]/g, "");
+              setDraft(cleaned);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitDraft();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            onBlur={commitDraft}
+            aria-label={`Jump to page (1 to ${totalPages})`}
+            style={{
+              fontFamily: "inherit",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--moss)",
+              background: "var(--page-bg)",
+              border: "1px solid var(--hairline-strong)",
+              borderRadius: 6,
+              padding: "3px 8px",
+              // Width fits the largest page number with breathing room.
+              width: `${Math.max(36, String(totalPages).length * 8 + 20)}px`,
+              textAlign: "center",
+              fontVariantNumeric: "tabular-nums",
+              outline: "none",
+              lineHeight: 1.2,
+            }}
+          />
+          <span>of {totalPages}</span>
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(String(page));
+            setEditing(true);
+          }}
+          aria-label={`Page ${page} of ${totalPages}. Click to jump to a specific page.`}
+          title="Jump to page"
+          style={{
+            background: "transparent",
+            border: 0,
+            fontFamily: "inherit",
+            fontSize: 12,
+            color: "var(--moss)",
+            cursor: "pointer",
+            padding: "2px 4px",
+            fontVariantNumeric: "tabular-nums",
+            whiteSpace: "nowrap",
+            lineHeight: 1,
+          }}
+        >
+          Page <strong style={{ fontWeight: 600 }}>{page}</strong> of{" "}
+          <strong style={{ fontWeight: 600 }}>{totalPages}</strong>
+        </button>
+      )}
+      <button
+        type="button"
+        aria-label="Next page"
+        onClick={() => canNext && onPageChange(page + 1)}
+        disabled={!canNext}
+        style={{
+          ...navBtnStyle,
+          cursor: canNext ? "pointer" : "default",
+          opacity: canNext ? 1 : 0.3,
+        }}
+      >
+        ›
+      </button>
+    </div>
+  );
+}
+
+// ---------- Section header (multi-signal grouping) ----------
+
+// Rendered between row groups when 2+ signals are selected. Echoes the
+// signal's brand color via a 6px leading dot, the signal's full label,
+// and the count in this section. Keeps the column-grid alignment by
+// occupying its own pseudo-row above the rows it groups.
+function SectionHeader({
+  signal,
+  count,
+}: {
+  signal: PortfolioSignalKey;
+  count: number;
+}) {
+  const meta = PORTFOLIO_SIGNAL_MAP[signal];
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 18px 8px",
+        background: "var(--card-bg)",
+        borderBottom: "1px solid var(--hairline)",
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: meta?.color ?? "var(--green-100)",
+          flex: "0 0 auto",
+        }}
+      />
+      <span style={eyebrowStyle}>{meta?.label ?? signal}</span>
+      <span style={{ flex: 1 }} />
+      <span
+        style={{
+          fontSize: 11,
+          color: "var(--green-100)",
+          fontVariantNumeric: "tabular-nums",
+          fontWeight: 500,
+        }}
+      >
+        {count}
+      </span>
+    </div>
+  );
+}

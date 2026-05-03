@@ -132,7 +132,7 @@ export function TopBar({
             clearDefault={clearDefault}
           />
         )}
-        <span aria-hidden="true" style={{ width: 1, height: 20, background: "rgba(255,255,255,0.18)" }} />
+        <span aria-hidden="true" style={{ width: 1, height: 20, background: "rgba(255,255,255,0.2)" }} />
         <DashboardPicker dashboard={dashboard} setDashboard={setDashboard} />
       </div>
     </nav>
@@ -274,7 +274,7 @@ function FilterTypePill({ filter, setFilter, isDefault, setAsDefault, clearDefau
             fontWeight: 700,
             textTransform: "uppercase",
             letterSpacing: "0.08em",
-            color: "rgba(255,255,255,0.55)",
+            color: "rgba(255,255,255,0.6)",
           }}
         >
           Filter

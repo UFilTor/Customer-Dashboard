@@ -37,7 +37,7 @@ export function DashboardBanner({ eyebrow, headline, detail, maxWidth = 1200 }: 
             style={{
               fontFamily: "var(--font-display)",
               fontWeight: 700,
-              fontSize: 9.5,
+              fontSize: 10,
               textTransform: "uppercase",
               letterSpacing: "0.08em",
               color: "color-mix(in oklch, var(--page-bg) 70%, transparent)",

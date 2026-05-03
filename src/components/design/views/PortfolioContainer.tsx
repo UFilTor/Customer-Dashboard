@@ -10,9 +10,17 @@ import type {
 } from "@/lib/types";
 import { effectiveOwnerIds, type GlobalFilter, parseFilter, serializeFilter } from "@/lib/owners";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
-import { extractSortKey, getSortOptions } from "@/lib/portfolio";
+import { extractSortKey, getSortOptions, mapKindToKey } from "@/lib/portfolio";
 import { PORTFOLIO_SIGNAL_ORDER } from "@/lib/signals";
 import { PortfolioView } from "./PortfolioView";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+
+// Pagination size. Default 50 rows per page — large enough that scrolling
+// stays useful within a page (Urgency-sorted top 50 covers a typical
+// morning's actions), small enough that the eye doesn't need to "give up"
+// on a 774-row scroll. Selectors live above and below the list so a user
+// scrolling the page never has to reach back to the top to switch pages.
+const PAGE_SIZE = 50;
 
 interface Props {
   filter: GlobalFilter;
@@ -24,6 +32,39 @@ interface Props {
 }
 
 const DEFAULTS_KEY = "ud-v2-portfolio-default";
+
+// Universal sort keys plus signal-specific ones. Mirrors PortfolioSortKey
+// in src/lib/types.ts; used to allowlist persisted localStorage values so a
+// poisoned blob can't drop the UI into an unknown sort state.
+const VALID_SORT_KEYS: ReadonlySet<PortfolioSortKey> = new Set<PortfolioSortKey>([
+  // Universal
+  "urgency",
+  "name",
+  "stage",
+  "revenue",
+  "health",
+  "last_contact",
+  "days_in_stage",
+  // Signal-specific
+  "oldest_outstanding",
+  "value_overdue",
+  "count_overdue",
+  "due_soonest",
+  "value_open",
+  "count_open",
+  "longest_silence_events",
+  "revenue_no_events",
+  "biggest_drop",
+  "current_score_asc",
+  "longest_stuck",
+  "days_past_expected",
+  "biggest_pct_drop",
+  "prior_3m_volume",
+  "wish_flagged_recent",
+  "longest_silence_quiet",
+]);
+
+const VALID_SIGNAL_KEYS: ReadonlySet<string> = new Set(PORTFOLIO_SIGNAL_ORDER);
 
 function filterKey(filter: GlobalFilter): string {
   const ids = effectiveOwnerIds(filter);
@@ -41,7 +82,21 @@ function loadDefaults(): PortfolioDefaults | null {
     if (!f) return null;
     if (!Array.isArray(parsed.signals)) return null;
     if (typeof parsed.sort !== "string") return null;
-    return { filter: f, signals: parsed.signals as PortfolioSignalKey[], sort: parsed.sort as PortfolioSortKey };
+
+    // Allowlist + length cap on signals so an injected localStorage blob
+    // can't sneak in unknown keys, null, scripts, or 100k-element arrays
+    // (adversarial QA caught all three).
+    const cleanSignals: PortfolioSignalKey[] = (parsed.signals as unknown[])
+      .filter((s): s is PortfolioSignalKey => typeof s === "string" && VALID_SIGNAL_KEYS.has(s))
+      .slice(0, PORTFOLIO_SIGNAL_ORDER.length);
+
+    // Allowlist sort key; fall back to the natural default on miss so a
+    // typo / poisoned key can't leave the UI sorting on "·" placeholder.
+    const sortKey: PortfolioSortKey = VALID_SORT_KEYS.has(parsed.sort as PortfolioSortKey)
+      ? (parsed.sort as PortfolioSortKey)
+      : "urgency";
+
+    return { filter: f, signals: cleanSignals, sort: sortKey };
   } catch {
     return null;
   }
@@ -54,7 +109,7 @@ function saveDefaults(d: PortfolioDefaults): void {
   );
 }
 
-export function PortfolioContainer({ filter, showAvatar = true, onSelectCompany }: Props) {
+export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onSelectCompany }: Props) {
   const [data, setData] = useState<PortfolioResponse | null>(null);
   const [isFirstLoading, setIsFirstLoading] = useState(true);
   const [, setIsRevalidating] = useState(false);
@@ -64,6 +119,7 @@ export function PortfolioContainer({ filter, showAvatar = true, onSelectCompany 
   const [sortKey, setSortKey] = useState<PortfolioSortKey>("urgency");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
 
   // Click handler for sort selection. Re-clicking the active sort key flips
   // direction (asc↔desc); clicking a different key resets direction to that
@@ -129,15 +185,20 @@ export function PortfolioContainer({ filter, showAvatar = true, onSelectCompany 
   }, [fetchData]);
 
   const filteredSortedRows = useMemo<PortfolioRow[]>(() => {
-    if (!data) return [];
+    // Defensive default — adversarial QA caught a dashboard-wide crash when
+    // an upstream payload returned `rows: null` or omitted the field. Coerce
+    // here and downstream so a malformed response degrades to "empty list"
+    // instead of "uncaught TypeError".
+    const rawRows = Array.isArray(data?.rows) ? data!.rows : [];
     const filtered = selectedSignals.length === 0
-      ? data.rows
-      : data.rows.filter((r) =>
-          r.signals.some((s) => {
+      ? rawRows
+      : rawRows.filter((r) => {
+          const sigs = Array.isArray(r.signals) ? r.signals : [];
+          return sigs.some((s) => {
             const k = mapKindToKey(s.kind, s.title);
             return selectedSignals.includes(k);
-          })
-        );
+          });
+        });
 
     const sortOpt = getSortOptions(selectedSignals).find((o) => o.key === sortKey);
     if (!sortOpt) return filtered;
@@ -153,9 +214,51 @@ export function PortfolioContainer({ filter, showAvatar = true, onSelectCompany 
     });
   }, [data, selectedSignals, sortKey, sortDirection]);
 
-  const stateRef = useRef({ rows: filteredSortedRows, focused: focusedRowIndex });
+  // Reset to page 1 whenever filter/signal/sort context changes. Following
+  // the prev-X "adjust state during render" pattern the strict react-hooks
+  // lint expects — convergent because the equality check stops firing once
+  // page is 1 and the signature stabilizes.
+  const pageResetSig = `${key}|${selectedSignals.join(",")}|${sortKey}|${sortDirection}`;
+  const [prevPageResetSig, setPrevPageResetSig] = useState(pageResetSig);
+  if (prevPageResetSig !== pageResetSig) {
+    setPrevPageResetSig(pageResetSig);
+    setPage(1);
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filteredSortedRows.length / PAGE_SIZE));
+  // Defensive clamp — if data refresh shrinks the row count below the
+  // current page boundary, render the last available page rather than an
+  // empty slice. setPage isn't called here; the next user action will sync.
+  const effectivePage = Math.min(page, totalPages);
+  const paginatedRows = useMemo(
+    () => filteredSortedRows.slice((effectivePage - 1) * PAGE_SIZE, effectivePage * PAGE_SIZE),
+    [filteredSortedRows, effectivePage]
+  );
+
+  // Event-handler state read via a single ref so the listener-attach effect
+  // doesn't have to re-bind on every selectedSignals/sortKey/filter change.
+  // Previously each of those changes torn down and re-attached six window
+  // listeners. The refs pattern keeps the listeners stable for the
+  // component's lifetime while still letting them read current state.
+  // Keyboard nav uses `paginatedRows` (not the full sorted list) so ↑/↓
+  // bounds and ↵-to-open both operate within the current page.
+  const stateRef = useRef({
+    rows: paginatedRows,
+    focused: focusedRowIndex,
+    selectedSignals,
+    sortKey,
+    filter,
+    onSelectCompany,
+  });
   useEffect(() => {
-    stateRef.current = { rows: filteredSortedRows, focused: focusedRowIndex };
+    stateRef.current = {
+      rows: paginatedRows,
+      focused: focusedRowIndex,
+      selectedSignals,
+      sortKey,
+      filter,
+      onSelectCompany,
+    };
   });
 
   useEffect(() => {
@@ -171,9 +274,9 @@ export function PortfolioContainer({ filter, showAvatar = true, onSelectCompany 
       setFocusedRowIndex(next);
     }
     function onOpen() {
-      const { rows, focused } = stateRef.current;
+      const { rows, focused, onSelectCompany: select } = stateRef.current;
       if (focused == null || !rows[focused]) return;
-      onSelectCompany(rows[focused].id);
+      select(rows[focused].id);
     }
     function onSignalToggle(e: Event) {
       const idx = (e as CustomEvent<number>).detail;
@@ -185,8 +288,9 @@ export function PortfolioContainer({ filter, showAvatar = true, onSelectCompany 
     }
     function onSignalClear() { setSelectedSignals([]); }
     function onSortCycle() {
-      const opts = getSortOptions(selectedSignals);
-      const idx = opts.findIndex((o) => o.key === sortKey);
+      const { selectedSignals: sigs, sortKey: currentSort } = stateRef.current;
+      const opts = getSortOptions(sigs);
+      const idx = opts.findIndex((o) => o.key === currentSort);
       const next = opts[(idx + 1) % opts.length];
       if (next) {
         // Cycle key + reset direction to the new option's natural default.
@@ -195,7 +299,8 @@ export function PortfolioContainer({ filter, showAvatar = true, onSelectCompany 
       }
     }
     function onSaveDefaults() {
-      saveDefaults({ filter, signals: selectedSignals, sort: sortKey });
+      const { filter: f, selectedSignals: sigs, sortKey: sk } = stateRef.current;
+      saveDefaults({ filter: f, signals: sigs, sort: sk });
     }
 
     window.addEventListener("ud-list-nav", onNav);
@@ -212,7 +317,7 @@ export function PortfolioContainer({ filter, showAvatar = true, onSelectCompany 
       window.removeEventListener("ud-portfolio-sort-cycle", onSortCycle);
       window.removeEventListener("ud-portfolio-save-defaults", onSaveDefaults);
     };
-  }, [selectedSignals, sortKey, filter, onSelectCompany]);
+  }, []);
 
   const [hasSavedDefault, setHasSavedDefault] = useState(false);
   useEffect(() => {
@@ -227,47 +332,185 @@ export function PortfolioContainer({ filter, showAvatar = true, onSelectCompany 
     }
   }, []);
 
-  const totalsBySignal = data?.totalsBySignal ?? {
-    overdue_invoices: 0, open_invoices: 0, no_future_events: 0, health_dropped: 0,
-    stuck_in_step: 0, volume_declining: 0, wish_to_churn: 0, gone_quiet: 0,
-  };
+  // Page navigation scrolls back to the top of the page so the user always
+  // lands above the new row slice (otherwise switching from the bottom
+  // pagination drops them mid-list with the next-page rows below the fold).
+  const onPageChange = useCallback((next: number) => {
+    setPage(next);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
+
+  // Keyboard shortcuts for page nav: `[` previous, `]` next. Gated on
+  // (a) no input focused — so the jump-to-page input still receives raw
+  // keys, and (b) no portfolio popover open — so brackets don't shift the
+  // page out from under a user navigating the filter or sort menu.
+  //
+  // Layout note: on Danish and Swedish keyboards, `[` and `]` are typed
+  // with AltGr+8 / AltGr+9 respectively. AltGr surfaces in JS as
+  // `altKey: true`. Bailing on altKey would silently kill the shortcut for
+  // those users, so we only bail on Cmd/Ctrl (which would mean an explicit
+  // system or browser shortcut like Cmd+[ = browser back). e.key already
+  // resolves to the actual character produced by the layout, so the same
+  // check works for US keyboards (bare `[`) and Nordic keyboards (AltGr+8).
+  const popupOpenRef = useRef(false);
+  useEffect(() => {
+    function onPopupState(e: Event) {
+      popupOpenRef.current = (e as CustomEvent<boolean>).detail === true;
+    }
+    window.addEventListener("ud-portfolio-popup-state", onPopupState);
+    return () =>
+      window.removeEventListener("ud-portfolio-popup-state", onPopupState);
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey) return;
+      if (popupOpenRef.current) return;
+      const target = e.target as HTMLElement | null;
+      const inInput =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if (inInput) return;
+
+      if (e.key === "[") {
+        if (page > 1) onPageChange(page - 1);
+        e.preventDefault();
+      } else if (e.key === "]") {
+        const tp = Math.max(1, Math.ceil(filteredSortedRows.length / PAGE_SIZE));
+        if (page < tp) onPageChange(page + 1);
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [page, onPageChange, filteredSortedRows.length]);
+
+  // When a filter is active, the global totalsBySignal payload (which
+  // counts the entire book) misrepresents the current scope. Recompute
+  // counts over the filtered rows so the banner breakdown stays honest.
+  const totalsBySignal = useMemo<Record<PortfolioSignalKey, number>>(() => {
+    const empty: Record<PortfolioSignalKey, number> = {
+      overdue_invoices: 0, open_invoices: 0, no_future_events: 0, health_dropped: 0,
+      stuck_in_step: 0, volume_declining: 0, wish_to_churn: 0, gone_quiet: 0,
+    };
+    if (selectedSignals.length === 0) {
+      // Unfiltered: the API-provided totals are the right answer.
+      return data?.totalsBySignal ?? empty;
+    }
+    // Filtered: tally distinct signals across filteredSortedRows.
+    const counts = { ...empty };
+    for (const row of filteredSortedRows) {
+      const sigs = Array.isArray(row.signals) ? row.signals : [];
+      for (const s of sigs) {
+        const k = mapKindToKey(s.kind, s.title);
+        counts[k] += 1;
+      }
+    }
+    return counts;
+  }, [data, selectedSignals, filteredSortedRows]);
+
+  // Stable callback so the memoized Row stays cheap. A fresh closure each
+  // render would defeat React.memo on the row component.
+  const onRowClick = useCallback(
+    (row: PortfolioRow) => onSelectCompany(row.id),
+    [onSelectCompany]
+  );
+
+  const toggleSignal = useCallback(
+    (k: PortfolioSignalKey) =>
+      setSelectedSignals((prev) =>
+        prev.includes(k) ? prev.filter((s) => s !== k) : [...prev, k]
+      ),
+    []
+  );
+  const clearSignals = useCallback(() => setSelectedSignals([]), []);
+  const onSaveDefaults = useCallback(() => {
+    saveDefaults({ filter, signals: selectedSignals, sort: sortKey });
+    setHasSavedDefault(true);
+  }, [filter, selectedSignals, sortKey]);
+  const onResetDefaults = useCallback(() => {
+    const d = loadDefaults();
+    if (!d) return;
+    setSelectedSignals(d.signals);
+    setSortKey(d.sort);
+    const opt = getSortOptions(d.signals).find((o) => o.key === d.sort);
+    setSortDirection(opt?.direction ?? "desc");
+  }, []);
 
   if (error && !data) return <div style={{ padding: 24 }}>{error}</div>;
   if (isFirstLoading) return <PortfolioSkeleton />;
   if (!data) return null;
 
   return (
-    <PortfolioView
-      rows={filteredSortedRows}
-      totalsBySignal={totalsBySignal}
-      showAvatar={showAvatar}
-      selectedSignals={selectedSignals}
-      toggleSignal={(k) =>
-        setSelectedSignals((prev) =>
-          prev.includes(k) ? prev.filter((s) => s !== k) : [...prev, k]
-        )
-      }
-      clearSignals={() => setSelectedSignals([])}
-      sortKey={sortKey}
-      sortDirection={sortDirection}
-      setSortKey={setSort}
-      focusedRowIndex={focusedRowIndex}
-      onRowClick={(row) => onSelectCompany(row.id)}
-      hasSavedDefault={hasSavedDefault}
-      defaultsAreCurrent={isCurrentEqualToSaved(filter, selectedSignals, sortKey)}
-      onSaveDefaults={() => {
-        saveDefaults({ filter, signals: selectedSignals, sort: sortKey });
-        setHasSavedDefault(true);
-      }}
-      onResetDefaults={() => {
-        const d = loadDefaults();
-        if (!d) return;
-        setSelectedSignals(d.signals);
-        setSortKey(d.sort);
-        const opt = getSortOptions(d.signals).find((o) => o.key === d.sort);
-        setSortDirection(opt?.direction ?? "desc");
-      }}
-    />
+    <ErrorBoundary
+      label="PortfolioContainer"
+      fallback={(reset) => (
+        <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
+          <span style={{ color: "var(--rust)", fontSize: 14 }}>
+            Could not render the portfolio. The data may be in an unexpected shape.
+          </span>
+          <button
+            onClick={reset}
+            style={{
+              background: "var(--moss)",
+              color: "var(--page-bg)",
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: 0,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      )}
+    >
+      {error && data && (
+        <div
+          role="status"
+          style={{
+            background: "color-mix(in oklch, var(--rust) 14%, transparent)",
+            color: "var(--rust)",
+            padding: "8px 28px",
+            textAlign: "center",
+            fontSize: 12,
+            fontWeight: 500,
+            borderBottom: "1px solid var(--hairline)",
+          }}
+        >
+          Refresh failed: {error}. Showing cached data.
+        </div>
+      )}
+      <PortfolioView
+        rows={paginatedRows}
+        totalRowCount={filteredSortedRows.length}
+        totalsBySignal={totalsBySignal}
+        filterLabel={filterLabel}
+        showAvatar={showAvatar}
+        selectedSignals={selectedSignals}
+        toggleSignal={toggleSignal}
+        clearSignals={clearSignals}
+        sortKey={sortKey}
+        sortDirection={sortDirection}
+        setSortKey={setSort}
+        focusedRowIndex={focusedRowIndex}
+        onRowClick={onRowClick}
+        hasSavedDefault={hasSavedDefault}
+        defaultsAreCurrent={isCurrentEqualToSaved(filter, selectedSignals, sortKey)}
+        onSaveDefaults={onSaveDefaults}
+        onResetDefaults={onResetDefaults}
+        page={effectivePage}
+        totalPages={totalPages}
+        pageSize={PAGE_SIZE}
+        onPageChange={onPageChange}
+      />
+    </ErrorBoundary>
   );
 }
 
@@ -368,16 +611,3 @@ function PortfolioSkeleton() {
   );
 }
 
-function mapKindToKey(kind: string, title: string): PortfolioSignalKey {
-  if (title === "Open invoice") return "open_invoices";
-  switch (kind) {
-    case "overdue_invoice":   return "overdue_invoices";
-    case "wish_to_churn":     return "wish_to_churn";
-    case "volume_declining":  return "volume_declining";
-    case "no_future_events":  return "no_future_events";
-    case "stuck_in_step":     return "stuck_in_step";
-    case "health_dropped":    return "health_dropped";
-    case "gone_quiet":        return "gone_quiet";
-    default:                  return "gone_quiet";
-  }
-}

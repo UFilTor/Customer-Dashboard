@@ -241,6 +241,7 @@ Flat by default. The dashboard relies on tonal layering (cream page, warmer crea
 ### Inputs / Search fields
 - **Style:** Card-bg fill on page-bg surface, 10px radius, `8px 12px` padding, body type.
 - **Focus:** Standard blue outline ring (no border swap, no inner glow).
+- **Numeric input:** Never use `<input type="number">`. The browser-rendered spinner arrows can't be styled cleanly across browsers and clash with the flat hairline aesthetic. Use `<input type="text" inputMode="numeric" pattern="[0-9]*">` with manual sanitization in `onChange`. Reference: pagination jump-input in `PortfolioView.tsx`.
 
 ### Lists / Rows
 - **Hover:** background → `--light-grey` over 120ms ease (`.hrow`).

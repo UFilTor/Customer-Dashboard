@@ -44,6 +44,21 @@ These are non-obvious conventions and footguns we've run into while working on t
     setOtherState(reset);
   }
   ```
+- DOM measurements during render (same lint family): when you need `offsetTop` / `offsetWidth` / etc. for a render-time prop like `useWindowVirtualizer({ scrollMargin })`, don't read `ref.current` during render. Use a callback ref that writes into state.
+  ```tsx
+  const [offset, setOffset] = useState(0);
+  const measureRef = useCallback((el: HTMLElement | null) => {
+    if (el) setOffset(el.offsetTop);
+  }, []);
+  // <div ref={measureRef}>
+  ```
+  Pattern lives in `PortfolioView.tsx` (`setListOffsetTop`).
+
+## Virtualization (`@tanstack/react-virtual`)
+
+- Page-scroll virtualization uses `useWindowVirtualizer`. `scrollMargin` must equal the list's offset from page top (measure via the callback-ref pattern above). Without it, the visible window is wrong by exactly the toolbar height.
+- Don't re-derive cumulative offsets from `estimateSize` for sibling logic like sticky section headers or scroll-to-row. The estimate drifts the moment any row deviates from the average. Real positions live in `virtualizer.measurementsCache[i].start`; use those.
+- Reference: `PortfolioView.tsx` virtualizer setup and sticky-header tracking.
 
 ## URL state pattern
 
@@ -64,3 +79,9 @@ These are non-obvious conventions and footguns we've run into while working on t
 ## HubSpot links
 
 - All "Open in HubSpot" deep-links go through `hubspotCompanyUrl` / `hubspotDealUrl` in `src/lib/hubspot-links.ts` so they consistently include `?utm_source=cs-dashboard`. Don't hand-build HubSpot URLs.
+
+## Third-party CSP origins
+
+If we tighten CSP (currently permissive), these origins need allowlist entries for the analytics we already ship:
+
+- Vercel Speed Insights: `script-src https://va.vercel-scripts.com`, `connect-src https://vitals.vercel-insights.com`

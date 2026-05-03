@@ -25,7 +25,7 @@ interface Props {
 const quickActionBtn: React.CSSProperties = {
   padding: "8px 14px",
   borderRadius: 10,
-  fontSize: 12.5,
+  fontSize: 12,
   fontWeight: 500,
   color: "var(--moss)",
   border: "1px solid var(--hairline)",
@@ -148,7 +148,7 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
               <span
                 style={{
-                  fontSize: 10.5,
+                  fontSize: 10,
                   padding: "3px 8px",
                   borderRadius: 6,
                   background: "var(--lichen)",
@@ -387,7 +387,7 @@ function PlatformActivityCard({ company }: { company: Record<string, string> }) 
         style={{
           fontFamily: "var(--font-display)",
           textTransform: "uppercase",
-          fontSize: 10.5,
+          fontSize: 10,
           fontWeight: 700,
           letterSpacing: "0.06em",
           color: "var(--green-100)",
@@ -461,7 +461,7 @@ function PayPipelineCard({ company, deal }: { company: Record<string, string>; d
         style={{
           fontFamily: "var(--font-display)",
           textTransform: "uppercase",
-          fontSize: 10.5,
+          fontSize: 10,
           fontWeight: 700,
           letterSpacing: "0.06em",
           color: "var(--green-100)",
@@ -503,7 +503,7 @@ function PayPipelineCard({ company, deal }: { company: Record<string, string>; d
                 />
                 <span
                   style={{
-                    fontSize: 11.5,
+                    fontSize: 11,
                     fontWeight: i <= idx ? 600 : 400,
                     color: i <= idx ? "var(--moss)" : "var(--green-100)",
                     whiteSpace: "nowrap",
@@ -555,7 +555,7 @@ function LifecycleDealCard({ deal, stages }: { deal: Record<string, string> | nu
             href={hubspotDealUrl(deal.hs_object_id) ?? "#"}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ fontSize: 11.5, color: "var(--moss)", textDecoration: "underline" }}
+            style={{ fontSize: 11, color: "var(--moss)", textDecoration: "underline" }}
           >
             Open in HubSpot
           </a>
@@ -607,7 +607,7 @@ function CardShell({ title, children, headerRight }: { title: string; children: 
           style={{
             fontFamily: "var(--font-display)",
             textTransform: "uppercase",
-            fontSize: 10.5,
+            fontSize: 10,
             fontWeight: 700,
             letterSpacing: "0.06em",
             color: "var(--green-100)",
@@ -633,7 +633,7 @@ function InfoRow({ label, value, link }: { label: string; value: string; link?: 
         borderBottom: "1px solid var(--hairline)",
       }}
     >
-      <span style={{ fontSize: 12.5, color: "var(--green-100)" }}>{label}</span>
+      <span style={{ fontSize: 12, color: "var(--green-100)" }}>{label}</span>
       <span
         style={{
           fontSize: 13,
@@ -714,7 +714,7 @@ function GongCard({ gong }: { gong: GongStructured }) {
       {gong.meta && (
         <div
           style={{
-            fontSize: 11.5,
+            fontSize: 11,
             color: "var(--green-100)",
             fontFamily: "var(--font-editorial)",
             fontStyle: "italic",
@@ -724,7 +724,7 @@ function GongCard({ gong }: { gong: GongStructured }) {
         </div>
       )}
       {gong.brief && (
-        <p style={{ margin: 0, fontSize: 13.5, color: "var(--dark-moss)", lineHeight: 1.6 }}>
+        <p style={{ margin: 0, fontSize: 13, color: "var(--dark-moss)", lineHeight: 1.6 }}>
           {gong.brief}
         </p>
       )}
@@ -785,7 +785,7 @@ function SectionHead({ children, accent }: { children: React.ReactNode; accent?:
       style={{
         fontFamily: "var(--font-display)",
         textTransform: "uppercase",
-        fontSize: 10.5,
+        fontSize: 10,
         fontWeight: 700,
         letterSpacing: "0.06em",
         color: accent ? "var(--moss)" : "var(--green-100)",
@@ -964,7 +964,7 @@ function EmailThreadCard({
       {meta && (
         <div
           style={{
-            fontSize: 11.5,
+            fontSize: 11,
             color: "var(--green-100)",
             fontFamily: "var(--font-editorial)",
             fontStyle: "italic",
@@ -980,7 +980,7 @@ function EmailThreadCard({
             style={{
               fontFamily: "var(--font-display)",
               textTransform: "uppercase",
-              fontSize: 9.5,
+              fontSize: 10,
               fontWeight: 700,
               letterSpacing: "0.06em",
               color: "var(--green-100)",
@@ -1037,7 +1037,7 @@ function EmailThreadCard({
                       style={{
                         fontFamily: "var(--font-display)",
                         textTransform: "uppercase",
-                        fontSize: 9.5,
+                        fontSize: 10,
                         fontWeight: 700,
                         letterSpacing: "0.06em",
                         color: "var(--green-100)",
@@ -1049,7 +1049,7 @@ function EmailThreadCard({
                   )}
                   <div
                     style={{
-                      fontSize: 12.5,
+                      fontSize: 12,
                       color: "var(--dark-moss)",
                       lineHeight: 1.5,
                       whiteSpace: "pre-wrap",
@@ -1316,7 +1316,7 @@ function ActivityPanel({ engagements, owners }: { engagements: Engagement[]; own
                 style={{
                   background: c.bg,
                   color: c.fg,
-                  fontSize: 10.5,
+                  fontSize: 10,
                   fontWeight: 600,
                   padding: "3px 7px",
                   borderRadius: 6,
@@ -1328,7 +1328,7 @@ function ActivityPanel({ engagements, owners }: { engagements: Engagement[]; own
               {item.owner && owners[item.owner] && (
                 <span
                   style={{
-                    fontSize: 10.5,
+                    fontSize: 10,
                     color: "var(--green-100)",
                     fontFamily: "var(--font-editorial)",
                     fontStyle: "italic",
@@ -1355,7 +1355,7 @@ function ActivityPanel({ engagements, owners }: { engagements: Engagement[]; own
                     <span
                       style={{
                         marginLeft: 8,
-                        fontSize: 11.5,
+                        fontSize: 11,
                         color: "var(--green-100)",
                         fontFamily: "var(--font-editorial)",
                         fontStyle: "italic",
@@ -1389,7 +1389,7 @@ function ActivityPanel({ engagements, owners }: { engagements: Engagement[]; own
                   )}
                   <span
                     style={{
-                      fontSize: 11.5,
+                      fontSize: 11,
                       color: "var(--green-100)",
                       fontStyle: "italic",
                       fontFamily: "var(--font-editorial)",

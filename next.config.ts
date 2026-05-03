@@ -10,13 +10,17 @@ const withBundleAnalyzer = bundleAnalyzer({
 // for Next dev and the Sentry shim; the script-src list otherwise restricts
 // origins the app actually loads from. img-src includes data: for the
 // inlined SVG icons. connect-src allows HubSpot images / Vercel telemetry.
+//
+// Vercel Speed Insights serves its script from va.vercel-scripts.com — both
+// `script-debug.js` (dev) and the prod variant. Add it to script-src so the
+// integration loads without a CSP block both locally and on Vercel deploys.
 const cspDirectives = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://browser.sentry-cdn.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://browser.sentry-cdn.com https://va.vercel-scripts.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: https://*.hubspot.com https://*.hubspotusercontent-na1.net https://*.hsforms.net",
-  "connect-src 'self' https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://api.hubapi.com https://api.anthropic.com",
+  "connect-src 'self' https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://api.hubapi.com https://api.anthropic.com https://vitals.vercel-insights.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

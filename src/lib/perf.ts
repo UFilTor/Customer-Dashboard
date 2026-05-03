@@ -41,6 +41,10 @@ export function serverTimingHeader(spans: Spans): string {
 }
 
 export function logSpans(route: string, spans: Spans): void {
+  // Dev-only: production Vercel logs already include the Server-Timing
+  // header, and the per-request console.log creates noise without adding
+  // information. Gate on NODE_ENV so the prod log stream stays clean.
+  if (process.env.NODE_ENV === "production") return;
   const total = spans.reduce((sum, s) => sum + s.ms, 0);
   const parts = spans
     .map((s) => `${s.label}=${s.ms.toFixed(0)}ms`)

@@ -110,6 +110,25 @@ const STAGE_ORDER: Record<PortfolioRow["stage"], number> = {
   Established: 4,
 };
 
+// Map a row's signal kind+title pair to its canonical PortfolioSignalKey.
+// "Open invoice" is a special-case title that overrides the kind because the
+// upstream `overdue_invoice` kind is reused for both due-but-unpaid and
+// overdue invoices. Centralized here so the container, view, and any future
+// caller all bucket signals identically.
+export function mapKindToKey(kind: string, title: string): PortfolioSignalKey {
+  if (title === "Open invoice") return "open_invoices";
+  switch (kind) {
+    case "overdue_invoice":   return "overdue_invoices";
+    case "wish_to_churn":     return "wish_to_churn";
+    case "volume_declining":  return "volume_declining";
+    case "no_future_events":  return "no_future_events";
+    case "stuck_in_step":     return "stuck_in_step";
+    case "health_dropped":    return "health_dropped";
+    case "gone_quiet":        return "gone_quiet";
+    default:                  return "gone_quiet";
+  }
+}
+
 export function extractSortKey(row: PortfolioRow, key: PortfolioSortKey): number | string | null {
   switch (key) {
     // Universal

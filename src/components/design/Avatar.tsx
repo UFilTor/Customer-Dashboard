@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 interface OwnerLike {
   name: string;
   color?: string;
@@ -11,7 +13,9 @@ interface AvatarProps {
 // Owner avatar — first letter on a tinted disc. The visible initial plus the
 // disc color encode the owner; we add aria-label / title so screen readers
 // and hover both surface the full name (two CS owners share an "M" initial).
-export function Avatar({ owner, size = 22 }: AvatarProps) {
+// Wrapped in React.memo because Portfolio renders this 774x and the props
+// (owner reference + size) rarely change between paints.
+export const Avatar = memo(function Avatar({ owner, size = 22 }: AvatarProps) {
   const initial = owner?.name?.[0] ?? "?";
   const bg = owner?.color || (owner ? "var(--lichen)" : "#E5E3D8");
   const fg = owner ? "var(--moss)" : "var(--green-100)";
@@ -39,4 +43,4 @@ export function Avatar({ owner, size = 22 }: AvatarProps) {
       {initial}
     </span>
   );
-}
+});

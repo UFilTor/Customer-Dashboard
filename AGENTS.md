@@ -58,7 +58,44 @@ These are non-obvious conventions and footguns we've run into while working on t
 
 - Page-scroll virtualization uses `useWindowVirtualizer`. `scrollMargin` must equal the list's offset from page top (measure via the callback-ref pattern above). Without it, the visible window is wrong by exactly the toolbar height.
 - Don't re-derive cumulative offsets from `estimateSize` for sibling logic like sticky section headers or scroll-to-row. The estimate drifts the moment any row deviates from the average. Real positions live in `virtualizer.measurementsCache[i].start`; use those.
+- **`measurementsCache[i].start` is in ABSOLUTE (document) coords when `scrollMargin` is set.** Not list-relative. So a "cursor" you compare against must also be absolute (`window.scrollY + stickyHeight`), not list-relative (`window.scrollY + stickyHeight - listOffsetTop`). This caused the Portfolio sticky-section indicator to never fire — the comparison was list-relative vs absolute, never crossing. Fix is in `PortfolioView.tsx`'s `compute()` for the activeSection tracker.
 - Reference: `PortfolioView.tsx` virtualizer setup and sticky-header tracking.
+
+## Sticky scroll-shadow pattern
+
+When you want a sticky element to add a shadow once it pins to the viewport, **don't track `getBoundingClientRect().top` of the sticky element**. It's flaky across TopBar layouts and easy to fire too early (before the sticky has actually pinned). Instead, place a 1px sentinel element directly above the sticky and watch it with `IntersectionObserver`:
+
+```tsx
+const sentinelRef = useRef<HTMLDivElement | null>(null);
+const [scrolled, setScrolled] = useState(false);
+useEffect(() => {
+  const node = sentinelRef.current;
+  if (!node) return;
+  const obs = new IntersectionObserver(
+    ([entry]) => setScrolled(!entry.isIntersecting),
+    { threshold: 0 }
+  );
+  obs.observe(node);
+  return () => obs.disconnect();
+}, []);
+
+// <div ref={sentinelRef} aria-hidden style={{ height: 1, marginBottom: -1 }} />
+// <div className={`pf-sticky${scrolled ? " scrolled" : ""}`}> ... </div>
+```
+
+Fires the exact frame the strip pins, no scroll listener, no rAF. Pattern lives in `PortfolioView.tsx` (Portfolio toolbar) and `MeetingPrepView.tsx` (day selector).
+
+## Signals taxonomy + display
+
+- `src/lib/signals.ts` is the single source of truth for the watch-out signal list (`computeWatchOutSignals`) AND the stage-applicability map (`STAGE_APPLICABILITY`). Pass `stage` into `computeWatchOutSignals` and the result is automatically filtered by stage. Both Portfolio and Meeting Prep use this — they cannot compute different signal sets for the same deal.
+- `src/lib/signal-display.ts` owns severity tokens (`signalStyle("bad" | "warn")`), per-stage calm copy (`calmCopy(stage, "glyph" | "sentence")`), pill compression (`pillText`), and the kind→key mapper. Components (`SignalPill`, `WatchOutFor`, `CalmGlyph`) consume these — when adding a new severity treatment or new "no signals" copy, edit signal-display.ts, not the components.
+- Severity rendering convention: `bad` = solid `--rust` fill + `--rust-fg` cream text. `warn` = transparent bg + 1px `--rust` border + `--rust` text. Mixed treatment by design (DESIGN.md). Both Portfolio table-row pills and Meeting Prep WatchOutFor cards apply this.
+
+## Search-LLM allowlist and pseudo-fields
+
+- `src/lib/search-llm.ts` (`ENTITY_FIELDS`) and `src/lib/search.ts` (`ENTITY_FIELDS` Set) must stay in sync — the prompt presents the allowlist to the LLM, the runtime validates against it. Adding a new HubSpot property means editing both.
+- **Pseudo-fields** (currently only `outstanding_amount_eur`) are validated like real fields but stripped from the HubSpot request and applied as in-memory post-filters (`matchesPseudoFilter` in `search.ts`). The runtime ensures their dependencies are returned (`outstanding_amount` + `deal_currency_code` are always in the deal `SEARCH_RETURN_PROPS`). Use this pattern for any cross-currency or computed threshold the user asks for in a unit HubSpot doesn't natively store.
+- **No cross-entity intersection.** Each `target` is its own HubSpot search; the runtime doesn't AND-combine results across targets. `customer_stage` (deal-only) and `health_score` (company-only) cannot co-filter. The prompt includes a field-to-entity routing rule and an example that drops the weaker qualifier rather than misroutes it.
 
 ## URL state pattern
 

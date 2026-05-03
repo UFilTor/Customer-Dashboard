@@ -69,6 +69,22 @@ Tailwind 4 is configured but only powers layout primitives in `globals.css`. The
 - `useEffect(() => { ref.current = value; });` to mirror props into refs (see `useListKeyboardNav.ts`).
 - "Adjust state during render" with a `prevX` state slot for prop-driven resets (see `ViewTransition.tsx`, `useListKeyboardNav.ts`).
 
+### React 19 inline-style shorthand/longhand mixing
+
+React 19 warns at runtime when an element mixes a shorthand style (`textDecoration`) with a longhand for the same property (`textDecorationColor`, `textDecorationThickness`). The shorthand resets the longhand silently on rerender, which is why React flags it.
+
+Use longhands only when you need to set sub-properties:
+
+```ts
+// Wrong: warns on every rerender
+{ textDecoration: "underline dotted", textDecorationColor: "var(--moss)", textDecorationThickness: 2 }
+
+// Right
+{ textDecorationLine: "underline", textDecorationStyle: "dotted", textDecorationColor: "var(--moss)", textDecorationThickness: 2 }
+```
+
+Same rule applies inside `onMouseEnter` / `onMouseLeave` handlers that mutate `style.textDecoration*` — never assign the shorthand if you've also assigned a longhand. Same family covers `background` vs `backgroundColor / backgroundImage`, `border` vs `borderColor / borderWidth / borderStyle`, etc.
+
 ### Window-event keyboard system
 
 `page.tsx` has a single capture-phase keydown listener. It reads current view state from `stateRef` and dispatches custom events; views subscribe and own their own focused-index state. Common events:

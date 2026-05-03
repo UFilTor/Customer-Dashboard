@@ -422,7 +422,6 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
   if (allDeals.length === 0) return [];
 
   // Step 2b: deal -> company associations via v4 batch (parallel).
-  const dealMap = new Map<string, RawDeal>(allDeals.map((d) => [d.id, d]));
   const dealToCompany = new Map<string, string>();
   const assocBatches: Promise<void>[] = [];
   for (let i = 0; i < allDeals.length; i += 100) {

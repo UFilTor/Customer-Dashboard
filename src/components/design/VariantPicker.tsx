@@ -22,14 +22,23 @@ interface DashboardDef {
   key: DashboardKey;
   label: string;
   sub: string;
+  /** Whether the dashboard is wired up. Unavailable entries render in the
+   *  picker as disabled "coming soon" rows (e.g. Bloom). */
   available: boolean;
+  /** Removes the entry from the picker entirely while keeping the route +
+   *  code paths reachable via URL. Use for legacy dashboards we want to
+   *  preserve as a fallback (e.g. Status after Portfolio replaced it). */
+  hidden?: boolean;
 }
 
 export const DASHBOARDS: DashboardDef[] = [
   { key: "portfolio",     label: "Portfolio",     sub: "Every account, every signal", available: true  },
-  { key: "status",        label: "Status",        sub: "Needs attention today (legacy)", available: true },
+  // Status is the legacy dashboard. Hidden from the picker now that Portfolio
+  // covers the same surface; URL `?d=status` still resolves so we can flip
+  // back to visible if we ever need to re-expose it.
+  { key: "status",        label: "Status",        sub: "Needs attention today (legacy)", available: true, hidden: true },
   { key: "meeting_prep",  label: "Meeting prep",  sub: "Today's meetings, prep ready", available: true },
-  { key: "pay_migration", label: "Pay migration", sub: "Moving accounts to Understory Pay", available: true },
+  { key: "pay_migration", label: "Understory Pay Migration", sub: "Moving accounts to Understory Pay", available: true },
   { key: "bloom",         label: "Bloom",         sub: "Marketing candidates to pitch", available: false },
   { key: "search",        label: "Lookup",        sub: "Ask anything in plain English", available: true },
 ];
@@ -256,7 +265,7 @@ export function DashboardPicker({
             boxShadow: "var(--shadow-modal)",
           }}
         >
-          {DASHBOARDS.map((d) => {
+          {DASHBOARDS.filter((d) => !d.hidden).map((d) => {
             const isActive = d.key === dashboard;
             const disabled = !d.available;
             return (

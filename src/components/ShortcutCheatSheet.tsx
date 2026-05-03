@@ -48,11 +48,10 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
   out.push({
     heading: "Switch dashboard",
     rows: [
-      { label: "Portfolio", keys: "G then T" },
-      { label: "Status", keys: "G then S" },
+      { label: "Portfolio", keys: "G then P" },
       { label: "Meeting prep", keys: "G then M" },
       { label: "Lookup", keys: "G then L" },
-      { label: "Pay migration", keys: "G then P" },
+      { label: "Understory Pay Migration", keys: "G then U" },
       { label: "Bloom", keys: "G then B" },
     ],
   });

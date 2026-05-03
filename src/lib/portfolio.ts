@@ -112,10 +112,10 @@ export interface SortOption {
 
 const UNIVERSAL_SORTS: SortOption[] = [
   { key: "urgency",       label: "Urgency",         direction: "desc" },
-  { key: "name",          label: "Name (A-Z)",      direction: "asc"  },
-  { key: "revenue",       label: "Revenue",         direction: "desc" },
-  { key: "health",        label: "Health (worst first)", direction: "asc" },
-  { key: "last_contact",  label: "Last contact (longest first)", direction: "desc" },
+  { key: "name",          label: "Name (A→Z)",      direction: "asc"  },
+  { key: "revenue",       label: "Revenue (high)",  direction: "desc" },
+  { key: "health",        label: "Health (low)",    direction: "asc" },
+  { key: "last_contact",  label: "Last contact",    direction: "desc" },
   { key: "days_in_stage", label: "Days in stage",   direction: "desc" },
 ];
 
@@ -342,6 +342,7 @@ const PORTFOLIO_DEAL_PROPS = [
   "number_of_open_invoices",
   "wish_to_churn",
   "churn_reason",
+  "churn_date",
   "dealstage",
   "pipeline",
   "confirmed__contract_mrr",
@@ -417,8 +418,18 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
     fetchPortfolioDealsForPipeline(LIFECYCLE_PIPELINE_ID),
     fetchPortfolioDealsForPipeline(RETENTION_PIPELINE_ID),
   ]);
-  const allDeals = [...lifecycleDeals, ...retentionDeals]
-    .filter((d) => d.properties.customer_stage !== "Churned");
+  // Exclude churned deals. Two signals matter:
+  //   1. customer_stage === "Churned" (the canonical case)
+  //   2. churn_date is set (HubSpot lets customer_stage freeze at pre-churn
+  //      values like "Hibernation" when a churn_date is filled in, so the
+  //      stage check alone misses these). Any non-empty churn_date counts.
+  const allDeals = [...lifecycleDeals, ...retentionDeals].filter((d) => {
+    const stage = d.properties.customer_stage;
+    const churnDate = d.properties.churn_date;
+    if (stage === "Churned") return false;
+    if (churnDate && churnDate.trim() !== "") return false;
+    return true;
+  });
   if (allDeals.length === 0) return [];
 
   // Step 2b: deal -> company associations via v4 batch (parallel).

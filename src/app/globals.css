@@ -248,6 +248,111 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .hrow { transition: background 120ms ease; }
 .hrow:hover { background: var(--light-grey); }
 
+/* ---------- Portfolio dashboard helpers ----------
+   Used by PortfolioView. Class-based to escape inline-style-only hover and
+   sticky positioning, and to host the popover entry animation. */
+.pf-row { transition: background 120ms var(--ease-out), box-shadow 120ms var(--ease-out); }
+.pf-row:hover { background: var(--beige-new); }
+.pf-row.focused { background: var(--lichen); box-shadow: inset 3px 0 0 var(--moss); }
+.pf-row .row-chevron { opacity: 0; transition: opacity 120ms var(--ease-out); color: var(--green-100); }
+.pf-row:hover .row-chevron, .pf-row.focused .row-chevron { opacity: 0.7; }
+
+.pf-sticky { position: sticky; top: 0; z-index: 30; background: var(--page-bg); }
+
+.pf-col-head {
+  cursor: pointer;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--green-100);
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.pf-col-head .arrow { opacity: 0.4; font-size: 9px; }
+.pf-col-head.sorted { color: var(--moss); }
+.pf-col-head.sorted .arrow { opacity: 1; }
+
+.pf-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  background: var(--card-bg);
+  border-radius: 14px;
+  border: 1px solid var(--beige-gray);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+  z-index: 50;
+  min-width: 320px;
+  transform-origin: top left;
+  animation: pfPopIn 140ms var(--ease-out) both;
+}
+@keyframes pfPopIn {
+  from { opacity: 0; transform: scale(0.97) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.pf-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--moss);
+  background: transparent;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 120ms var(--ease-out);
+}
+.pf-pop-row:hover, .pf-pop-row.focused { background: var(--beige-new); }
+.pf-pop-row.selected { background: var(--lichen); }
+
+.pf-checkbox {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1.5px solid var(--green-muted);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--card-bg);
+  flex: 0 0 auto;
+}
+.pf-checkbox.on { background: var(--moss); border-color: var(--moss); }
+
+/* Number badge inside dropdown rows — bigger and clearer than the regular
+   .kbd so the 1-8 hint reads as a discrete chip. */
+.pf-num-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--moss);
+  flex: 0 0 auto;
+}
+
+.pf-star { font-size: 14px; line-height: 1; transition: color 120ms; }
+.pf-star.on { color: var(--rust); }
+
 .truncate-line {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -300,12 +405,26 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .topbar-nav {
   background: var(--moss);
   color: var(--text-on-moss);
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  /* Logo on the left, pill cluster on the right. The search trigger is
+     absolutely positioned in the centre of the bar (see .topbar-search-wrap)
+     so it lands on the true viewport midline regardless of side widths. */
+  position: relative;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 16px;
   padding: 10px 20px;
   border-bottom: 1px solid var(--hairline-strong);
+}
+
+.topbar-search-wrap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  /* Sits above the side clusters at narrow viewports where they could
+     otherwise overlap; clusters get padding-right/left so they don't crowd. */
+  z-index: 1;
 }
 
 .dashboard-picker-btn {

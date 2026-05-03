@@ -597,10 +597,10 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         const k = e.key.toLowerCase();
         goPrefixRef.current = null;
         const dashMap: Record<string, DashboardKey | undefined> = {
-          t: "portfolio",
+          p: "portfolio",
           s: "status",
           m: "meeting_prep",
-          p: "pay_migration",
+          u: "pay_migration",
           b: "bloom",
           l: "search",
         };

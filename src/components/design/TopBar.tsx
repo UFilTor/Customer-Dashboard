@@ -77,7 +77,7 @@ export function TopBar({
         )}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "center" }}>
+      <div className="topbar-search-wrap">
         <button
           onClick={onOpenCmdk}
           style={{

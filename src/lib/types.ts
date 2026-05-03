@@ -1,3 +1,5 @@
+import type { GlobalFilter } from "./owners";
+
 export type FormatType =
   | "text"
   | "currency"
@@ -634,3 +636,100 @@ export interface SearchTurn {
   results: SearchResult[];
   diagnostic?: SearchDiagnostic;
 }
+
+// Portfolio dashboard
+//
+// Source: union of Customer Lifecycle (166333631) + Customer Retention
+// (1072518362) pipelines, all non-Churned customer_stage values. Each row is
+// one company. Signals attached as decoration; stage applicability gates which
+// signals can fire.
+
+export type Stage =
+  | "Onboarding"
+  | "Adopted"
+  | "Started"
+  | "Ramp Up"
+  | "Established";
+
+export type SignalKey =
+  | "overdue_invoices"
+  | "open_invoices"
+  | "no_future_events"
+  | "health_dropped"
+  | "stuck_in_step"
+  | "volume_declining"
+  | "wish_to_churn"
+  | "gone_quiet";
+
+export type SortKey =
+  // Universal
+  | "urgency"
+  | "name"
+  | "revenue"
+  | "health"
+  | "last_contact"
+  | "days_in_stage"
+  // Signal-specific
+  | "oldest_outstanding"
+  | "value_overdue"
+  | "count_overdue"
+  | "due_soonest"
+  | "value_open"
+  | "count_open"
+  | "longest_silence_events"
+  | "revenue_no_events"
+  | "biggest_drop"
+  | "current_score_asc"
+  | "longest_stuck"
+  | "days_past_expected"
+  | "biggest_pct_drop"
+  | "prior_3m_volume"
+  | "wish_flagged_recent"
+  | "longest_silence_quiet";
+
+export interface PortfolioRow {
+  id: string;
+  name: string;
+  domain: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+
+  stage: Stage;
+  daysInStage: number | null;
+  customerLiveDate: string | null;
+
+  revenue: number;
+  healthScore: number | null;
+  daysSinceContact: number | null;
+
+  signals: WatchOutSignal[];
+  signalCount: number;
+
+  // Signal-specific values surfaced for sort key extraction.
+  // Null when the corresponding signal is not firing.
+  overdueDays: number | null;
+  outstandingEur: number | null;
+  openInvoiceCount: number | null;
+  daysSilent: number | null;
+  healthDrop: number | null;
+  daysPastExpectedStep: number | null;
+  volumeDropPct: number | null;
+  prior3mVolume: number | null;
+  wishToChurnAt: string | null;
+}
+
+export interface PortfolioResponse {
+  rows: PortfolioRow[];
+  generatedAt: string;
+  totalsByStage: Record<Stage, number>;
+  totalsBySignal: Record<SignalKey, number>;
+}
+
+export interface PortfolioDefaults {
+  filter: GlobalFilter;
+  signals: SignalKey[];
+  sort: SortKey;
+}
+
+// Multi-select signal filter state. Empty array means no signal filter.
+export type SignalFilter = SignalKey[];

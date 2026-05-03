@@ -32,6 +32,15 @@ export function prefetchAttention(): void {
   fire("/api/attention");
 }
 
+export function prefetchPortfolio(ownerIdsCsv?: string | null): void {
+  const url =
+    ownerIdsCsv && ownerIdsCsv !== "all"
+      ? `/api/portfolio?ownerIds=${ownerIdsCsv}`
+      : "/api/portfolio";
+  fire(url);
+  // void import("@/components/design/views/PortfolioContainer"); // re-enable in Task 11
+}
+
 // Triggers the bulk fetch AND warms the dynamic chunk so the click resolves
 // with both code and data already in flight.
 export function prefetchOnboarding(ownerIdsCsv?: string | null): void {

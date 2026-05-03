@@ -56,6 +56,10 @@ export async function GET(request: NextRequest) {
     `/api/meeting-prep?refresh=true&ownerIds=${ownerIdsForRegion("DK")}`,
     `/api/meeting-prep?refresh=true&ownerIds=${ownerIdsForRegion("SE")}`,
     `/api/meeting-prep?refresh=true&ownerIds=${ownerIdsForRegion("IT")}`,
+    "/api/portfolio?refresh=true",
+    `/api/portfolio?refresh=true&ownerIds=${ownerIdsForRegion("DK")}`,
+    `/api/portfolio?refresh=true&ownerIds=${ownerIdsForRegion("SE")}`,
+    `/api/portfolio?refresh=true&ownerIds=${ownerIdsForRegion("IT")}`,
     // VIP company detail payloads — env-driven so we can rotate the list.
     ...companyWarmIds().map((id) => `/api/companies/${id}`),
   ];

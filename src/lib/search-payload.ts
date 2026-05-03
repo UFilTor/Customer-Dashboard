@@ -17,6 +17,11 @@ import type {
 const TTL_MS = 15 * 60 * 1000;
 const MAX_KEYS = 100;
 
+// Bump this any time the prompt or response shape changes meaningfully. The
+// version is folded into the cache key so a deploy invalidates pre-change
+// cached responses (otherwise stale blanks could persist for up to 14 min).
+const CACHE_VERSION = 2;
+
 const searchCache = new Cache<SearchResponse>(TTL_MS, MAX_KEYS);
 
 function normaliseQuery(q: string): string {
@@ -41,7 +46,7 @@ export function buildSearchCacheKey(
   filter: GlobalFilter,
   priorSpec: SearchSpec | null
 ): string {
-  return `q=${normaliseQuery(query)}|f=${filterScopeKey(filter)}|p=${priorSpecKey(priorSpec)}`;
+  return `v${CACHE_VERSION}|q=${normaliseQuery(query)}|f=${filterScopeKey(filter)}|p=${priorSpecKey(priorSpec)}`;
 }
 
 export async function buildSearchPayload(
@@ -62,6 +67,7 @@ export async function buildSearchPayload(
       parsed: outcome.parsed,
       latencyMs,
       error: outcome.error,
+      diagnostic: outcome.diagnostic,
     };
   });
 }

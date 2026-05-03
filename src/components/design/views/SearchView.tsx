@@ -1,10 +1,10 @@
 "use client";
 
-import type { SearchResult, SearchTurn } from "@/lib/types";
+import type { SearchDiagnostic, SearchResult, SearchTurn } from "@/lib/types";
 
 // Pure presentation. Container owns query state + the chain; SearchView
 // renders the input, refinement breadcrumb, examples, results list, loading
-// states, and click-out paths. No fetches happen here.
+// states, diagnostics, and click-out paths. No fetches happen here.
 
 interface SearchViewProps {
   query: string;
@@ -22,6 +22,10 @@ interface SearchViewProps {
   chain: SearchTurn[];
   /** Server-supplied error message, if any (LLM bail / validation / 5xx). */
   error: string | null;
+  /** Diagnostic block from the server. specSummary is rendered above results
+   *  whenever there are matches; the structured panel replaces the empty
+   *  state when a search returns nothing. */
+  diagnostic?: SearchDiagnostic;
   /** Click handler for a row that resolved to a company — page wiring opens
    *  the existing CompanyDetail panel. */
   onSelectCompany: (companyId: string) => void;
@@ -45,6 +49,7 @@ export function SearchView({
   results,
   chain,
   error,
+  diagnostic,
   onSelectCompany,
 }: SearchViewProps) {
   const hasChain = chain.length > 0;
@@ -306,11 +311,28 @@ export function SearchView({
           </div>
         )}
 
+        {/* SPEC SUMMARY — rendered any time we have a diagnostic and matches.
+            Single italic line so the user sees what the LLM understood. */}
+        {!loading && !error && results.length > 0 && diagnostic?.specSummary && (
+          <div
+            style={{
+              marginTop: 14,
+              fontFamily: "var(--font-editorial)",
+              fontStyle: "italic",
+              fontSize: 12.5,
+              color: "var(--green-100)",
+              lineHeight: 1.5,
+            }}
+          >
+            {diagnostic.specSummary}
+          </div>
+        )}
+
         {/* RESULTS */}
         {!loading && !error && results.length > 0 && (
           <div
             style={{
-              marginTop: 22,
+              marginTop: 14,
               background: "var(--light-grey)",
               border: "1px solid var(--beige-gray)",
               borderRadius: 14,
@@ -328,24 +350,9 @@ export function SearchView({
           </div>
         )}
 
-        {/* EMPTY-AFTER-SEARCH */}
+        {/* EMPTY-AFTER-SEARCH — structured diagnostic panel. */}
         {!loading && !error && hasChain && results.length === 0 && (
-          <div
-            style={{
-              marginTop: 22,
-              padding: 60,
-              textAlign: "center",
-              background: "var(--light-grey)",
-              border: "1px dashed var(--beige-gray)",
-              borderRadius: 16,
-              color: "var(--green-100)",
-              fontStyle: "italic",
-              fontFamily: "var(--font-editorial)",
-              fontSize: 14,
-            }}
-          >
-            No matches. Try rewinding the chain or rephrasing.
-          </div>
+          <EmptyDiagnosticPanel diagnostic={diagnostic} />
         )}
       </div>
     </div>
@@ -442,5 +449,103 @@ function ResultRow({
         </div>
       )}
     </button>
+  );
+}
+
+// Empty-state panel: turns silent blanks into a debuggable trace.
+// Renders the spec summary, a per-filter probe table (if available), and
+// did-you-mean hints for filter values that didn't match HubSpot's stored set.
+function EmptyDiagnosticPanel({ diagnostic }: { diagnostic?: SearchDiagnostic }) {
+  const hasProbes = !!diagnostic?.filterProbes && diagnostic.filterProbes.length > 0;
+  const hasHints = !!diagnostic?.didYouMean && diagnostic.didYouMean.length > 0;
+
+  return (
+    <div
+      style={{
+        marginTop: 22,
+        padding: "22px 24px",
+        background: "var(--light-grey)",
+        border: "1px dashed var(--beige-gray)",
+        borderRadius: 16,
+        color: "var(--moss)",
+        fontSize: 13,
+        lineHeight: 1.55,
+      }}
+    >
+      <div style={{ fontWeight: 600, marginBottom: 8 }}>No matches.</div>
+
+      {diagnostic?.specSummary && (
+        <div
+          style={{
+            color: "var(--green-100)",
+            fontStyle: "italic",
+            fontFamily: "var(--font-editorial)",
+            marginBottom: hasProbes || hasHints ? 14 : 0,
+          }}
+        >
+          {diagnostic.specSummary}
+        </div>
+      )}
+
+      {hasProbes && (
+        <div style={{ marginBottom: hasHints ? 14 : 0 }}>
+          <div
+            style={{
+              fontFamily: "var(--font-display)",
+              textTransform: "uppercase",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              color: "var(--green-100)",
+              marginBottom: 6,
+            }}
+          >
+            What we tried
+          </div>
+          <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+            {diagnostic!.filterProbes!.map((p, i) => (
+              <li
+                key={i}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "4px 0",
+                  fontSize: 12.5,
+                }}
+              >
+                <span>{p.label}</span>
+                <span
+                  style={{
+                    color: p.aloneMatched === 0 ? "var(--rust)" : "var(--moss)",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {p.aloneMatched} {p.aloneMatched === 1 ? "match" : "matches"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {hasHints && (
+        <div>
+          {diagnostic!.didYouMean!.map((d, i) => (
+            <div key={i} style={{ marginBottom: 6 }}>
+              <span style={{ color: "var(--green-100)" }}>
+                &ldquo;{d.submitted}&rdquo; isn&rsquo;t a stored value for {d.propertyName}.
+              </span>{" "}
+              <span>Try: {d.suggestions.join(", ")}.</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!hasProbes && !hasHints && (
+        <div style={{ color: "var(--green-100)", marginTop: 8 }}>
+          Try rewinding the chain or rephrasing.
+        </div>
+      )}
+    </div>
   );
 }

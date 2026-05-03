@@ -3,6 +3,7 @@ import { OWNERS } from "./owners";
 import type {
   GlobalFilter,
 } from "./owners";
+import { COUNTRY_CODES, KNOWN_VALUES } from "./hubspot-enums";
 import type { SearchSpec } from "./types";
 
 // Claude-Haiku-backed natural-language → SearchSpec parser.
@@ -116,15 +117,37 @@ function entityFieldsBlock(): string {
 }
 
 // Enum-property values that the LLM cannot guess from the user's phrasing.
-// HubSpot stores these as exact strings; "Pay-unwilling" / "pay unwilling"
-// fail to match — the actual enum value is "Unwilling".
-const ENUM_VALUES_BLOCK = `Enum values (use EXACTLY these strings, never reformat):
-  understory_pay_status__customer: "Live" | "Verified" | "Pending Verification" | "Started Onboarding" | "Signed - Not Started" | "Not yet enrolled" | "Unwilling" | "Ineligible"
-  customer_stage: "Started" | "Adopted" | "Hibernation" | "Product Hold" | "Established" | "Churned"
-  wish_to_churn: "true" | "false"
-  hs_email_direction: "INCOMING_EMAIL" | "FORWARDED_EMAIL" | "EMAIL"
-  understory_company_country: any country name as it appears in HubSpot ("Denmark", "Sweden", "Italy", "Norway", "Germany", etc — never an ISO code like "DK")
-  subscription_plan: "Starter" | "Grow" | "Bloom" | "Growth" | other plan names`;
+// HubSpot stores these as exact strings — "Pay-unwilling" / "pay unwilling"
+// fail to match because the actual enum value is "Unwilling". Sourced from
+// hubspot-enums.ts so prompt and validation cannot drift.
+function enumValuesBlock(): string {
+  const lines = Object.entries(KNOWN_VALUES)
+    .filter(([prop]) => prop !== "understory_company_country")
+    .map(
+      ([prop, vals]) =>
+        `  ${prop}: ${vals.map((v) => `"${v}"`).join(" | ")}`,
+    );
+  return [
+    "Enum values (use EXACTLY these strings, never reformat):",
+    ...lines,
+  ].join("\n");
+}
+
+// Country needs special handling: HubSpot stores ISO codes (DK, SE, …) but
+// users naturally type country names (Denmark, Sweden). The LLM has to map
+// name → code and emit the code.
+function countryBlock(): string {
+  const table = Object.entries(COUNTRY_CODES)
+    .map(([code, name]) => `${code}→${name}`)
+    .join(", ");
+  return [
+    "understory_company_country is stored as a two-letter ISO code, NOT a country name.",
+    `Stored values are exactly: ${Object.keys(COUNTRY_CODES).join(", ")}.`,
+    "When the user writes a country name or alternate form, look it up in this table and emit the ISO code (left side):",
+    `  ${table}`,
+    'Output the ISO code (e.g. "DK"), never the friendly name (e.g. "Denmark").',
+  ].join("\n");
+}
 
 function filterContextBlock(filter: GlobalFilter): string {
   if (filter.kind === "person") {
@@ -144,11 +167,11 @@ Active filter: person = Filip (ownerId "1939229547")
 Output:
 {"targets":[{"entityType":"deal","filters":[{"propertyName":"hubspot_owner_id","operator":"EQ","value":"1939229547"}],"textSearch":{"terms":["GYG"],"fields":["ob_note___customer_needs_","ob_note___promises_made","ob_note___grow_notes__if_booked_","ob_note___link_to_experience_s__that_need_to_be_created_"]}}],"ownerScope":{"kind":"person","value":"1939229547"},"limit":100}
 
-Example 2 (no text search)
+Example 2 (no text search — country is stored as an ISO code, not a name)
 Query: "Companies in DK with health score below 50"
 Active filter: all
 Output:
-{"targets":[{"entityType":"company","filters":[{"propertyName":"understory_company_country","operator":"EQ","value":"Denmark"},{"propertyName":"health_score","operator":"LT","value":"50"}],"textSearch":null}],"ownerScope":{"kind":"all"},"limit":100}
+{"targets":[{"entityType":"company","filters":[{"propertyName":"understory_company_country","operator":"EQ","value":"DK"},{"propertyName":"health_score","operator":"LT","value":"50"}],"textSearch":null}],"ownerScope":{"kind":"all"},"limit":100}
 
 Example 3 (multi-word phrase — each word is its own term)
 Query: "Calls where we discussed seasonal pricing"
@@ -197,7 +220,9 @@ ${ownerDirectoryBlock()}
 Per-entity field allowlist — pick property names ONLY from this list:
 ${entityFieldsBlock()}
 
-${ENUM_VALUES_BLOCK}
+${countryBlock()}
+
+${enumValuesBlock()}
 
 Operator allowlist (HubSpot search):
   ${OPERATORS.join(", ")}
@@ -221,6 +246,10 @@ User query: "${query}"
 
 Respond with ONLY valid JSON in this exact format (the same shape as the examples above):`;
 }
+
+// Test-only export: surfaces the internal prompt builder so a unit test can
+// assert the prompt body shape without touching the network.
+export const _buildPromptForTest = buildPrompt;
 
 // Rough char-budget for the body of LLM output. We reserve enough for a multi-
 // target spec with several text-search fields. ~1.2K tokens is plenty.

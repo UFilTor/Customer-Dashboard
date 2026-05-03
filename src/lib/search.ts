@@ -1,6 +1,7 @@
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { searchObjectsPage } from "./hubspot-search";
 import { parseQuery } from "./search-llm";
+import { buildDiagnostic, humaniseSpec } from "./search-diagnostics";
 import {
   hubspotCompanyUrl,
   hubspotDealUrl,
@@ -8,8 +9,10 @@ import {
 } from "./hubspot-links";
 import type { GlobalFilter } from "./owners";
 import type {
+  SearchDiagnostic,
   SearchEntityType,
   SearchFilter,
+  SearchOperator,
   SearchResult,
   SearchSnippet,
   SearchSpec,
@@ -380,6 +383,31 @@ export interface SearchOutcome {
   results: SearchResult[];
   parsed: SearchSpec | null;
   error?: string;
+  diagnostic?: SearchDiagnostic;
+}
+
+// Single-filter probe used by search-diagnostics.buildDiagnostic. Returns the
+// match count for the filter alone; failures coerce to 0 — diagnostics are
+// best-effort and shouldn't block the user-facing response.
+async function probeSingleFilter(
+  entity: SearchEntityType,
+  propertyName: string,
+  operator: string,
+  value: string,
+): Promise<number> {
+  try {
+    const target: SearchTarget = {
+      entityType: entity,
+      filters: [
+        { propertyName, operator: operator as SearchOperator, value },
+      ],
+      textSearch: null,
+    };
+    const { results } = await executeTarget(target);
+    return results.length;
+  } catch {
+    return 0;
+  }
 }
 
 export async function searchDashboard(
@@ -556,5 +584,13 @@ export async function searchDashboard(
     spec.limit > 0 ? spec.limit : 100
   );
 
-  return { results: combined, parsed: spec };
+  // Diagnostics: always emit a spec summary so the view can show what was
+  // searched. On the blank-result path we additionally probe each filter
+  // alone and surface did-you-mean hints — see search-diagnostics.ts.
+  const diagnostic: SearchDiagnostic =
+    combined.length === 0 && spec.targets.length > 0
+      ? await buildDiagnostic(spec, probeSingleFilter)
+      : { specSummary: humaniseSpec(spec) };
+
+  return { results: combined, parsed: spec, diagnostic };
 }

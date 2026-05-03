@@ -5,6 +5,7 @@ import { SearchView } from "./SearchView";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import type { GlobalFilter } from "@/lib/owners";
 import type {
+  SearchDiagnostic,
   SearchResponse,
   SearchResult,
   SearchTurn,
@@ -27,6 +28,9 @@ export function SearchContainer({
   const [query, setQuery] = useState("");
   const [chain, setChain] = useState<SearchTurn[]>([]);
   const [latestResults, setLatestResults] = useState<SearchResult[]>([]);
+  const [latestDiagnostic, setLatestDiagnostic] = useState<SearchDiagnostic | undefined>(
+    undefined,
+  );
   const [loading, setLoading] = useState(false);
   const [loadingPhase, setLoadingPhase] = useState<"parse" | "execute" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -70,9 +74,11 @@ export function SearchContainer({
         query: q,
         spec: json.parsed,
         results: json.results,
+        diagnostic: json.diagnostic,
       };
       setChain((prev) => [...prev, turn]);
       setLatestResults(json.results);
+      setLatestDiagnostic(json.diagnostic);
       setQuery("");
     } catch (err) {
       setError(friendlyErrorMessage(err));
@@ -87,6 +93,7 @@ export function SearchContainer({
   const onReset = useCallback(() => {
     setChain([]);
     setLatestResults([]);
+    setLatestDiagnostic(undefined);
     setQuery("");
     setError(null);
   }, []);
@@ -96,6 +103,7 @@ export function SearchContainer({
       const truncated = prev.slice(0, turnIdx + 1);
       const lastTurn = truncated[truncated.length - 1];
       setLatestResults(lastTurn?.results ?? []);
+      setLatestDiagnostic(lastTurn?.diagnostic);
       return truncated;
     });
     setQuery("");
@@ -114,6 +122,7 @@ export function SearchContainer({
       results={latestResults}
       chain={chain}
       error={error}
+      diagnostic={latestDiagnostic}
       onSelectCompany={onSelectCompany}
     />
   );

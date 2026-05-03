@@ -606,6 +606,25 @@ export interface SearchResponse {
   parsed: SearchSpec | null;
   latencyMs: number;
   error?: string;
+  diagnostic?: SearchDiagnostic;
+}
+
+/** Built by search-diagnostics.ts. `specSummary` is always present so the
+ *  view can render a one-line restatement of what was searched. The other
+ *  fields populate only on the 0-result path. */
+export interface SearchDiagnostic {
+  specSummary: string;
+  filterProbes?: Array<{
+    label: string;
+    propertyName: string;
+    value: string;
+    aloneMatched: number;
+  }>;
+  didYouMean?: Array<{
+    propertyName: string;
+    submitted: string;
+    suggestions: string[];
+  }>;
 }
 
 /** One turn in the client's refinement chain. */
@@ -613,4 +632,5 @@ export interface SearchTurn {
   query: string;
   spec: SearchSpec | null;
   results: SearchResult[];
+  diagnostic?: SearchDiagnostic;
 }

@@ -22,16 +22,16 @@ import { BriefingView } from "@/components/design/views/BriefingView";
 import { SplitView } from "@/components/design/views/SplitView";
 import { CompanyDetail } from "@/components/design/CompanyDetail";
 // Heavy variant containers — code-split so the Status dashboard's first paint
-// doesn't pay the cost of OnboardingView (2.4k lines) + PayMigrationView (1.3k
-// lines). They load on first navigation to their respective dashboard.
+// doesn't pay the cost of PortfolioView + PayMigrationView (1.3k lines).
+// They load on first navigation to their respective dashboard.
 const PayMigrationContainer = dynamic(
   () =>
     import("@/components/design/views/PayMigrationContainer").then((m) => m.PayMigrationContainer),
   { ssr: false }
 );
-const OnboardingContainer = dynamic(
+const PortfolioContainer = dynamic(
   () =>
-    import("@/components/design/views/OnboardingContainer").then((m) => m.OnboardingContainer),
+    import("@/components/design/views/PortfolioContainer").then((m) => m.PortfolioContainer),
   { ssr: false }
 );
 const MeetingPrepContainer = dynamic(
@@ -82,7 +82,7 @@ function readUrlState(): Partial<UrlState> {
   if (
     d === "status" ||
     d === "meeting_prep" ||
-    d === "onboarding" ||
+    d === "portfolio" ||
     d === "pay_migration" ||
     d === "search"
   )
@@ -138,7 +138,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   // View state — start with hardcoded defaults so server and client first
   // render agree (no hydration mismatch). The `useEffect` below reads URL
   // params and localStorage after mount and applies them, so a deep link
-  // like /?d=onboarding lands on Onboarding within a frame of hydration.
+  // like /?d=portfolio lands on Portfolio within a frame of hydration.
   const [dashboard, setDashboard] = useState<DashboardKey>("status");
   const [variant, setVariant] = useState<Variant>("briefing");
   const [globalFilter, setGlobalFilter] = useState<GlobalFilter>(ALL_FILTER);
@@ -264,7 +264,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
     } else {
       const d = ls("ud-v2-dashboard");
       if (
-        d === "onboarding" ||
+        d === "portfolio" ||
         d === "meeting_prep" ||
         d === "pay_migration" ||
         d === "search"
@@ -550,6 +550,21 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         return;
       }
 
+      // ⌘S / Ctrl+S, Portfolio: save current filter + signals + sort as
+      // the device default. Ride above the inInput / mod-key short-circuits
+      // below so the chord works the same as ⌘K does.
+      if (
+        mod &&
+        e.key.toLowerCase() === "s" &&
+        s.dashboard === "portfolio" &&
+        !s.selectedCompanyId
+      ) {
+        e.preventDefault();
+        window.dispatchEvent(new Event("ud-portfolio-save-defaults"));
+        showToast("Saved as default");
+        return;
+      }
+
       // Esc — help → palette → filter pill → go-prefix → detail back-out
       if (e.key === "Escape") {
         if (s.showHelp) { setShowHelp(false); return; }
@@ -582,9 +597,9 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         const k = e.key.toLowerCase();
         goPrefixRef.current = null;
         const dashMap: Record<string, DashboardKey | undefined> = {
+          t: "portfolio",
           s: "status",
           m: "meeting_prep",
-          o: "onboarding",
           p: "pay_migration",
           b: "bloom",
           l: "search",
@@ -659,6 +674,30 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         }
       }
 
+      // Portfolio: 1-8 toggles individual signal filters, 0 clears them all,
+      // S cycles the sort order. The container subscribes to these events.
+      // Skip when a company detail is open so the row toggles don't shift
+      // the (hidden) signal set while the user is reading the panel.
+      if (s.dashboard === "portfolio" && !s.selectedCompanyId) {
+        if (e.key >= "1" && e.key <= "8") {
+          e.preventDefault();
+          window.dispatchEvent(
+            new CustomEvent("ud-portfolio-signal-toggle", { detail: Number(e.key) - 1 })
+          );
+          return;
+        }
+        if (e.key === "0") {
+          e.preventDefault();
+          window.dispatchEvent(new Event("ud-portfolio-signal-clear"));
+          return;
+        }
+        if (e.key.toLowerCase() === "s") {
+          e.preventDefault();
+          window.dispatchEvent(new Event("ud-portfolio-sort-cycle"));
+          return;
+        }
+      }
+
       // Meeting prep nav — three modes:
       //   1. nothing focused      → ←/→ shifts day, ↑/↓ starts cycling meetings
       //   2. meeting focused      → → enters Previous activity, ← unfocuses,
@@ -719,13 +758,13 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         return;
       }
 
-      // List navigation in full-page views (Briefing, Onboarding Needs
-      // attention). The active view subscribes to ud-list-nav / ud-list-open
+      // List navigation in full-page views (Briefing, Portfolio).
+      // The active view subscribes to ud-list-nav / ud-list-open
       // and manages its own focused state.
       const inListView =
         !s.selectedCompanyId &&
         ((s.dashboard === "status" && s.variant === "briefing") ||
-          s.dashboard === "onboarding");
+          s.dashboard === "portfolio");
       if (inListView && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
         e.preventDefault();
         window.dispatchEvent(
@@ -832,8 +871,8 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       }
 
       // R — refresh the active dashboard's data. Status is fetched here at
-      // the page level; Onboarding + Pay Migration containers subscribe to
-      // ud-refresh-dashboard and refetch themselves.
+      // the page level; Portfolio + Meeting prep + Pay Migration containers
+      // subscribe to ud-refresh-dashboard and refetch themselves.
       if (e.key.toLowerCase() === "r") {
         e.preventDefault();
         if (s.dashboard === "status") {
@@ -963,21 +1002,12 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         onSelectCompany={(c) => selectCompany(c.id)}
       />
     );
-  } else if (dashboard === "onboarding") {
+  } else if (dashboard === "portfolio") {
     body = (
-      <OnboardingContainer
+      <PortfolioContainer
         filter={globalFilter}
         filterLabel={filterLabel}
-        onSelectDeal={(d) => {
-          if (d.companyId) {
-            selectCompany(d.companyId);
-          } else {
-            // Stub deals (external-… IDs from orphan meetings) have no
-            // matching HubSpot company. Surface a toast instead of a
-            // silent no-op so the user knows the click registered.
-            showToast("No HubSpot company linked to this meeting");
-          }
-        }}
+        onSelectCompany={(id) => selectCompany(id)}
       />
     );
   } else if (dashboard === "meeting_prep") {

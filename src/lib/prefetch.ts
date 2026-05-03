@@ -38,7 +38,7 @@ export function prefetchPortfolio(ownerIdsCsv?: string | null): void {
       ? `/api/portfolio?ownerIds=${ownerIdsCsv}`
       : "/api/portfolio";
   fire(url);
-  // void import("@/components/design/views/PortfolioContainer"); // re-enable in Task 11
+  void import("@/components/design/views/PortfolioContainer");
 }
 
 // Triggers the bulk fetch AND warms the dynamic chunk so the click resolves

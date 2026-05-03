@@ -5,6 +5,7 @@ import {
   prefetchAttention,
   prefetchMeetingPrep,
   prefetchPayMigration,
+  prefetchPortfolio,
   prefetchSearch,
 } from "@/lib/prefetch";
 
@@ -287,6 +288,7 @@ export function DashboardPicker({
                     // Prefetch the bulk endpoint + dynamic chunk so the click
                     // resolves with both code and data already in flight.
                     if (d.key === "status") prefetchAttention();
+                    else if (d.key === "portfolio") prefetchPortfolio();
                     else if (d.key === "pay_migration") prefetchPayMigration();
                     else if (d.key === "meeting_prep") prefetchMeetingPrep();
                     else if (d.key === "search") prefetchSearch();

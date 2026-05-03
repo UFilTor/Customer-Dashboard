@@ -71,11 +71,11 @@ async function fetchDealForCompany(companyId: string): Promise<Record<string, st
   }
 }
 
-const TO_EUR: Record<string, number> = {
+export const TO_EUR: Record<string, number> = {
   EUR: 1, USD: 0.92, GBP: 1.16, SEK: 0.087, NOK: 0.086, DKK: 0.134,
 };
 
-function computeGeneratedRevenue(
+export function computeGeneratedRevenue(
   bookingVolume12m: string | undefined,
   bookingFee: string | undefined,
   contractMrr: string | undefined,

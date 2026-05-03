@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyPortfolioStage, isSignalApplicable, extractSortKey, getSortOptions, buildRow } from "./portfolio";
+import { classifyPortfolioStage, isSignalApplicable, extractSortKey, getSortOptions, buildRow, __test } from "./portfolio";
 import type { PortfolioRow } from "./types";
 
 function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
@@ -201,5 +201,30 @@ describe("buildRow", () => {
     expect(r.overdueDays).toBe(13);
     expect(r.outstandingEur).toBe(4500);
     expect(r.openInvoiceCount).toBe(2);
+  });
+});
+
+describe("aggregatePayload", () => {
+  it("counts stages and signals correctly", () => {
+    const rows = [
+      row({ stage: "Onboarding", signals: [{ kind: "stuck_in_step", severity: "warn", title: "x", detail: "y" }] }),
+      row({ stage: "Established", signals: [{ kind: "overdue_invoice", severity: "bad", title: "x", detail: "y" }] }),
+      row({ stage: "Established", signals: [] }),
+    ];
+    const out = __test.aggregatePayload(rows);
+    expect(out.totalsByStage.Onboarding).toBe(1);
+    expect(out.totalsByStage.Established).toBe(2);
+    expect(out.totalsBySignal.stuck_in_step).toBe(1);
+    expect(out.totalsBySignal.overdue_invoices).toBe(1);
+  });
+
+  it("counts the synthesized open invoice via title", () => {
+    const rows = [
+      row({ stage: "Adopted", signals: [{ kind: "overdue_invoice", severity: "warn", title: "Open invoice", detail: "1 open invoice" }] }),
+      row({ stage: "Established", signals: [{ kind: "overdue_invoice", severity: "bad", title: "Overdue invoice", detail: "z" }] }),
+    ];
+    const out = __test.aggregatePayload(rows);
+    expect(out.totalsBySignal.open_invoices).toBe(1);
+    expect(out.totalsBySignal.overdue_invoices).toBe(1);
   });
 });

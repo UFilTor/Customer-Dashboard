@@ -1,5 +1,11 @@
+import { Cache } from "./cache";
+import { computeGeneratedRevenue, TO_EUR } from "./attention";
+import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
+import { searchObjectsPage } from "./hubspot-search";
+import { fetchOwnerNames } from "./onboarding";
 import { computeWatchOutSignals } from "./signals";
 import type {
+  PortfolioResponse,
   PortfolioRow,
   PortfolioSignalKey,
   PortfolioSortKey,
@@ -293,3 +299,359 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     wishToChurnAt: input.deal.wishToChurnAt,
   };
 }
+
+// Cache + payload orchestrator. Imported by `/api/portfolio/route.ts` and
+// the Server-Component initial-data fetch in `src/app/page.tsx`. Sharing the
+// module instance lets a server-render and a subsequent client refetch hit
+// the same in-memory cache.
+const portfolioCache = new Cache<PortfolioResponse>(15 * 60 * 1000);
+
+export function getCachedPortfolio(key: string): PortfolioResponse | null {
+  return portfolioCache.get(key);
+}
+
+export async function buildPortfolioPayload(
+  ownerIdsCsv: string | null,
+  options: { refresh?: boolean } = {}
+): Promise<PortfolioResponse> {
+  const cacheKey = `portfolio:${ownerIdsCsv ?? "all"}`;
+  if (!options.refresh) {
+    const cached = portfolioCache.get(cacheKey);
+    if (cached) return cached;
+  }
+  return portfolioCache.getOrBuild(cacheKey, async () => {
+    const rows = await fetchPortfolioRows(ownerIdsCsv);
+    return aggregatePayload(rows);
+  });
+}
+
+// Pipelines that source the Portfolio universe. Lifecycle (166333631) covers
+// onboarding-stage customers; Retention (1072518362) covers Adopted/Started/
+// Ramp Up/Established. We union both pipelines and skip Churned client-side.
+const LIFECYCLE_PIPELINE_ID = "166333631";
+const RETENTION_PIPELINE_ID = "1072518362";
+
+const PORTFOLIO_DEAL_PROPS = [
+  "customer_stage",
+  "customer_substage",
+  "customer_live_date",
+  "hs_v2_date_entered_current_stage",
+  "unpaid_invoice",
+  "invoice_due_date",
+  "outstanding_amount",
+  "number_of_open_invoices",
+  "wish_to_churn",
+  "churn_reason",
+  "dealstage",
+  "pipeline",
+  "confirmed__contract_mrr",
+  "deal_currency_code",
+  "booking_fee",
+  "confirmed_booking_fee",
+  "hs_lastmodifieddate",
+  "amount_in_home_currency",
+];
+
+const PORTFOLIO_COMPANY_PROPS = [
+  "name",
+  "domain",
+  "hubspot_owner_id",
+  "health_score",
+  "understory_booking_volume_12m",
+  "understory_booking_volume_3m",
+  "understory_booking_volume_6m",
+  "understory_health_score_upcoming_events",
+  "notes_last_contacted",
+  "createdate",
+];
+
+// Lifecycle-pipeline expected step durations. Mirrors the live `EXPECTED_DAYS`
+// table in `./onboarding`; inlined here so we don't depend on the lifecycle-
+// step classifier (Portfolio uses customer_stage directly).
+const PORTFOLIO_EXPECTED_DAYS: Record<string, number> = {
+  Adopted: 14,
+  Started: 30,
+  Hibernation: 30,
+  "Product Hold": 14,
+  Onboarding: 14,
+};
+
+interface RawDeal {
+  id: string;
+  properties: Record<string, string>;
+}
+
+// Paged search across one pipeline. Mirrors the canonical retry-aware helper
+// in `pay-migration.ts`. Always passes a `sorts` clause (HubSpot search
+// pagination silently truncates without one) and delegates to
+// `searchObjectsPage` for the 429/5xx retry loop.
+async function fetchPortfolioDealsForPipeline(pipelineId: string): Promise<RawDeal[]> {
+  const out: RawDeal[] = [];
+  let after: string | undefined;
+  do {
+    const body: Record<string, unknown> = {
+      filterGroups: [{
+        filters: [
+          { propertyName: "pipeline", operator: "EQ", value: pipelineId },
+        ],
+      }],
+      properties: PORTFOLIO_DEAL_PROPS,
+      sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
+      limit: 100,
+    };
+    if (after) body.after = after;
+    const { results, nextAfter } = await searchObjectsPage<RawDeal>("deals", body);
+    out.push(...results);
+    after = nextAfter;
+  } while (after);
+  return out;
+}
+
+// Universe fetcher. Returns one PortfolioRow per (deal, company) pair across
+// both pipelines, after applying the Churned-stage filter and the optional
+// owner filter. Mirrors `fetchNoFutureEvents` step-by-step but without the
+// upcoming-events filter, since Portfolio shows the whole universe.
+export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<PortfolioRow[]> {
+  // Step 2a: search both pipelines in parallel.
+  const [lifecycleDeals, retentionDeals] = await Promise.all([
+    fetchPortfolioDealsForPipeline(LIFECYCLE_PIPELINE_ID),
+    fetchPortfolioDealsForPipeline(RETENTION_PIPELINE_ID),
+  ]);
+  const allDeals = [...lifecycleDeals, ...retentionDeals]
+    .filter((d) => d.properties.customer_stage !== "Churned");
+  if (allDeals.length === 0) return [];
+
+  // Step 2b: deal -> company associations via v4 batch (parallel).
+  const dealMap = new Map<string, RawDeal>(allDeals.map((d) => [d.id, d]));
+  const dealToCompany = new Map<string, string>();
+  const assocBatches: Promise<void>[] = [];
+  for (let i = 0; i < allDeals.length; i += 100) {
+    const slice = allDeals.slice(i, i + 100);
+    assocBatches.push((async () => {
+      try {
+        const res = await fetch(
+          `${HUBSPOT_API}/crm/v4/associations/deals/companies/batch/read`,
+          {
+            method: "POST",
+            headers: hubspotHeaders(),
+            body: JSON.stringify({ inputs: slice.map((d) => ({ id: d.id })) }),
+          }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const result of data.results || []) {
+          const dealId = String(result.from?.id ?? "");
+          const firstCompany = result.to?.[0]?.toObjectId;
+          if (dealId && firstCompany && !dealToCompany.has(dealId)) {
+            dealToCompany.set(dealId, String(firstCompany));
+          }
+        }
+      } catch { /* skip this batch; individual rows just won't appear */ }
+    })());
+  }
+  await Promise.all(assocBatches);
+  if (dealToCompany.size === 0) return [];
+
+  const uniqueCompanyIds = Array.from(new Set(dealToCompany.values()));
+
+  // Step 2c: company properties via v3 batch (parallel).
+  const companyProps = new Map<string, Record<string, string>>();
+  const companyBatches: Promise<void>[] = [];
+  for (let i = 0; i < uniqueCompanyIds.length; i += 100) {
+    const slice = uniqueCompanyIds.slice(i, i + 100);
+    companyBatches.push((async () => {
+      try {
+        const res = await fetch(
+          `${HUBSPOT_API}/crm/v3/objects/companies/batch/read`,
+          {
+            method: "POST",
+            headers: hubspotHeaders(),
+            body: JSON.stringify({
+              inputs: slice.map((id) => ({ id })),
+              properties: PORTFOLIO_COMPANY_PROPS,
+            }),
+          }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const c of data.results || []) {
+          companyProps.set(String(c.id), c.properties || {});
+        }
+      } catch { /* skip; missing companies just won't appear */ }
+    })());
+  }
+  await Promise.all(companyBatches);
+
+  // Step 2d: owner filter. `null` and "all" both mean unfiltered.
+  const ownerFilter = ownerIdsCsv && ownerIdsCsv !== "all"
+    ? new Set(ownerIdsCsv.split(",").map((s) => s.trim()).filter(Boolean))
+    : null;
+
+  // Step 2e: owner directory (request-level cached).
+  const ownerNames = await fetchOwnerNames(
+    Array.from(new Set(
+      Array.from(companyProps.values())
+        .map((p) => p.hubspot_owner_id)
+        .filter((id): id is string => Boolean(id))
+    ))
+  );
+
+  // Step 2f: assemble rows.
+  const nowIso = new Date().toISOString();
+  const todayMs = Date.parse(nowIso.split("T")[0]);
+  const rows: PortfolioRow[] = [];
+
+  for (const deal of allDeals) {
+    const companyId = dealToCompany.get(deal.id);
+    if (!companyId) continue;
+    const props = companyProps.get(companyId);
+    if (!props) continue;
+
+    const ownerId = props.hubspot_owner_id || null;
+    if (ownerFilter && (!ownerId || !ownerFilter.has(ownerId))) continue;
+
+    const dealProps = deal.properties;
+
+    // Revenue via the shared computation (booking-fee revenue + MRR * tenure).
+    const revenue = computeGeneratedRevenue(
+      props.understory_booking_volume_12m,
+      dealProps.booking_fee || dealProps.confirmed_booking_fee,
+      dealProps.confirmed__contract_mrr,
+      dealProps.deal_currency_code,
+      props.createdate
+    );
+
+    const healthScoreRaw = parseFloat(props.health_score || "");
+    const healthScore = isNaN(healthScoreRaw) ? null : healthScoreRaw;
+
+    const upcomingRaw = parseFloat(props.understory_health_score_upcoming_events || "");
+    const upcomingEvents = isNaN(upcomingRaw) ? null : upcomingRaw;
+
+    const unpaidInvoice = dealProps.unpaid_invoice === "true";
+    const invoiceDueDate = dealProps.invoice_due_date || null;
+
+    const outstandingNum = parseFloat(dealProps.outstanding_amount || "");
+    const rate = TO_EUR[(dealProps.deal_currency_code || "EUR").toUpperCase()] ?? 1;
+    const outstandingEur = !isNaN(outstandingNum) && outstandingNum > 0
+      ? Math.round(outstandingNum * rate)
+      : null;
+
+    // Overdue / due-soon split. Both are computed here (not in buildRow) so
+    // the caller owns date arithmetic. See PortfolioRow JSDoc.
+    let overdueDays: number | null = null;
+    let daysUntilDue: number | null = null;
+    if (unpaidInvoice && invoiceDueDate) {
+      const dueMs = Date.parse(invoiceDueDate);
+      if (!isNaN(dueMs)) {
+        if (dueMs < todayMs) {
+          overdueDays = Math.floor((todayMs - dueMs) / 86400000);
+        } else if (dueMs > todayMs) {
+          daysUntilDue = Math.floor((dueMs - todayMs) / 86400000);
+        }
+      }
+    }
+
+    const openInvoiceCountRaw = parseInt(dealProps.number_of_open_invoices || "");
+    const openInvoiceCount = !isNaN(openInvoiceCountRaw) && openInvoiceCountRaw > 0
+      ? openInvoiceCountRaw
+      : null;
+
+    const wishToChurn = dealProps.wish_to_churn === "true";
+    const churnReason = dealProps.churn_reason || null;
+    // Coarse proxy: when wish_to_churn is true, the most recent deal mod is
+    // usually the toggle event. Good enough for "most recently flagged".
+    const wishToChurnAt = wishToChurn
+      ? dealProps.hs_lastmodifieddate || null
+      : null;
+
+    // Days-in-step is only meaningful in the lifecycle pipeline. Retention
+    // deals don't have a stuck_in_step concept.
+    let daysInStep: number | null = null;
+    let expectedDaysInStep: number | null = null;
+    if (dealProps.pipeline === LIFECYCLE_PIPELINE_ID) {
+      const enteredAt = dealProps.hs_v2_date_entered_current_stage;
+      if (enteredAt) {
+        const enteredMs = Date.parse(enteredAt);
+        if (!isNaN(enteredMs)) {
+          daysInStep = Math.max(0, Math.floor((Date.now() - enteredMs) / 86400000));
+        }
+      }
+      const stage = dealProps.customer_stage || "";
+      expectedDaysInStep = PORTFOLIO_EXPECTED_DAYS[stage] ?? null;
+    }
+
+    const volume3m = parseFloat(props.understory_booking_volume_3m || "0") || 0;
+    const volume6m = parseFloat(props.understory_booking_volume_6m || "0") || 0;
+
+    rows.push(buildRow({
+      nowIso,
+      company: {
+        id: companyId,
+        name: props.name || "Unknown",
+        domain: props.domain || null,
+        ownerId,
+        ownerName: ownerId ? ownerNames[ownerId] || null : null,
+        healthScore,
+        revenue,
+        notesLastContacted: props.notes_last_contacted || null,
+        volume3m,
+        volume6m,
+        upcomingEvents,
+      },
+      deal: {
+        customerStage: dealProps.customer_stage || "",
+        customerSubstage: dealProps.customer_substage || null,
+        enteredStageDate: dealProps.hs_v2_date_entered_current_stage || null,
+        customerLiveDate: dealProps.customer_live_date || null,
+        unpaidInvoice,
+        invoiceDueDate,
+        outstandingEur,
+        overdueDays,
+        daysUntilDue,
+        openInvoiceCount,
+        wishToChurn,
+        churnReason,
+        wishToChurnAt,
+        daysInStep,
+        expectedDaysInStep,
+      },
+    }));
+  }
+
+  return rows;
+}
+
+function aggregatePayload(rows: PortfolioRow[]): PortfolioResponse {
+  const totalsByStage: Record<PortfolioStage, number> = {
+    Onboarding: 0, Adopted: 0, Started: 0, "Ramp Up": 0, Established: 0,
+  };
+  const totalsBySignal: Record<PortfolioSignalKey, number> = {
+    overdue_invoices: 0, open_invoices: 0, no_future_events: 0, health_dropped: 0,
+    stuck_in_step: 0, volume_declining: 0, wish_to_churn: 0, gone_quiet: 0,
+  };
+
+  for (const r of rows) {
+    totalsByStage[r.stage] += 1;
+    for (const s of r.signals) {
+      const key = SIGNAL_KIND_TO_KEY[s.kind];
+      // open_invoices is synthesized in buildRow with kind "overdue_invoice"
+      // but title "Open invoice". Discriminate by title here so the count
+      // is split correctly without extending WatchOutSignalKind.
+      if (s.title === "Open invoice") {
+        totalsBySignal.open_invoices += 1;
+      } else {
+        totalsBySignal[key] += 1;
+      }
+    }
+  }
+
+  return {
+    rows,
+    generatedAt: new Date().toISOString(),
+    totalsByStage,
+    totalsBySignal,
+  };
+}
+
+// Test-only re-export.
+export const __test = { aggregatePayload };

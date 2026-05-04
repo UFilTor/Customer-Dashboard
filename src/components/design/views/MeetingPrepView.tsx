@@ -357,7 +357,7 @@ function MeetingsPanel({
           ) : (
             <div
               ref={meetingsContainerRef}
-              style={{ display: "grid", gridTemplateColumns: "1fr", gap: 20 }}
+              style={{ display: "grid", gridTemplateColumns: "1fr", gap: 20, paddingTop: 6 }}
             >
               {dayMeetings.map((entry, i) => {
                 const isFocused = i === focusedMeetingIdx;

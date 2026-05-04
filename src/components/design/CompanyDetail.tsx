@@ -344,6 +344,26 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
           >
             {bookmarked ? "★" : "☆"}
           </button>
+          <CopyEmailButton email={data.primaryContact?.email ?? null} />
+          {deal?.hs_object_id && (
+            <>
+              <QuickActionLink
+                href={`${hubspotDealUrl(deal.hs_object_id) ?? "#"}&interaction=task`}
+                label="Create task"
+                title="Open HubSpot's create-task flow on this deal"
+              />
+              <QuickActionLink
+                href={`${hubspotDealUrl(deal.hs_object_id) ?? "#"}&interaction=schedule`}
+                label="Schedule meeting"
+                title="Open HubSpot's schedule-meeting flow on this deal"
+              />
+              <QuickActionLink
+                href={`${hubspotDealUrl(deal.hs_object_id) ?? "#"}&interaction=call`}
+                label="Make call"
+                title="Open HubSpot's call flow on this deal"
+              />
+            </>
+          )}
           <a
             href={hubspotCompanyUrl(companyId) ?? "#"}
             target="_blank"
@@ -403,6 +423,53 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+function QuickActionLink({
+  href,
+  label,
+  title,
+}: {
+  href: string;
+  label: string;
+  title?: string;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={title}
+      style={quickActionBtn}
+    >
+      {label}
+    </a>
+  );
+}
+
+function CopyEmailButton({ email }: { email: string | null }) {
+  const [copied, setCopied] = useState(false);
+  if (!email) return null;
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Older browsers / permission denied — fall back to mailto.
+      window.location.href = `mailto:${email}`;
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      title={copied ? `Copied ${email}` : `Copy ${email}`}
+      style={{ ...quickActionBtn, cursor: "pointer" }}
+    >
+      {copied ? "Copied!" : "Copy email"}
+    </button>
   );
 }
 

@@ -116,6 +116,14 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
   const [error, setError] = useState<string | null>(null);
 
   const [selectedSignals, setSelectedSignals] = useState<PortfolioSignalKey[]>([]);
+  const [stackedSignals, setStackedSignals] = useState(false);
+  // Each entry is shown only when toggled on. Default = none → paused /
+  // product hold / hibernation rows are hidden from Portfolio.
+  const [shownStatuses, setShownStatuses] = useState<{
+    paused: boolean;
+    product_hold: boolean;
+    hibernation: boolean;
+  }>({ paused: false, product_hold: false, hibernation: false });
   const [sortKey, setSortKey] = useState<PortfolioSortKey>("urgency");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
@@ -190,14 +198,32 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
     // here and downstream so a malformed response degrades to "empty list"
     // instead of "uncaught TypeError".
     const rawRows = Array.isArray(data?.rows) ? data!.rows : [];
+
+    // Status visibility — by default we hide paused / product hold /
+    // hibernation rows. Each toggle adds one back in. Active rows
+    // (dealStatus === null) always pass.
+    const statusFiltered = rawRows.filter((r) => {
+      if (!r.dealStatus) return true;
+      return shownStatuses[r.dealStatus] === true;
+    });
+
     const filtered = selectedSignals.length === 0
-      ? rawRows
-      : rawRows.filter((r) => {
+      ? statusFiltered
+      : statusFiltered.filter((r) => {
           const sigs = Array.isArray(r.signals) ? r.signals : [];
-          return sigs.some((s) => {
+          const matchedKinds = new Set<PortfolioSignalKey>();
+          for (const s of sigs) {
             const k = mapKindToKey(s.kind, s.title);
-            return selectedSignals.includes(k);
-          });
+            if (selectedSignals.includes(k)) matchedKinds.add(k);
+          }
+          if (matchedKinds.size === 0) return false;
+          // Stacked mode: only surface rows that match 2+ of the
+          // selected signal kinds. With a single kind selected the
+          // toggle has no effect — same set as per-signal mode.
+          if (stackedSignals && selectedSignals.length >= 2) {
+            return matchedKinds.size >= 2;
+          }
+          return true;
         });
 
     const sortOpt = getSortOptions(selectedSignals).find((o) => o.key === sortKey);
@@ -212,7 +238,7 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
       if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
       return ((av as number) - (bv as number)) * dir;
     });
-  }, [data, selectedSignals, sortKey, sortDirection]);
+  }, [data, selectedSignals, stackedSignals, shownStatuses, sortKey, sortDirection]);
 
   // Reset to page 1 whenever filter/signal/sort context changes. Following
   // the prev-X "adjust state during render" pattern the strict react-hooks
@@ -496,6 +522,12 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
         selectedSignals={selectedSignals}
         toggleSignal={toggleSignal}
         clearSignals={clearSignals}
+        stackedSignals={stackedSignals}
+        toggleStackedSignals={() => setStackedSignals((v) => !v)}
+        shownStatuses={shownStatuses}
+        toggleStatus={(s) =>
+          setShownStatuses((prev) => ({ ...prev, [s]: !prev[s] }))
+        }
         sortKey={sortKey}
         sortDirection={sortDirection}
         setSortKey={setSort}

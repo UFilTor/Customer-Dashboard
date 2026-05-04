@@ -39,6 +39,10 @@ interface Props {
   selectedSignals: PortfolioSignalKey[];
   toggleSignal: (key: PortfolioSignalKey) => void;
   clearSignals: () => void;
+  stackedSignals: boolean;
+  toggleStackedSignals: () => void;
+  shownStatuses: { paused: boolean; product_hold: boolean; hibernation: boolean };
+  toggleStatus: (s: "paused" | "product_hold" | "hibernation") => void;
 
   sortKey: PortfolioSortKey;
   // Current sort direction; column-header arrows + sort-dropdown active marker
@@ -315,6 +319,10 @@ export function PortfolioView(props: Props) {
               selectedSignals={props.selectedSignals}
               toggleSignal={props.toggleSignal}
               clearSignals={props.clearSignals}
+              stackedSignals={props.stackedSignals}
+              toggleStackedSignals={props.toggleStackedSignals}
+              shownStatuses={props.shownStatuses}
+              toggleStatus={props.toggleStatus}
               globalTotalsBySignal={props.globalTotalsBySignal}
               sortKey={props.sortKey}
               sortDirection={props.sortDirection}
@@ -515,6 +523,10 @@ interface ToolbarProps {
   selectedSignals: PortfolioSignalKey[];
   toggleSignal: (k: PortfolioSignalKey) => void;
   clearSignals: () => void;
+  stackedSignals: boolean;
+  toggleStackedSignals: () => void;
+  shownStatuses: { paused: boolean; product_hold: boolean; hibernation: boolean };
+  toggleStatus: (s: "paused" | "product_hold" | "hibernation") => void;
   // Toolbar feeds the FilterDropdown with book-wide totals so signal
   // counts stay stable as the user toggles filters. The current-scope
   // totals (used by the banner) live one level up in PortfolioView.
@@ -542,6 +554,10 @@ function Toolbar({
   selectedSignals,
   toggleSignal,
   clearSignals,
+  stackedSignals,
+  toggleStackedSignals,
+  shownStatuses,
+  toggleStatus,
   globalTotalsBySignal,
   sortKey,
   sortDirection,
@@ -652,68 +668,79 @@ function Toolbar({
             selectedSignals={selectedSignals}
             toggleSignal={toggleSignal}
             clearSignals={clearSignals}
+            stackedSignals={stackedSignals}
+            toggleStackedSignals={toggleStackedSignals}
             totalsBySignal={globalTotalsBySignal}
             onClose={() => setFilterOpen(false)}
           />
         )}
       </div>
 
-      <span
-        aria-live="polite"
-        aria-atomic="true"
+      <StatusFilterPill shownStatuses={shownStatuses} toggleStatus={toggleStatus} />
+
+      {/* Center cluster: Pagination (when paginated) with a muted range
+          caption directly below it. The standalone left-side count span
+          used to live next to the Status pill — it got cramped between
+          two pills. Folding it into the pagination cluster gives the
+          range and the page nav one shared visual unit. */}
+      <div
         style={{
-          fontSize: 12,
-          color: "var(--green-100)",
-          display: "inline-flex",
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          zIndex: 1,
+          display: "flex",
+          flexDirection: "column",
           alignItems: "center",
-          gap: 6,
-          fontVariantNumeric: "tabular-nums",
-          whiteSpace: "nowrap",
+          gap: 2,
+          pointerEvents: "none",
         }}
       >
-        {isPaginated ? (
-          <>
-            <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
-              {firstOnPage}–{lastOnPage}
-            </strong>
-            <span>of</span>
-            <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
-              {totalRowCount}
-            </strong>
-            <span>{totalRowCount === 1 ? "account" : "accounts"}</span>
-          </>
-        ) : (
-          <>
-            <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
-              {totalRowCount}
-            </strong>
-            <span>{totalRowCount === 1 ? "account" : "accounts"}</span>
-          </>
+        {totalPages > 1 && (
+          <div style={{ pointerEvents: "auto" }}>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              onPageChange={onPageChange}
+            />
+          </div>
         )}
-        {isFiltered && <span style={{ opacity: 0.65 }}>· filtered</span>}
-      </span>
-
-      {/* Pagination pinned to the toolbar's true horizontal center via
-          absolute positioning. flex: 1 spacers were close-but-not-quite —
-          they balanced LEFTOVER space, which drifted as count/action
-          widths changed. Absolute centering is layout-independent. */}
-      {totalPages > 1 && (
-        <div
+        <span
+          aria-live="polite"
+          aria-atomic="true"
           style={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            transform: "translate(-50%, -50%)",
-            zIndex: 1,
+            fontSize: 11,
+            color: "var(--green-100)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            fontVariantNumeric: "tabular-nums",
+            whiteSpace: "nowrap",
           }}
         >
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            onPageChange={onPageChange}
-          />
-        </div>
-      )}
+          {isPaginated ? (
+            <>
+              <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
+                {firstOnPage}–{lastOnPage}
+              </strong>
+              <span>of</span>
+              <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
+                {totalRowCount}
+              </strong>
+              <span>{totalRowCount === 1 ? "account" : "accounts"}</span>
+            </>
+          ) : (
+            <>
+              <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
+                {totalRowCount}
+              </strong>
+              <span>{totalRowCount === 1 ? "account" : "accounts"}</span>
+            </>
+          )}
+          {isFiltered && <span style={{ opacity: 0.65 }}>· filtered</span>}
+        </span>
+      </div>
 
       <span style={{ flex: 1 }} />
 
@@ -761,12 +788,16 @@ function FilterDropdown({
   selectedSignals,
   toggleSignal,
   clearSignals,
+  stackedSignals,
+  toggleStackedSignals,
   totalsBySignal,
   onClose,
 }: {
   selectedSignals: PortfolioSignalKey[];
   toggleSignal: (k: PortfolioSignalKey) => void;
   clearSignals: () => void;
+  stackedSignals: boolean;
+  toggleStackedSignals: () => void;
   totalsBySignal: Record<PortfolioSignalKey, number>;
   onClose: () => void;
 }) {
@@ -903,6 +934,76 @@ function FilterDropdown({
             </button>
           );
         })}
+      </div>
+      <div
+        style={{
+          borderTop: "1px solid var(--hairline)",
+          padding: "10px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <button
+          type="button"
+          role="switch"
+          aria-checked={stackedSignals}
+          onClick={toggleStackedSignals}
+          disabled={selectedSignals.length < 2}
+          title={
+            selectedSignals.length < 2
+              ? "Select 2+ signals to enable stacked mode"
+              : "Show only accounts that match 2+ of the selected signals"
+          }
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "4px 8px",
+            borderRadius: 8,
+            background: "transparent",
+            border: 0,
+            cursor: selectedSignals.length < 2 ? "not-allowed" : "pointer",
+            opacity: selectedSignals.length < 2 ? 0.5 : 1,
+            color: "var(--moss)",
+            fontSize: 12,
+            fontWeight: 600,
+            flex: 1,
+            justifyContent: "space-between",
+          }}
+        >
+          <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+            <span>Stacked only</span>
+            <span style={{ fontSize: 10, fontWeight: 500, color: "var(--green-100)" }}>
+              Accounts with 2+ of the selected signals
+            </span>
+          </span>
+          <span
+            aria-hidden
+            style={{
+              width: 28,
+              height: 16,
+              borderRadius: 999,
+              background: stackedSignals ? "var(--moss)" : "var(--hairline)",
+              position: "relative",
+              transition: "background 120ms",
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{
+                position: "absolute",
+                top: 2,
+                left: stackedSignals ? 14 : 2,
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                background: "#fff",
+                transition: "left 120ms",
+              }}
+            />
+          </span>
+        </button>
       </div>
     </div>
   );
@@ -1168,25 +1269,28 @@ const Row = memo(function Row({
         fontSize: 13,
       }}
     >
-      <span
-        style={{
-          padding: "4px 10px",
-          borderRadius: 6,
-          background: stage.bg,
-          color: stage.fg,
-          // DESIGN.md "Label" type: Inter 700, 10px, +0.06em uppercase. Keeps
-          // row chrome in Inter; Oswald is reserved for display moments.
-          fontSize: 10,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          lineHeight: 1.2,
-          whiteSpace: "nowrap",
-          textAlign: "center",
-        }}
-      >
-        {row.stage}
-      </span>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+        <span
+          style={{
+            padding: "4px 10px",
+            borderRadius: 6,
+            background: stage.bg,
+            color: stage.fg,
+            // DESIGN.md "Label" type: Inter 700, 10px, +0.06em uppercase. Keeps
+            // row chrome in Inter; Oswald is reserved for display moments.
+            fontSize: 10,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            lineHeight: 1.2,
+            whiteSpace: "nowrap",
+            textAlign: "center",
+          }}
+        >
+          {row.stage}
+        </span>
+        {row.dealStatus && <DealStatusTag status={row.dealStatus} />}
+      </div>
 
       <div style={{ minWidth: 0 }}>
         <div
@@ -1336,6 +1440,138 @@ function CalmGlyph({ stage }: { stage: PortfolioRow["stage"] }) {
     >
       ·
     </span>
+  );
+}
+
+// ---------- Deal status (paused / product hold / hibernation) ----------
+
+const DEAL_STATUS_LABEL: Record<NonNullable<PortfolioRow["dealStatus"]>, string> = {
+  paused: "Paused",
+  product_hold: "Product hold",
+  hibernation: "Hibernation",
+};
+
+function DealStatusTag({ status }: { status: NonNullable<PortfolioRow["dealStatus"]> }) {
+  return (
+    <span
+      style={{
+        padding: "2px 8px",
+        borderRadius: 6,
+        background: "var(--lichen)",
+        color: "var(--moss)",
+        fontSize: 9,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        lineHeight: 1.2,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {DEAL_STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+function StatusFilterPill({
+  shownStatuses,
+  toggleStatus,
+}: {
+  shownStatuses: { paused: boolean; product_hold: boolean; hibernation: boolean };
+  toggleStatus: (s: "paused" | "product_hold" | "hibernation") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useOutsideClose(wrapRef, open, () => setOpen(false));
+
+  // ⇧T mirrors ⇧F (Signals) and ⇧S (Sort). Bails on meta/ctrl so we don't
+  // collide with browser shortcuts; altKey is allowed for Nordic layouts.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const inInput =
+        target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (inInput) return;
+      if (e.metaKey || e.ctrlKey) return;
+      if (!e.shiftKey) return;
+      if (e.key === "T" || e.key === "t") {
+        setOpen((v) => !v);
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Mirror open-state to page-client so list-nav yields while open.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("ud-portfolio-popup-state", { detail: open })
+    );
+  }, [open]);
+
+  const activeCount =
+    (shownStatuses.paused ? 1 : 0) +
+    (shownStatuses.product_hold ? 1 : 0) +
+    (shownStatuses.hibernation ? 1 : 0);
+  const label = activeCount === 0 ? "Active only" : `+${activeCount} included`;
+
+  const items: Array<{ key: "paused" | "product_hold" | "hibernation"; label: string }> = [
+    { key: "paused", label: "Paused" },
+    { key: "product_hold", label: "Product hold" },
+    { key: "hibernation", label: "Hibernation" },
+  ];
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={pillTriggerStyle(activeCount > 0)}
+      >
+        <span style={eyebrowStyle}>Status</span>
+        <span style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{label}</span>
+        <span className="kbd">⇧T</span>
+        <Caret open={open} />
+      </button>
+      {open && (
+        <div className="pf-pop" style={{ left: 0, width: 240 }}>
+          <div
+            style={{
+              padding: "10px 14px 8px 20px",
+              borderBottom: "1px solid var(--hairline)",
+            }}
+          >
+            <div style={eyebrowStyle}>Include status</div>
+          </div>
+          <div style={{ padding: 6 }}>
+            {items.map((item) => {
+              const isOn = shownStatuses[item.key];
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => toggleStatus(item.key)}
+                  className={`pf-pop-row${isOn ? " selected" : ""}`}
+                >
+                  <span className={`pf-checkbox${isOn ? " on" : ""}`}>
+                    {isOn && (
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path
+                          d="M3 6.5L5 8.5L9 4"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </span>
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

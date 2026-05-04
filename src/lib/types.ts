@@ -714,6 +714,13 @@ export interface PortfolioRow {
 
   signals: WatchOutSignal[];
 
+  /**
+   * Secondary deal state. Active when today's date sits inside the
+   * corresponding HubSpot start/end window. Hidden from Portfolio by
+   * default; the Status toolbar pill toggles them back in.
+   */
+  dealStatus: "paused" | "product_hold" | "hibernation" | null;
+
   // Signal-specific values surfaced for sort key extraction.
   // Null when the corresponding signal is not firing.
   /**

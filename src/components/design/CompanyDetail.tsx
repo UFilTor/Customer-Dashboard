@@ -133,6 +133,22 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
 
   const stageLabel = deal?.dealstage ? stages[deal.dealstage] || deal.dealstage : null;
 
+  const dealStatusLabel = (() => {
+    const now = Date.now();
+    const within = (start?: string, end?: string) => {
+      if (!start) return false;
+      const s = new Date(start).getTime();
+      if (isNaN(s) || now < s) return false;
+      if (!end) return true;
+      const e = new Date(end).getTime();
+      return isNaN(e) ? true : now <= e;
+    };
+    if (within(deal?.hibernation_start_date, deal?.hibernation_end_date)) return "Hibernation";
+    if (within(deal?.product_hold_start_date, deal?.product_hold_expected_end_date)) return "Product hold";
+    if (within(deal?.pause_start_date, deal?.pause_end_date)) return "Paused";
+    return null;
+  })();
+
   const signalData = useMemo(() => {
     const stage = classifyPortfolioStage(
       deal?.customer_stage || "",
@@ -197,6 +213,22 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
               >
                 {stageLabel}
               </span>
+              {dealStatusLabel && (
+                <span
+                  style={{
+                    fontSize: 10,
+                    padding: "3px 8px",
+                    borderRadius: 6,
+                    background: "var(--lichen)",
+                    color: "var(--moss)",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  {dealStatusLabel}
+                </span>
+              )}
             </div>
           )}
           <h1

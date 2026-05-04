@@ -254,6 +254,12 @@ interface BuildRowInput {
     wishToChurnAt: string | null;
     daysInStep: number | null;
     expectedDaysInStep: number | null;
+    hibernationStart: string | null;
+    hibernationEnd: string | null;
+    productHoldStart: string | null;
+    productHoldEnd: string | null;
+    pauseStart: string | null;
+    pauseEnd: string | null;
   };
 }
 
@@ -266,6 +272,27 @@ const SIGNAL_KIND_TO_KEY: Record<WatchOutSignalKind, PortfolioSignalKey> = {
   gone_quiet: "gone_quiet",
   stuck_in_step: "stuck_in_step",
 };
+
+function isWithin(nowIso: string, start: string | null, end: string | null): boolean {
+  if (!start) return false;
+  const now = new Date(nowIso).getTime();
+  const s = new Date(start).getTime();
+  if (isNaN(s) || now < s) return false;
+  if (!end) return true;
+  const e = new Date(end).getTime();
+  if (isNaN(e)) return true;
+  return now <= e;
+}
+
+function computeDealStatus(
+  nowIso: string,
+  deal: BuildRowInput["deal"]
+): PortfolioRow["dealStatus"] {
+  if (isWithin(nowIso, deal.hibernationStart, deal.hibernationEnd)) return "hibernation";
+  if (isWithin(nowIso, deal.productHoldStart, deal.productHoldEnd)) return "product_hold";
+  if (isWithin(nowIso, deal.pauseStart, deal.pauseEnd)) return "paused";
+  return null;
+}
 
 function daysBetween(now: string, then: string | null): number | null {
   if (!then) return null;
@@ -329,6 +356,8 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
       ? 60 - input.company.healthScore
       : null;
 
+  const dealStatus = computeDealStatus(input.nowIso, input.deal);
+
   const daysPastExpectedStep =
     input.deal.daysInStep != null &&
     input.deal.expectedDaysInStep != null &&
@@ -349,6 +378,7 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     healthScore: input.company.healthScore,
     daysSinceContact: daysSilent,
     signals: applicable,
+    dealStatus,
     overdueDays: input.deal.overdueDays,
     daysUntilDue: input.deal.daysUntilDue,
     outstandingEur: input.deal.outstandingEur,
@@ -416,6 +446,16 @@ const PORTFOLIO_DEAL_PROPS = [
   "confirmed_booking_fee",
   "hs_lastmodifieddate",
   "amount_in_home_currency",
+  // Deal-state windows. When today falls inside the [start, end] range we
+  // surface a secondary status tag and (by default) hide the row from
+  // Portfolio. Property names are best-guess snake_case from the labels;
+  // adjust here if HubSpot uses a different internal name.
+  "hibernation_start_date",
+  "hibernation_end_date",
+  "product_hold_start_date",
+  "product_hold_expected_end_date",
+  "pause_start_date",
+  "pause_end_date",
 ];
 
 const PORTFOLIO_COMPANY_PROPS = [
@@ -700,6 +740,12 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
         wishToChurnAt,
         daysInStep,
         expectedDaysInStep,
+        hibernationStart: dealProps.hibernation_start_date || null,
+        hibernationEnd: dealProps.hibernation_end_date || null,
+        productHoldStart: dealProps.product_hold_start_date || null,
+        productHoldEnd: dealProps.product_hold_expected_end_date || null,
+        pauseStart: dealProps.pause_start_date || null,
+        pauseEnd: dealProps.pause_end_date || null,
       },
     }));
   }

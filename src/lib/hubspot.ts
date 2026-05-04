@@ -194,6 +194,12 @@ const DEAL_PROPERTIES = [
   "ob_note___grow_notes__if_booked_",
   "hibernation_notes",
   "product_hold_note",
+  "hibernation_start_date",
+  "hibernation_end_date",
+  "product_hold_start_date",
+  "product_hold_expected_end_date",
+  "pause_start_date",
+  "pause_end_date",
 ];
 
 export async function getCompanyDetail(companyId: string): Promise<CompanyDetail> {

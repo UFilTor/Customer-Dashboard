@@ -2,12 +2,16 @@
 
 import type { Recap } from "@/lib/types";
 import { Icon } from "./Icon";
-import { hubspotCompanyUrl } from "@/lib/hubspot-links";
+import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 
 interface RecapCardBigProps {
   recap: Recap | null;
   loading?: boolean;
   companyId: string;
+  /** Deal id for the lifecycle/retention deal. When present we deep-link
+   *  the suggested-action button into HubSpot's `?interaction=` flow on
+   *  the deal record (matches the top-bar CTAs). */
+  dealId?: string | null;
   companyName?: string;
   onAction?: (type: string) => void;
 }
@@ -24,21 +28,31 @@ function actionIcon(type: string | undefined) {
 
 function actionLabel(type: string | undefined): string {
   switch (type) {
-    case "call": return "Log call";
-    case "meeting": return "Schedule";
+    case "call": return "Make call";
+    case "meeting": return "Schedule meeting";
     case "note": return "Log note";
-    case "task": return "Add task";
+    case "task": return "Create task";
     default: return "Send email";
   }
 }
 
-function deepLink(type: string | undefined, companyId: string): string {
-  // Best-effort: open the company record in HubSpot. The record page lets the user
-  // create the right engagement type from there.
+const INTERACTION_BY_TYPE: Record<string, string> = {
+  call: "call",
+  meeting: "schedule",
+  task: "task",
+  note: "note",
+};
+
+function deepLink(type: string | undefined, companyId: string, dealId?: string | null): string {
+  const interaction = type ? INTERACTION_BY_TYPE[type] : undefined;
+  if (interaction && dealId) {
+    const base = hubspotDealUrl(dealId);
+    if (base) return `${base}&interaction=${interaction}`;
+  }
   return hubspotCompanyUrl(companyId) ?? "#";
 }
 
-export function RecapCardBig({ recap, loading, companyId }: RecapCardBigProps) {
+export function RecapCardBig({ recap, loading, companyId, dealId }: RecapCardBigProps) {
   const summary = recap?.summary;
   const action = recap?.suggestedAction;
 
@@ -120,7 +134,7 @@ export function RecapCardBig({ recap, loading, companyId }: RecapCardBigProps) {
               {action.text}
             </p>
             <a
-              href={deepLink(action.type, companyId)}
+              href={deepLink(action.type, companyId, dealId)}
               target="_blank"
               rel="noopener noreferrer"
               style={{

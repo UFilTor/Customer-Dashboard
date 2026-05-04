@@ -378,7 +378,7 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
 
       <SignalStrip signals={signalData.signals} stage={signalData.stage} />
       <MetricStrip company={company} deal={deal} />
-      <RecapCardBig recap={recap} loading={recapLoading} companyId={companyId} />
+      <RecapCardBig recap={recap} loading={recapLoading} companyId={companyId} dealId={deal?.hs_object_id ?? null} />
 
       <div role="tablist" aria-label="Company detail sections" style={{ display: "flex", gap: 24, borderBottom: "1px solid var(--hairline)", marginBottom: 18 }}>
         {(["overview", "activity"] as const).map((t) => (

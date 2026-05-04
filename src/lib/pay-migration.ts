@@ -361,6 +361,22 @@ export async function fetchPayMigrationData(
     });
   }
 
+  // Foundation override: Pay can't onboard foundations today, so any deal
+  // whose unwilling reason mentions a foundation-style legal entity gets
+  // its stage rewritten to "Unwilling" before partitioning. Without this
+  // they'd linger in PathCard's pipeline section even after the CSM
+  // captured the blocker in the reason field.
+  const FOUNDATION_RX = /\b(foundation|stiftelse|stiftung|fond)\b/i;
+  for (const deal of allDeals) {
+    if (
+      deal.stage !== "Unwilling" &&
+      deal.unwillingReason &&
+      FOUNDATION_RX.test(deal.unwillingReason)
+    ) {
+      deal.stage = "Unwilling";
+    }
+  }
+
   // Compute stage breakdown
   const stageBreakdown = emptyStageRecord();
   let totalBv = 0;
@@ -422,7 +438,7 @@ export async function fetchPayMigrationData(
     })
     .sort((a, b) => b.bv - a.bv);
 
-  // Unwilling deals
+  // Unwilling deals (foundation-override applied above pre-partition).
   const unwillingRaw = allDeals
     .filter((d) => d.stage === "Unwilling")
     .sort((a, b) => b.bv - a.bv);

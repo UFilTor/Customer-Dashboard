@@ -25,6 +25,7 @@ Mark q2_likely=false when the reason is structural or hard:
 - Empty / missing reason
 - Any mention of "not before season", "after the season", "wait until season starts", or similar season-gating language. The summer season has already started, so these will not convert during Q2.
 - Any mention of needing multiple accounts, multi-account support, or connecting more than one business / legal entity to Understory Pay. Pay only supports a single connected account today and that won't change before Q2.
+- Any mention that the customer is a foundation / "stiftelse" / "stiftung" / "fond". Pay can't onboard foundations today and that won't change before Q2.
 
 Respond ONLY with valid JSON: an array of {"id": string, "q2_likely": boolean} objects, one per input deal, same order, no prose.`;
 

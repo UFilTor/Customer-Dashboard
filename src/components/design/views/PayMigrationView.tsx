@@ -453,7 +453,8 @@ function FlagsFor({ deal }: { deal: PayDeal }) {
   const flags: React.ReactNode[] = [];
   if (isPushStage) {
     if (deal.hasOpenInvoice) flags.push(<Flag key="i" kind="invoice" />);
-    if (deal.zeroEvents) flags.push(<Flag key="z" kind="noevents" />);
+    // 0 EVENTS pill removed — Portfolio's "no_future_events" signal already
+    // surfaces this state and showing it on Pay Migration rows added noise.
   }
   return <>{flags}</>;
 }
@@ -847,7 +848,15 @@ function PathCard({
         </>
       )}
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: 28 }} />
+          <col />
+          <col style={{ width: 150 }} />
+          <col style={{ width: 110 }} />
+          <col style={{ width: 56 }} />
+          <col style={{ width: 56 }} />
+        </colgroup>
         <thead>
           <tr>
             <Th>#</Th>

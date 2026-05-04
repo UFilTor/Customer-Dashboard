@@ -108,7 +108,7 @@ function readUrlState(): Partial<UrlState> {
 function writeUrlState(state: UrlState): void {
   if (typeof window === "undefined") return;
   const sp = new URLSearchParams();
-  if (state.dashboard !== "status") sp.set("d", state.dashboard);
+  if (state.dashboard !== "portfolio") sp.set("d", state.dashboard);
   if (state.dashboard === "status" && state.variant !== "briefing") sp.set("v", state.variant);
   if (state.filter.kind !== "all") {
     sp.set("f", state.filter.kind);
@@ -139,7 +139,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   // render agree (no hydration mismatch). The `useEffect` below reads URL
   // params and localStorage after mount and applies them, so a deep link
   // like /?d=portfolio lands on Portfolio within a frame of hydration.
-  const [dashboard, setDashboard] = useState<DashboardKey>("status");
+  const [dashboard, setDashboard] = useState<DashboardKey>("portfolio");
   const [variant, setVariant] = useState<Variant>("briefing");
   const [globalFilter, setGlobalFilter] = useState<GlobalFilter>(ALL_FILTER);
   const [defaultFilter, setDefaultFilter] = useState<GlobalFilter | null>(null);

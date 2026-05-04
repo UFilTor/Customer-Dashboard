@@ -116,6 +116,11 @@ Fires the exact frame the strip pins, no scroll listener, no rAF. Pattern lives 
 ## HubSpot links
 
 - All "Open in HubSpot" deep-links go through `hubspotCompanyUrl` / `hubspotDealUrl` in `src/lib/hubspot-links.ts` so they consistently include `?utm_source=cs-dashboard`. Don't hand-build HubSpot URLs.
+- HubSpot record-page `?interaction=` deep-links require the **deal record (0-3), not the company (0-2)**. A company URL with `?interaction=schedule|task|call|note` just opens the company page; the same query string on a deal-record URL opens the corresponding create flow. Use `hubspotDealUrl(deal.hs_object_id)` and append `&interaction=...` (the helper already produces `?...utm` so it's `&`, not `?`).
+
+## LLM classifier caches
+
+- LLM-tagging helpers (e.g. `src/lib/pay-q2-classifier.ts`) cache classifications per-process keyed on the input text. Editing the system prompt does **not** invalidate cached entries — restart the dev server (or redeploy) to re-classify. If a prompt change isn't taking effect, check process age before chasing other causes. Same applies to any future LLM tagging helper that follows this pattern.
 
 ## Third-party CSP origins
 

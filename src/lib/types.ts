@@ -187,6 +187,14 @@ export interface PayDeal {
   unwillingReason: string | null;
   hasOpenInvoice: boolean;
   zeroEvents: boolean;
+  /**
+   * LLM-classified flag: does this unwilling customer's reason read as
+   * temporary/situational (Fortnox waiting, GYG integration, vacation,
+   * wants stability first, contract expiring soon) rather than a hard
+   * structural refusal? Populated only for the Unwilling list. Cached
+   * per deal+reason hash so we don't re-classify on every refresh.
+   */
+  q2Likely?: boolean;
 }
 
 export interface PayOwnerSummary {

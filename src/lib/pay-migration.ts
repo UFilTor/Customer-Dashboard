@@ -3,6 +3,7 @@ import { searchObjectsPage } from "./hubspot-search";
 import { getOwners } from "./hubspot";
 import { OWNERS } from "./owners";
 import type { PayDeal, PayStage, PayOwnerSummary, PayMigrationData } from "./types";
+import { classifyUnwillingForQ2 } from "./pay-q2-classifier";
 
 const PAY_PIPELINE = "1072518362";
 // Excluded customer_stage values from the Pay Migration scope. Paused
@@ -422,9 +423,14 @@ export async function fetchPayMigrationData(
     .sort((a, b) => b.bv - a.bv);
 
   // Unwilling deals
-  const unwilling = allDeals
+  const unwillingRaw = allDeals
     .filter((d) => d.stage === "Unwilling")
     .sort((a, b) => b.bv - a.bv);
+  const q2Map = await classifyUnwillingForQ2(unwillingRaw);
+  const unwilling = unwillingRaw.map((d) => ({
+    ...d,
+    q2Likely: q2Map.get(d.dealId) ?? false,
+  }));
 
   // Not yet enrolled: raw pay status is blank AND not overridden to another stage
   const notEnrolled = allDeals

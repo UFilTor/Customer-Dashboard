@@ -989,6 +989,8 @@ function UnwillingTable({
   const sorted = [...deals].sort((a, b) => b.bv - a.bv);
   const total = sorted.reduce((s, d) => s + d.bv, 0);
   const pctOfElig = allEligBv > 0 ? (total / allEligBv) * 100 : 0;
+  const q2Deals = sorted.filter((d) => d.q2Likely);
+  const q2Bv = q2Deals.reduce((s, d) => s + d.bv, 0);
   const cap = 10;
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? sorted : sorted.slice(0, cap);
@@ -1004,20 +1006,38 @@ function UnwillingTable({
         marginBottom: 32,
       }}
     >
-      <div
-        style={{
-          display: "inline-block",
-          background: "var(--status-warn-fg)",
-          color: "var(--text-on-moss)",
-          borderRadius: 6,
-          padding: "4px 12px",
-          fontSize: 11,
-          fontWeight: 700,
-          marginBottom: 12,
-          letterSpacing: "0.04em",
-        }}
-      >
-        {sorted.length} customers, {fmtEurShort(total)} ({pctOfElig.toFixed(1)}% of eligible BV)
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+        <div
+          style={{
+            display: "inline-block",
+            background: "var(--status-warn-fg)",
+            color: "var(--text-on-moss)",
+            borderRadius: 6,
+            padding: "4px 12px",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.04em",
+          }}
+        >
+          {sorted.length} customers, {fmtEurShort(total)} ({pctOfElig.toFixed(1)}% of eligible BV)
+        </div>
+        {q2Deals.length > 0 && (
+          <div
+            title="Unwilling reasons read as temporary or situational — likely to convert during Q2."
+            style={{
+              display: "inline-block",
+              background: "var(--status-good-bold)",
+              color: "var(--text-on-moss)",
+              borderRadius: 6,
+              padding: "4px 12px",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+            }}
+          >
+            Q2 likely: {q2Deals.length} · {fmtEurShort(q2Bv)}
+          </div>
+        )}
       </div>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
@@ -1048,7 +1068,25 @@ function UnwillingTable({
             visible.map((d) => (
               <tr key={d.dealId} style={{ cursor: "pointer" }} onClick={() => onDealClick(d)}>
                 <Td>
-                  <strong style={{ color: "var(--moss)" }}>{d.dealName}</strong>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <strong style={{ color: "var(--moss)" }}>{d.dealName}</strong>
+                    {d.q2Likely && (
+                      <span
+                        title="Reason reads as temporary or situational — likely to convert during Q2."
+                        style={{
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          background: "var(--status-good-bold)",
+                          color: "var(--text-on-moss)",
+                          fontSize: 9,
+                          fontWeight: 700,
+                          letterSpacing: "0.06em",
+                        }}
+                      >
+                        Q2
+                      </span>
+                    )}
+                  </span>
                 </Td>
                 <Td muted>{d.ownerName}</Td>
                 <Td>

@@ -187,7 +187,7 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
             tone="accent"
           />
           <Kpi
-            label="Target"
+            label="Target May"
             value={`${data.targetPct}%`}
             sub={<GapPill ppToGo={gapToTarget} />}
           />
@@ -232,8 +232,31 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
           ))}
         </div>
 
+        {/* VERIFIED / LIVE */}
+        <SectionTitle title="Migrated customers - Verified / Live" />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.min(Math.max(breakoutOwners.length, 1), 2)}, 1fr)`,
+            gap: 14,
+            marginBottom: 32,
+          }}
+        >
+          {breakoutOwners.map((o) => (
+            <PathCard
+              key={`live-${o.ownerId}`}
+              name={ownerFullName(o.ownerName)}
+              owner={o}
+              targetPct={data.targetPct}
+              allEligBv={data.eligibleBv}
+              onDealClick={onDealClick}
+              mode="live"
+            />
+          ))}
+        </div>
+
         {/* PATH TO TARGET */}
-        <SectionTitle title={`Path to ${data.targetPct}%`} subtitle="Top deals to close, by owner" />
+        <SectionTitle title={`Path to ${data.targetPct}%`} />
         <div
           style={{
             display: "grid",
@@ -252,32 +275,6 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
               onDealClick={onDealClick}
             />
           ))}
-        </div>
-
-        {/* NEEDS A PUSH */}
-        <SectionTitle title="Needs a push" subtitle="In progress, no activity 3+ days" />
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${Math.min(Math.max(breakoutOwners.length, 1), 2)}, 1fr)`,
-            gap: 14,
-            marginBottom: 32,
-          }}
-        >
-          {breakoutOwners.map((o) => {
-            const stalled = data.needsAPush
-              .filter((d) => d.ownerId === o.ownerId)
-              .sort((a, b) => b.bv - a.bv);
-            return (
-              <PushCard
-                key={o.ownerId}
-                name={ownerFullName(o.ownerName)}
-                stalled={stalled}
-                allEligBv={data.eligibleBv}
-                onDealClick={onDealClick}
-              />
-            );
-          })}
         </div>
 
         {/* UNWILLING */}
@@ -732,45 +729,64 @@ function PathCard({
   targetPct,
   allEligBv,
   onDealClick,
+  mode = "path",
 }: {
   name: string;
   owner: PayOwnerSummary;
   targetPct: number;
   allEligBv: number;
   onDealClick: (deal: PayDeal) => void;
+  // "live" — show every Verified/Live deal for this owner.
+  // "path" — show only the pipeline deals needed to reach the target,
+  //          starting Run % from the existing Verified/Live baseline.
+  mode?: "live" | "path";
 }) {
   const live = owner.deals.filter((d) => LIVE_STAGES.includes(d.stage)).sort((a, b) => b.bv - a.bv);
   const pipe = owner.deals
     .filter((d) => !LIVE_STAGES.includes(d.stage) && d.stage !== "Ineligible" && d.stage !== "Unwilling")
     .sort((a, b) => b.bv - a.bv);
-  const ordered = [...live, ...pipe];
+  const liveBv = live.reduce((sum, d) => sum + d.bv, 0);
 
   type Row =
     | { kind: "sep" }
     | { kind: "row"; deal: PayDeal; runPct: number; pp: number; isLive: boolean; highlight: boolean; n: number };
 
-  let running = 0;
-  let pastTarget = false;
-  let sepShown = false;
   const rows: Row[] = [];
-  for (const d of ordered) {
-    const isLive = LIVE_STAGES.includes(d.stage);
-    if (!sepShown && !isLive) {
-      sepShown = true;
-      rows.push({ kind: "sep" });
+  if (mode === "live") {
+    let running = 0;
+    for (const d of live) {
+      running += d.bv;
+      const runPct = owner.eligibleBv > 0 ? (running / owner.eligibleBv) * 100 : 0;
+      const pp = owner.eligibleBv > 0 ? (d.bv / owner.eligibleBv) * 100 : 0;
+      const n = rows.filter((r) => r.kind === "row").length + 1;
+      rows.push({ kind: "row", deal: d, runPct, pp, isLive: true, highlight: false, n });
     }
-    running += d.bv;
-    const runPct = owner.eligibleBv > 0 ? (running / owner.eligibleBv) * 100 : 0;
-    const pp = owner.eligibleBv > 0 ? (d.bv / owner.eligibleBv) * 100 : 0;
-    let highlight = false;
-    if (!pastTarget && runPct >= targetPct && !isLive) {
-      pastTarget = true;
-      highlight = true;
+  } else {
+    // Pipeline only: baseline running total at the live BV so Run %
+    // reflects "where we land if these migrations happen on top of
+    // what's already verified/live".
+    let running = liveBv;
+    let pastTarget = owner.eligibleBv > 0
+      ? (liveBv / owner.eligibleBv) * 100 >= targetPct
+      : false;
+    for (const d of pipe) {
+      running += d.bv;
+      const runPct = owner.eligibleBv > 0 ? (running / owner.eligibleBv) * 100 : 0;
+      const pp = owner.eligibleBv > 0 ? (d.bv / owner.eligibleBv) * 100 : 0;
+      let highlight = false;
+      if (!pastTarget && runPct >= targetPct) {
+        pastTarget = true;
+        highlight = true;
+      }
+      const n = rows.filter((r) => r.kind === "row").length + 1;
+      rows.push({ kind: "row", deal: d, runPct, pp, isLive: false, highlight, n });
     }
-    const n = rows.filter((r) => r.kind === "row").length + 1;
-    rows.push({ kind: "row", deal: d, runPct, pp, isLive, highlight, n });
-    if (runPct >= targetPct + 10) break;
   }
+
+  const cap = mode === "live" ? 10 : 20;
+  const [expanded, setExpanded] = useState(false);
+  const visibleRows = expanded ? rows : rows.slice(0, cap);
+  const hiddenCount = Math.max(0, rows.length - cap);
 
   const fill = Math.min((owner.lcPercent / (targetPct + 10)) * 100, 100);
   const marker = Math.min((targetPct / (targetPct + 10)) * 100, 100);
@@ -797,35 +813,39 @@ function PathCard({
         {name}
       </h3>
 
-      <div
-        style={{
-          position: "relative",
-          height: 7,
-          background: "var(--hairline)",
-          borderRadius: 4,
-          marginBottom: 6,
-        }}
-      >
-        <div style={{ position: "absolute", height: "100%", width: "100%", borderRadius: 4, overflow: "hidden" }}>
-          <AnimBar pct={fill} color="var(--moss)" height={7} radius={4} bg="transparent" delay={180} />
-        </div>
-        <div
-          style={{
-            position: "absolute",
-            top: -4,
-            left: `${marker}%`,
-            width: 2,
-            height: 15,
-            background: "var(--status-warn-fg)",
-          }}
-        />
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 12 }}>
-        <span style={{ color: "var(--moss)", fontWeight: 600 }}>
-          <CountUpPct value={owner.lcPercent} /> current
-        </span>
-        <span style={{ color: "var(--status-warn-fg)", fontWeight: 600 }}>{targetPct}% target</span>
-      </div>
+      {mode === "path" && (
+        <>
+          <div
+            style={{
+              position: "relative",
+              height: 7,
+              background: "var(--hairline)",
+              borderRadius: 4,
+              marginBottom: 6,
+            }}
+          >
+            <div style={{ position: "absolute", height: "100%", width: "100%", borderRadius: 4, overflow: "hidden" }}>
+              <AnimBar pct={fill} color="var(--moss)" height={7} radius={4} bg="transparent" delay={180} />
+            </div>
+            <div
+              style={{
+                position: "absolute",
+                top: -4,
+                left: `${marker}%`,
+                width: 2,
+                height: 15,
+                background: "var(--status-warn-fg)",
+              }}
+            />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 12 }}>
+            <span style={{ color: "var(--moss)", fontWeight: 600 }}>
+              <CountUpPct value={owner.lcPercent} /> current
+            </span>
+            <span style={{ color: "var(--status-warn-fg)", fontWeight: 600 }}>{targetPct}% target</span>
+          </div>
+        </>
+      )}
 
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
@@ -855,7 +875,7 @@ function PathCard({
               </td>
             </tr>
           ) : (
-            rows.map((r, i) => {
+            visibleRows.map((r, i) => {
               if (r.kind === "sep") {
                 return (
                   <tr key={`sep-${i}`}>
@@ -913,103 +933,45 @@ function PathCard({
           )}
         </tbody>
       </table>
+      {hiddenCount > 0 && (
+        <ShowAllButton
+          expanded={expanded}
+          hiddenCount={hiddenCount}
+          onToggle={() => setExpanded((v) => !v)}
+        />
+      )}
     </div>
   );
 }
 
-/* ---------------- needs a push ---------------- */
-
-function PushCard({
-  name,
-  stalled,
-  allEligBv,
-  onDealClick,
+function ShowAllButton({
+  expanded,
+  hiddenCount,
+  onToggle,
 }: {
-  name: string;
-  stalled: PayDeal[];
-  allEligBv: number;
-  onDealClick: (deal: PayDeal) => void;
+  expanded: boolean;
+  hiddenCount: number;
+  onToggle: () => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={onToggle}
       style={{
-        background: "var(--light-grey)",
-        border: "1px solid var(--beige-gray)",
-        borderRadius: 10,
-        padding: 18,
+        marginTop: 10,
+        width: "100%",
+        padding: "8px 10px",
+        borderRadius: 8,
+        border: "1px solid var(--hairline)",
+        background: "var(--card-bg)",
+        color: "var(--moss)",
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer",
       }}
     >
-      <h3
-        style={{
-          margin: "0 0 12px",
-          fontFamily: "var(--font-display)",
-          fontSize: 14,
-          fontWeight: 700,
-          color: "var(--moss)",
-          textTransform: "uppercase",
-        }}
-      >
-        {name}{" "}
-        <span style={{ fontWeight: 400, color: "var(--green-100)", textTransform: "none" }}>
-          ({stalled.length} stalled)
-        </span>
-      </h3>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <Th>Customer</Th>
-            <Th>Stage</Th>
-            <Th>Last activity</Th>
-            <Th align="right">BV</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {stalled.length === 0 ? (
-            <tr>
-              <td
-                colSpan={4}
-                style={{
-                  padding: 16,
-                  textAlign: "center",
-                  color: "var(--green-100)",
-                  fontStyle: "italic",
-                  fontFamily: "var(--font-editorial)",
-                }}
-              >
-                No stalled deals
-              </td>
-            </tr>
-          ) : (
-            stalled.slice(0, 10).map((d) => {
-              const days = d.daysSinceActivity ?? 0;
-              let dayColor = "var(--green-100)";
-              if (days > 30) dayColor = "#C0392B";
-              else if (days > 14) dayColor = "var(--status-warn-fg)";
-              else if (days > 7) dayColor = "#D49545";
-              return (
-                <tr
-                  key={d.dealId}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => onDealClick(d)}
-                >
-                  <Td>
-                    <strong style={{ color: "var(--moss)" }}>{d.dealName}</strong>
-                    <FlagsFor deal={d} />
-                  </Td>
-                  <Td>
-                    <StageLabel stage={d.stage} />
-                  </Td>
-                  <Td>
-                    <span style={{ color: dayColor, fontWeight: 600 }}>{days}d ago</span>
-                  </Td>
-                  <Td align="right">{bvWithPct(d.bv, allEligBv)}</Td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
-    </div>
+      {expanded ? "Show less" : `Show all (+${hiddenCount} more)`}
+    </button>
   );
 }
 
@@ -1027,6 +989,10 @@ function UnwillingTable({
   const sorted = [...deals].sort((a, b) => b.bv - a.bv);
   const total = sorted.reduce((s, d) => s + d.bv, 0);
   const pctOfElig = allEligBv > 0 ? (total / allEligBv) * 100 : 0;
+  const cap = 10;
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? sorted : sorted.slice(0, cap);
+  const hiddenCount = Math.max(0, sorted.length - cap);
 
   return (
     <div
@@ -1079,7 +1045,7 @@ function UnwillingTable({
               </td>
             </tr>
           ) : (
-            sorted.map((d) => (
+            visible.map((d) => (
               <tr key={d.dealId} style={{ cursor: "pointer" }} onClick={() => onDealClick(d)}>
                 <Td>
                   <strong style={{ color: "var(--moss)" }}>{d.dealName}</strong>
@@ -1094,6 +1060,13 @@ function UnwillingTable({
           )}
         </tbody>
       </table>
+      {hiddenCount > 0 && (
+        <ShowAllButton
+          expanded={expanded}
+          hiddenCount={hiddenCount}
+          onToggle={() => setExpanded((v) => !v)}
+        />
+      )}
     </div>
   );
 }

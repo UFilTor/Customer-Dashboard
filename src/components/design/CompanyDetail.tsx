@@ -12,6 +12,9 @@ import { OWNER_MAP } from "@/lib/owners";
 import { fmtMrr, relDays } from "@/lib/format-design";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 import { isBookmarked, toggleBookmark } from "@/lib/bookmarks";
+import { computeWatchOutSignals } from "@/lib/signals";
+import { signalStyle, pillText, calmCopy } from "@/lib/signal-display";
+import { classifyPortfolioStage } from "@/lib/portfolio";
 
 interface Props {
   companyId: string;
@@ -129,6 +132,42 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
   const ownerLocal = OWNER_MAP[company.hubspot_owner_id || ""] || null;
 
   const stageLabel = deal?.dealstage ? stages[deal.dealstage] || deal.dealstage : null;
+
+  const signalData = useMemo(() => {
+    const stage = classifyPortfolioStage(
+      deal?.customer_stage || "",
+      deal?.pipeline || "",
+      deal?.customer_substage || null
+    );
+    const num = (v: string | undefined) => {
+      if (!v) return 0;
+      const n = parseFloat(v);
+      return isNaN(n) ? 0 : n;
+    };
+    const numOrNull = (v: string | undefined) => {
+      if (!v) return null;
+      const n = parseFloat(v);
+      return isNaN(n) ? null : n;
+    };
+    const signals = computeWatchOutSignals({
+      nowIso: new Date().toISOString(),
+      unpaidInvoice: deal?.unpaid_invoice === "true",
+      invoiceDueDate: null,
+      outstandingEur: null,
+      overdueDays: null,
+      wishToChurn: deal?.wish_to_churn === "true",
+      churnReason: deal?.churn_reason || null,
+      volume3m: num(company.understory_booking_volume_3m),
+      volume6m: num(company.understory_booking_volume_6m),
+      healthScore: numOrNull(company.health_score),
+      upcomingEvents: numOrNull(company.understory_health_score_upcoming_events),
+      notesLastContacted: company.notes_last_contacted || null,
+      daysInStep: null,
+      expectedDaysInStep: null,
+      stage,
+    });
+    return { stage, signals };
+  }, [company, deal]);
 
   const wrapperStyle: React.CSSProperties = embedded
     ? { padding: "0", margin: 0, background: "transparent" }
@@ -285,6 +324,7 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
         </div>
       </div>
 
+      <SignalStrip signals={signalData.signals} stage={signalData.stage} />
       <MetricStrip company={company} deal={deal} />
       <RecapCardBig recap={recap} loading={recapLoading} companyId={companyId} />
 
@@ -330,6 +370,91 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
           <ActivityPanel engagements={engagements} owners={owners} />
         </div>
       )}
+    </div>
+  );
+}
+
+function SignalStrip({
+  signals,
+  stage,
+}: {
+  signals: ReturnType<typeof computeWatchOutSignals>;
+  stage: ReturnType<typeof classifyPortfolioStage>;
+}) {
+  if (signals.length === 0) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "10px 14px",
+          marginBottom: 14,
+          borderRadius: 12,
+          background: "var(--card-bg)",
+          border: "1px solid var(--hairline)",
+        }}
+      >
+        <span aria-hidden style={{ fontSize: 14, color: "var(--moss)" }}>✓</span>
+        <span style={{ fontSize: 13, color: "var(--green-100)", fontStyle: "italic" }}>
+          {calmCopy(stage, "sentence")}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="group"
+      aria-label="Watch out for"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 8,
+        padding: "10px 14px",
+        marginBottom: 14,
+        borderRadius: 12,
+        background: "var(--card-bg)",
+        border: "1px solid var(--hairline)",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: "var(--green-100)",
+          marginRight: 4,
+        }}
+      >
+        Watch out for
+      </span>
+      {signals.map((s, i) => {
+        const tokens = signalStyle(s.severity);
+        return (
+          <span
+            key={`${s.kind}-${i}`}
+            title={s.detail}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "4px 10px",
+              borderRadius: 999,
+              background: tokens.bg,
+              color: tokens.fg,
+              border: `1px solid ${tokens.border}`,
+              fontSize: 12,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {pillText(s)}
+          </span>
+        );
+      })}
     </div>
   );
 }

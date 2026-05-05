@@ -1547,9 +1547,10 @@ export async function fetchHistoryForDeals(
   const result = new Map<string, OnboardingHistoryEntry[]>();
   if (dealIds.length === 0) return result;
 
-  const [callsByDeal, emailsByDeal] = await Promise.all([
+  const [callsByDeal, emailsByDeal, meetingsByDeal] = await Promise.all([
     fetchCallsForDeals(dealIds),
     fetchEmailsForDeals(dealIds),
+    fetchMeetingsForDeals(dealIds),
   ]);
 
   const today = new Date();
@@ -1571,7 +1572,29 @@ export async function fetchHistoryForDeals(
     }
     const threadedEmails = groupEmailsByThread(pastEmails);
 
-    const merged = [...callHistory, ...threadedEmails].sort(
+    // Past meetings — Gong summaries land here as separate "[Gong] ..." records.
+    // dedupMeetings collapses calendar+Gong pairs so we don't double-show them.
+    const meetingHistory: OnboardingHistoryEntry[] = [];
+    const dedupedMeetings = dedupMeetings(meetingsByDeal.get(dealId) ?? []);
+    for (const m of dedupedMeetings) {
+      const t = new Date(m.startsAt).getTime();
+      if (isNaN(t) || t >= today.getTime()) continue;
+      if (!isMeaningfulMeeting(m.title, m.body, m.internalNotes)) continue;
+      if (isNoisySubject(m.title)) continue;
+      meetingHistory.push({
+        id: m.id,
+        kind: "meeting",
+        title: m.title,
+        occurredAt: m.startsAt,
+        body: m.body,
+        ownerId: m.ownerId,
+        ownerName: m.ownerName,
+        direction: null,
+        outcome: m.outcome,
+      });
+    }
+
+    const merged = [...meetingHistory, ...callHistory, ...threadedEmails].sort(
       (a, b) => b.occurredAt.localeCompare(a.occurredAt)
     );
     if (merged.length > 0) result.set(dealId, merged);

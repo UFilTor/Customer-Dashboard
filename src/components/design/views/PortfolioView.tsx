@@ -697,8 +697,6 @@ function Toolbar({
         )}
       </div>
 
-      <StatusFilterPill shownStatuses={shownStatuses} toggleStatus={toggleStatus} />
-
       <RefinePill
         refine={refine}
         setRefine={setRefine}
@@ -706,6 +704,8 @@ function Toolbar({
         stackedSignals={stackedSignals}
         toggleStackedSignals={toggleStackedSignals}
       />
+
+      <StatusFilterPill shownStatuses={shownStatuses} toggleStatus={toggleStatus} />
 
       <span style={{ flex: 1 }} />
 

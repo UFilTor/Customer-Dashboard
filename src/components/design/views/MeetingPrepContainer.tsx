@@ -46,6 +46,11 @@ function nextNWorkDayKeys(start: Date, n: number): string[] {
 export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: Props) {
   const [data, setData] = useState<MeetingPrepResponse | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
+  // Bumped only on explicit user-initiated refresh. The lazy history fetch
+  // includes this in its deps and passes ?refresh=true while it lags
+  // last-applied, so the in-memory edge cache on /api/meeting-prep/history
+  // gets busted in lockstep with the bulk endpoint.
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const [isFirstLoading, setIsFirstLoading] = useState(true);
   const [isRevalidating, setIsRevalidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +97,7 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
         const json: MeetingPrepResponse = await res.json();
         setData(json);
         setDataVersion((v) => v + 1);
+        if (refresh) setRefreshNonce((v) => v + 1);
       } catch (err) {
         setError(friendlyErrorMessage(err));
       } finally {
@@ -179,7 +185,9 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/meeting-prep/history?dealIds=${historyDealIdsKey}`);
+        const params = new URLSearchParams({ dealIds: historyDealIdsKey });
+        if (refreshNonce > 0) params.set("refresh", "true");
+        const res = await fetch(`/api/meeting-prep/history?${params.toString()}`);
         if (!res.ok) return;
         const json: Record<string, OnboardingHistoryEntry[]> = await res.json();
         if (cancelled) return;
@@ -214,7 +222,7 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
     return () => {
       cancelled = true;
     };
-  }, [historyDealIdsKey, dataVersion]);
+  }, [historyDealIdsKey, dataVersion, refreshNonce]);
 
   const filtered = useMemo<{
     meetings: MeetingPrepMeetingEntry[];

@@ -5,6 +5,7 @@ import {
   ONBOARDING_STAGES,
   classifyStep,
   daysSince,
+  dedupMeetings,
   endOfNthWorkDay,
   fetchAssociations,
   fetchHistoryForDeals,
@@ -376,12 +377,15 @@ export async function buildMeetingPrepPayload(
   }
   const meetingOwnerNames = await fetchOwnerNames(Array.from(meetingOwnerIds));
 
-  const meetingEntries: MeetingPrepMeetingEntry[] = [];
+  // First pass: turn each raw HubSpot meeting that resolved to a deal into an
+  // OnboardingMeeting + record the dealId. Group by deal so the calendar+Gong
+  // dedup runs per-deal — pairs are only considered duplicates within the
+  // same deal scope.
+  const meetingsByDeal = new Map<string, OnboardingMeeting[]>();
   for (const raw of ownerMeetings) {
     const dealId = meetingToDeal.get(raw.id);
     if (!dealId) continue;
-    const deal = dealById.get(dealId);
-    if (!deal) continue;
+    if (!dealById.has(dealId)) continue;
     const startsAt = raw.properties?.hs_meeting_start_time;
     if (!startsAt) continue;
     const ownerId = raw.properties?.hubspot_owner_id || "";
@@ -399,7 +403,17 @@ export async function buildMeetingPrepPayload(
       ownerId,
       ownerName: ownerId ? meetingOwnerNames[ownerId] ?? null : null,
     };
-    meetingEntries.push({ meeting, deal });
+    if (!meetingsByDeal.has(dealId)) meetingsByDeal.set(dealId, []);
+    meetingsByDeal.get(dealId)!.push(meeting);
+  }
+
+  const meetingEntries: MeetingPrepMeetingEntry[] = [];
+  for (const [dealId, meetings] of meetingsByDeal) {
+    const deal = dealById.get(dealId);
+    if (!deal) continue;
+    for (const meeting of dedupMeetings(meetings)) {
+      meetingEntries.push({ meeting, deal });
+    }
   }
   meetingEntries.sort((a, b) =>
     a.meeting.startsAt.localeCompare(b.meeting.startsAt)

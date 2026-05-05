@@ -343,7 +343,7 @@ function normaliseEmailSubject(raw: string): string {
  * Pairs that fall within a 10-minute window on the same deal are considered
  * the "same meeting"; we keep the Gong-tagged one.
  */
-function dedupMeetings(meetings: OnboardingMeeting[]): OnboardingMeeting[] {
+export function dedupMeetings(meetings: OnboardingMeeting[]): OnboardingMeeting[] {
   // Sort by start time ASC for adjacency checks.
   const sorted = [...meetings].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const drop = new Set<string>();
@@ -1547,10 +1547,15 @@ export async function fetchHistoryForDeals(
   const result = new Map<string, OnboardingHistoryEntry[]>();
   if (dealIds.length === 0) return result;
 
+  // Calls + emails are the load-bearing channels — if either fails we want
+  // to know. Meetings are best-effort: a transient HubSpot error there
+  // shouldn't blank the entire Previous Activity panel.
   const [callsByDeal, emailsByDeal, meetingsByDeal] = await Promise.all([
     fetchCallsForDeals(dealIds),
     fetchEmailsForDeals(dealIds),
-    fetchMeetingsForDeals(dealIds),
+    fetchMeetingsForDeals(dealIds).catch(
+      () => new Map<string, OnboardingMeeting[]>(),
+    ),
   ]);
 
   const today = new Date();

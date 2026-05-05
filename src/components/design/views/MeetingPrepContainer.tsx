@@ -45,6 +45,7 @@ function nextNWorkDayKeys(start: Date, n: number): string[] {
 
 export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: Props) {
   const [data, setData] = useState<MeetingPrepResponse | null>(null);
+  const [dataVersion, setDataVersion] = useState(0);
   const [isFirstLoading, setIsFirstLoading] = useState(true);
   const [isRevalidating, setIsRevalidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +91,7 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
         }
         const json: MeetingPrepResponse = await res.json();
         setData(json);
+        setDataVersion((v) => v + 1);
       } catch (err) {
         setError(friendlyErrorMessage(err));
       } finally {
@@ -212,7 +214,7 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
     return () => {
       cancelled = true;
     };
-  }, [historyDealIdsKey]);
+  }, [historyDealIdsKey, dataVersion]);
 
   const filtered = useMemo<{
     meetings: MeetingPrepMeetingEntry[];

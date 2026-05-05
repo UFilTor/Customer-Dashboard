@@ -5,6 +5,7 @@ import type {
   PortfolioResponse,
   PortfolioRow,
   PortfolioDefaults,
+  PortfolioRefineState,
   PortfolioSignalKey,
   PortfolioSortKey,
 } from "@/lib/types";
@@ -117,6 +118,7 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
 
   const [selectedSignals, setSelectedSignals] = useState<PortfolioSignalKey[]>([]);
   const [stackedSignals, setStackedSignals] = useState(false);
+  const [refine, setRefine] = useState<PortfolioRefineState>({});
   // Each entry is shown only when toggled on. Default = none → paused /
   // product hold / hibernation rows are hidden from Portfolio.
   const [shownStatuses, setShownStatuses] = useState<{
@@ -226,10 +228,36 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
           return true;
         });
 
+    // Refine post-filter. Universal axes apply unconditionally; per-signal
+    // tighteners apply only when their signal is selected so they narrow,
+    // never widen.
+    const refined = filtered.filter((r) => {
+      if (refine.acvMin != null && r.revenue < refine.acvMin) return false;
+      if (refine.acvMax != null && r.revenue > refine.acvMax) return false;
+      if (refine.daysInStageMin != null && (r.daysInStage ?? 0) < refine.daysInStageMin) return false;
+      if (refine.daysInStageMax != null && (r.daysInStage ?? 0) > refine.daysInStageMax) return false;
+      if (selectedSignals.includes("gone_quiet") && refine.goneQuietMinDays != null) {
+        if ((r.daysSilent ?? 0) < refine.goneQuietMinDays) return false;
+      }
+      if (selectedSignals.includes("health_dropped") && refine.healthMaxScore != null) {
+        if (r.healthScore == null || r.healthScore > refine.healthMaxScore) return false;
+      }
+      if (selectedSignals.includes("stuck_in_step") && refine.stuckMinDaysPast != null) {
+        if ((r.daysPastExpectedStep ?? 0) < refine.stuckMinDaysPast) return false;
+      }
+      if (selectedSignals.includes("overdue_invoices") && refine.overdueMinDays != null) {
+        if ((r.overdueDays ?? 0) < refine.overdueMinDays) return false;
+      }
+      if (selectedSignals.includes("volume_declining") && refine.volumeMinDropPct != null) {
+        if ((r.volumeDropPct ?? 0) < refine.volumeMinDropPct) return false;
+      }
+      return true;
+    });
+
     const sortOpt = getSortOptions(selectedSignals).find((o) => o.key === sortKey);
-    if (!sortOpt) return filtered;
+    if (!sortOpt) return refined;
     const dir = sortDirection === "desc" ? -1 : 1;
-    return [...filtered].sort((a, b) => {
+    return [...refined].sort((a, b) => {
       const av = extractSortKey(a, sortKey);
       const bv = extractSortKey(b, sortKey);
       if (av == null && bv == null) return 0;
@@ -238,7 +266,7 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
       if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
       return ((av as number) - (bv as number)) * dir;
     });
-  }, [data, selectedSignals, stackedSignals, shownStatuses, sortKey, sortDirection]);
+  }, [data, selectedSignals, stackedSignals, shownStatuses, sortKey, sortDirection, refine]);
 
   // Reset to page 1 whenever filter/signal/sort context changes. Following
   // the prev-X "adjust state during render" pattern the strict react-hooks
@@ -425,6 +453,7 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
     const empty: Record<PortfolioSignalKey, number> = {
       overdue_invoices: 0, open_invoices: 0, no_future_events: 0, health_dropped: 0,
       stuck_in_step: 0, volume_declining: 0, wish_to_churn: 0, gone_quiet: 0,
+      not_on_pay: 0,
     };
     if (selectedSignals.length === 0) {
       // Unfiltered: the API-provided totals are the right answer.
@@ -524,6 +553,8 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
         clearSignals={clearSignals}
         stackedSignals={stackedSignals}
         toggleStackedSignals={() => setStackedSignals((v) => !v)}
+        refine={refine}
+        setRefine={setRefine}
         shownStatuses={shownStatuses}
         toggleStatus={(s) =>
           setShownStatuses((prev) => ({ ...prev, [s]: !prev[s] }))

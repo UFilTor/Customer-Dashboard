@@ -23,6 +23,7 @@ export const STAGE_APPLICABILITY: Record<PortfolioSignalKey, PortfolioStage[]> =
   wish_to_churn:     ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
   stuck_in_step:     ["Onboarding", "Adopted", "Started"],
   volume_declining:  ["Ramp Up", "Established"],
+  not_on_pay:        ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
 };
 
 export function isSignalApplicable(signal: PortfolioSignalKey, stage: PortfolioStage): boolean {
@@ -44,6 +45,7 @@ function watchOutToKey(s: WatchOutSignal): PortfolioSignalKey {
     case "stuck_in_step":     return "stuck_in_step";
     case "health_dropped":    return "health_dropped";
     case "gone_quiet":        return "gone_quiet";
+    case "not_on_pay":        return "not_on_pay";
     default:                  return "gone_quiet";
   }
 }
@@ -160,6 +162,10 @@ export interface WatchOutContext {
   // Onboarding only
   daysInStep: number | null;
   expectedDaysInStep: number | null;
+  // Pay migration status. When set to one of the not-yet-migrated values,
+  // surface a "Not connected to Understory Pay" signal. Null / other values
+  // (Verified, Live, Pending Verification, Ineligible, Unwilling) suppress.
+  payStatus?: string | null;
   // Optional. When provided, the result is filtered through STAGE_APPLICABILITY
   // so callers don't have to re-apply the gate. Omit to opt out (legacy
   // behaviour: all triggered signals returned regardless of stage).
@@ -258,7 +264,23 @@ export function computeWatchOutSignals(ctx: WatchOutContext): WatchOutSignal[] {
     }
   }
 
-  // 7. Stuck in step — warn (Onboarding only — pass null for retention)
+  // 7. Not connected to Understory Pay — warn. Fires when the lifecycle
+  // deal's `understory_pay_status__customer` is one of the pre-migration
+  // states ("Not yet enrolled", "Signed - Not Started", "Started Onboarding").
+  if (
+    ctx.payStatus === "Not yet enrolled" ||
+    ctx.payStatus === "Signed - Not Started" ||
+    ctx.payStatus === "Started Onboarding"
+  ) {
+    out.push({
+      kind: "not_on_pay",
+      severity: "warn",
+      title: "Not on Understory Pay",
+      detail: ctx.payStatus,
+    });
+  }
+
+  // 8. Stuck in step — warn (Onboarding only — pass null for retention)
   if (ctx.daysInStep != null && ctx.expectedDaysInStep != null && ctx.daysInStep > ctx.expectedDaysInStep) {
     out.push({
       kind: "stuck_in_step",
@@ -288,19 +310,19 @@ export interface PortfolioSignalMeta {
   severity: "bad" | "warn";
 }
 
-// 8-signal taxonomy used by the Portfolio dashboard. Order is load-bearing:
-// the keyboard 1-8 shortcut maps to this array index, and Daily-Brief-style
-// section ordering renders bad-severity signals first within priority. See
-// the spec at docs/superpowers/specs/2026-05-03-portfolio-dashboard-design.md.
+// 9-signal taxonomy used by the Portfolio dashboard. Sorted alphabetically by
+// label — keyboard 1-9 maps to this order, and the section grouping in the
+// row list (when 2+ signals are selected) renders sections in this order.
 export const PORTFOLIO_SIGNALS: PortfolioSignalMeta[] = [
-  { key: "overdue_invoices",   label: "Overdue invoices",   short: "Overdue",     color: "#B84A2D", severity: "bad"  },
-  { key: "wish_to_churn",      label: "Wish to churn",      short: "Wish churn",  color: "#B84A2D", severity: "bad"  },
-  { key: "volume_declining",   label: "Volume declining",   short: "Vol. drop",   color: "#B84A2D", severity: "bad"  },
-  { key: "no_future_events",   label: "No future events",   short: "No events",   color: "#B84A2D", severity: "bad"  },
-  { key: "open_invoices",      label: "Open invoices",      short: "Open inv.",   color: "#B8761F", severity: "warn" },
-  { key: "stuck_in_step",      label: "Stuck in step",      short: "Stuck",       color: "#B8761F", severity: "warn" },
-  { key: "health_dropped",     label: "Health drop",        short: "Health",      color: "#2F5C3E", severity: "warn" },
   { key: "gone_quiet",         label: "Gone quiet",         short: "Quiet",       color: "#3D4E5F", severity: "warn" },
+  { key: "health_dropped",     label: "Health drop",        short: "Health",      color: "#2F5C3E", severity: "warn" },
+  { key: "no_future_events",   label: "No future events",   short: "No events",   color: "#B84A2D", severity: "bad"  },
+  { key: "not_on_pay",         label: "Not on Pay",         short: "Not on Pay",  color: "#B8761F", severity: "warn" },
+  { key: "open_invoices",      label: "Open invoices",      short: "Open inv.",   color: "#B8761F", severity: "warn" },
+  { key: "overdue_invoices",   label: "Overdue invoices",   short: "Overdue",     color: "#B84A2D", severity: "bad"  },
+  { key: "stuck_in_step",      label: "Stuck in step",      short: "Stuck",       color: "#B8761F", severity: "warn" },
+  { key: "volume_declining",   label: "Volume declining",   short: "Vol. drop",   color: "#B84A2D", severity: "bad"  },
+  { key: "wish_to_churn",      label: "Wish to churn",      short: "Wish churn",  color: "#B84A2D", severity: "bad"  },
 ];
 
 export const PORTFOLIO_SIGNAL_MAP: Record<PortfolioSignalKey, PortfolioSignalMeta> =

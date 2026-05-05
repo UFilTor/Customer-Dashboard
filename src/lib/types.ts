@@ -249,7 +249,8 @@ export type WatchOutSignalKind =
   | "health_dropped"
   | "no_future_events"
   | "gone_quiet"
-  | "stuck_in_step";
+  | "stuck_in_step"
+  | "not_on_pay";
 
 export type WatchOutSignalSeverity = "warn" | "bad";
 
@@ -676,7 +677,8 @@ export type PortfolioSignalKey =
   | "stuck_in_step"
   | "volume_declining"
   | "wish_to_churn"
-  | "gone_quiet";
+  | "gone_quiet"
+  | "not_on_pay";
 
 export type PortfolioSortKey =
   // Universal
@@ -768,3 +770,30 @@ export interface PortfolioDefaults {
 
 // Multi-select signal filter state. Empty array means no signal filter.
 export type PortfolioSignalFilter = PortfolioSignalKey[];
+
+// Continuous-axis refinement state. Each field is optional; an unset key
+// means "no refinement on this axis". Lives next to selectedSignals/sortKey
+// in the container and is applied as a post-filter before sorting.
+//
+// Universal axes (always available):
+//   - acv: ACV range, EUR
+//   - daysInStage: days-in-stage range
+//
+// Per-signal threshold tighteners (applied only when that signal is also
+// in selectedSignals — they narrow the row set, never widen it):
+//   - goneQuietMinDays:   gone_quiet rows where daysSinceContact >= N
+//   - healthMaxScore:     health_dropped rows where healthScore <= N
+//   - stuckMinDaysPast:   stuck_in_step rows where daysPastExpectedStep >= N
+//   - overdueMinDays:     overdue_invoices rows where overdueDays >= N
+//   - volumeMinDropPct:   volume_declining rows where volumeDropPct >= N (0-1)
+export interface PortfolioRefineState {
+  acvMin?: number;
+  acvMax?: number;
+  daysInStageMin?: number;
+  daysInStageMax?: number;
+  goneQuietMinDays?: number;
+  healthMaxScore?: number;
+  stuckMinDaysPast?: number;
+  overdueMinDays?: number;
+  volumeMinDropPct?: number;
+}

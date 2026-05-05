@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import type { PortfolioRow, PortfolioSignalKey, PortfolioSortKey } from "@/lib/types";
+import type { PortfolioRefineState, PortfolioRow, PortfolioSignalKey, PortfolioSortKey } from "@/lib/types";
 import { PORTFOLIO_SIGNALS, PORTFOLIO_SIGNAL_MAP, PORTFOLIO_SIGNAL_ORDER } from "@/lib/signals";
 import { getSortOptions, mapKindToKey } from "@/lib/portfolio";
 import { signalStyle, pillText, calmCopy } from "@/lib/signal-display";
@@ -41,6 +41,8 @@ interface Props {
   clearSignals: () => void;
   stackedSignals: boolean;
   toggleStackedSignals: () => void;
+  refine: PortfolioRefineState;
+  setRefine: (next: PortfolioRefineState | ((prev: PortfolioRefineState) => PortfolioRefineState)) => void;
   shownStatuses: { paused: boolean; product_hold: boolean; hibernation: boolean };
   toggleStatus: (s: "paused" | "product_hold" | "hibernation") => void;
 
@@ -59,8 +61,8 @@ interface Props {
   defaultsAreCurrent: boolean;
   onResetDefaults: () => void;
 
-  // Pagination. Top + bottom selectors share this state; bottom mirror lets
-  // a user who scrolled to the end switch pages without scrolling back up.
+  // Pagination state. Page nav lives below the list (only when totalPages > 1);
+  // page slice + range caption use these props at the top.
   page: number;
   totalPages: number;
   pageSize: number;
@@ -299,7 +301,6 @@ export function PortfolioView(props: Props) {
     ? 0
     : (props.page - 1) * props.pageSize + 1;
   const lastOnPage = Math.min(props.page * props.pageSize, props.totalRowCount);
-  const isPaginated = props.totalPages > 1;
 
   return (
     <div style={{ background: "var(--page-bg)", minHeight: "calc(100vh - 120px)" }}>
@@ -321,6 +322,8 @@ export function PortfolioView(props: Props) {
               clearSignals={props.clearSignals}
               stackedSignals={props.stackedSignals}
               toggleStackedSignals={props.toggleStackedSignals}
+              refine={props.refine}
+              setRefine={props.setRefine}
               shownStatuses={props.shownStatuses}
               toggleStatus={props.toggleStatus}
               globalTotalsBySignal={props.globalTotalsBySignal}
@@ -328,13 +331,6 @@ export function PortfolioView(props: Props) {
               sortDirection={props.sortDirection}
               setSortKey={props.setSortKey}
               sortOptions={sortOptions}
-              page={props.page}
-              totalPages={props.totalPages}
-              onPageChange={props.onPageChange}
-              firstOnPage={firstOnPage}
-              lastOnPage={lastOnPage}
-              totalRowCount={props.totalRowCount}
-              isPaginated={isPaginated}
               hasSavedDefault={props.hasSavedDefault}
               defaultsAreCurrent={props.defaultsAreCurrent}
               onResetDefaults={props.onResetDefaults}
@@ -415,6 +411,46 @@ export function PortfolioView(props: Props) {
             )}
           </div>
 
+          {/* Bottom page nav. Only shown when the result set spans multiple
+              pages — single-page views skip the chrome entirely so the list
+              ends cleanly at its last row. */}
+          {props.totalPages > 1 && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 6,
+                paddingTop: 20,
+              }}
+            >
+              <Pagination
+                page={props.page}
+                totalPages={props.totalPages}
+                onPageChange={props.onPageChange}
+              />
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "var(--green-100)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontVariantNumeric: "tabular-nums",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
+                  {firstOnPage}–{lastOnPage}
+                </strong>
+                <span>of</span>
+                <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
+                  {props.totalRowCount}
+                </strong>
+                <span>{props.totalRowCount === 1 ? "account" : "accounts"}</span>
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -525,6 +561,8 @@ interface ToolbarProps {
   clearSignals: () => void;
   stackedSignals: boolean;
   toggleStackedSignals: () => void;
+  refine: PortfolioRefineState;
+  setRefine: (next: PortfolioRefineState | ((prev: PortfolioRefineState) => PortfolioRefineState)) => void;
   shownStatuses: { paused: boolean; product_hold: boolean; hibernation: boolean };
   toggleStatus: (s: "paused" | "product_hold" | "hibernation") => void;
   // Toolbar feeds the FilterDropdown with book-wide totals so signal
@@ -535,16 +573,6 @@ interface ToolbarProps {
   sortDirection: "asc" | "desc";
   setSortKey: (k: PortfolioSortKey) => void;
   sortOptions: ReturnType<typeof getSortOptions>;
-  page: number;
-  totalPages: number;
-  onPageChange: (next: number) => void;
-  // Status / view-default controls absorbed from the (now removed) ResultsBar.
-  // Folding these into the toolbar collapses the sticky chrome stack from four
-  // bands to three, so the data area starts ~40px earlier on every viewport.
-  firstOnPage: number;
-  lastOnPage: number;
-  totalRowCount: number;
-  isPaginated: boolean;
   hasSavedDefault: boolean;
   defaultsAreCurrent: boolean;
   onResetDefaults: () => void;
@@ -556,6 +584,8 @@ function Toolbar({
   clearSignals,
   stackedSignals,
   toggleStackedSignals,
+  refine,
+  setRefine,
   shownStatuses,
   toggleStatus,
   globalTotalsBySignal,
@@ -563,13 +593,6 @@ function Toolbar({
   sortDirection,
   setSortKey,
   sortOptions,
-  page,
-  totalPages,
-  onPageChange,
-  firstOnPage,
-  lastOnPage,
-  totalRowCount,
-  isPaginated,
   hasSavedDefault,
   defaultsAreCurrent,
   onResetDefaults,
@@ -668,8 +691,6 @@ function Toolbar({
             selectedSignals={selectedSignals}
             toggleSignal={toggleSignal}
             clearSignals={clearSignals}
-            stackedSignals={stackedSignals}
-            toggleStackedSignals={toggleStackedSignals}
             totalsBySignal={globalTotalsBySignal}
             onClose={() => setFilterOpen(false)}
           />
@@ -678,69 +699,13 @@ function Toolbar({
 
       <StatusFilterPill shownStatuses={shownStatuses} toggleStatus={toggleStatus} />
 
-      {/* Center cluster: Pagination (when paginated) with a muted range
-          caption directly below it. The standalone left-side count span
-          used to live next to the Status pill — it got cramped between
-          two pills. Folding it into the pagination cluster gives the
-          range and the page nav one shared visual unit. */}
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          transform: "translate(-50%, -50%)",
-          zIndex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 2,
-          pointerEvents: "none",
-        }}
-      >
-        {totalPages > 1 && (
-          <div style={{ pointerEvents: "auto" }}>
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              onPageChange={onPageChange}
-            />
-          </div>
-        )}
-        <span
-          aria-live="polite"
-          aria-atomic="true"
-          style={{
-            fontSize: 11,
-            color: "var(--green-100)",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
-            fontVariantNumeric: "tabular-nums",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {isPaginated ? (
-            <>
-              <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
-                {firstOnPage}–{lastOnPage}
-              </strong>
-              <span>of</span>
-              <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
-                {totalRowCount}
-              </strong>
-              <span>{totalRowCount === 1 ? "account" : "accounts"}</span>
-            </>
-          ) : (
-            <>
-              <strong style={{ color: "var(--moss)", fontWeight: 600 }}>
-                {totalRowCount}
-              </strong>
-              <span>{totalRowCount === 1 ? "account" : "accounts"}</span>
-            </>
-          )}
-          {isFiltered && <span style={{ opacity: 0.65 }}>· filtered</span>}
-        </span>
-      </div>
+      <RefinePill
+        refine={refine}
+        setRefine={setRefine}
+        selectedSignals={selectedSignals}
+        stackedSignals={stackedSignals}
+        toggleStackedSignals={toggleStackedSignals}
+      />
 
       <span style={{ flex: 1 }} />
 
@@ -788,16 +753,12 @@ function FilterDropdown({
   selectedSignals,
   toggleSignal,
   clearSignals,
-  stackedSignals,
-  toggleStackedSignals,
   totalsBySignal,
   onClose,
 }: {
   selectedSignals: PortfolioSignalKey[];
   toggleSignal: (k: PortfolioSignalKey) => void;
   clearSignals: () => void;
-  stackedSignals: boolean;
-  toggleStackedSignals: () => void;
   totalsBySignal: Record<PortfolioSignalKey, number>;
   onClose: () => void;
 }) {
@@ -935,76 +896,6 @@ function FilterDropdown({
           );
         })}
       </div>
-      <div
-        style={{
-          borderTop: "1px solid var(--hairline)",
-          padding: "10px 14px",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-        }}
-      >
-        <button
-          type="button"
-          role="switch"
-          aria-checked={stackedSignals}
-          onClick={toggleStackedSignals}
-          disabled={selectedSignals.length < 2}
-          title={
-            selectedSignals.length < 2
-              ? "Select 2+ signals to enable stacked mode"
-              : "Show only accounts that match 2+ of the selected signals"
-          }
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "4px 8px",
-            borderRadius: 8,
-            background: "transparent",
-            border: 0,
-            cursor: selectedSignals.length < 2 ? "not-allowed" : "pointer",
-            opacity: selectedSignals.length < 2 ? 0.5 : 1,
-            color: "var(--moss)",
-            fontSize: 12,
-            fontWeight: 600,
-            flex: 1,
-            justifyContent: "space-between",
-          }}
-        >
-          <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-            <span>Stacked only</span>
-            <span style={{ fontSize: 10, fontWeight: 500, color: "var(--green-100)" }}>
-              Accounts with 2+ of the selected signals
-            </span>
-          </span>
-          <span
-            aria-hidden
-            style={{
-              width: 28,
-              height: 16,
-              borderRadius: 999,
-              background: stackedSignals ? "var(--moss)" : "var(--hairline)",
-              position: "relative",
-              transition: "background 120ms",
-              flexShrink: 0,
-            }}
-          >
-            <span
-              style={{
-                position: "absolute",
-                top: 2,
-                left: stackedSignals ? 14 : 2,
-                width: 12,
-                height: 12,
-                borderRadius: "50%",
-                background: "#fff",
-                transition: "left 120ms",
-              }}
-            />
-          </span>
-        </button>
-      </div>
     </div>
   );
 }
@@ -1067,10 +958,11 @@ function SortDropdown({
   return (
     <div
       className="pf-pop"
-      // Stretch to match the trigger pill's width by anchoring to both
-      // edges of the relative-positioned wrapper. Trigger and popover
-      // read as one continuous element.
-      style={{ left: 0, right: 0, minWidth: 0 }}
+      // Sort lives at the right edge of the toolbar, so anchor the popover's
+      // right edge to the trigger and grow leftward. Otherwise it overflows
+      // the table on standard viewports. minWidth ensures longer labels
+      // (e.g. "Days in stage") don't wrap onto a second line.
+      style={{ right: 0, minWidth: 200, whiteSpace: "nowrap" }}
     >
       <div style={{ padding: "12px 20px 8px", borderBottom: "1px solid var(--hairline)" }}>
         <div style={eyebrowStyle}>Sort by</div>
@@ -1183,7 +1075,7 @@ function ColumnHeaders({
       {/* 1fr spacer between Signals and the right-aligned numeric cluster. */}
       <span aria-hidden="true" />
       {header("Health", "health", "end")}
-      {header("Revenue", "revenue", "end")}
+      {header("ACV", "revenue", "end")}
       {header("Last", "last_contact", "end")}
       {showAvatar && (
         <span role="columnheader" style={{ ...eyebrowStyle, justifySelf: "end" }}>Owner</span>
@@ -1571,6 +1463,324 @@ function StatusFilterPill({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------- Refine pill ----------
+
+function refineActiveCount(r: PortfolioRefineState): number {
+  let n = 0;
+  if (r.acvMin != null) n++;
+  if (r.acvMax != null) n++;
+  if (r.daysInStageMin != null) n++;
+  if (r.daysInStageMax != null) n++;
+  if (r.goneQuietMinDays != null) n++;
+  if (r.healthMaxScore != null) n++;
+  if (r.stuckMinDaysPast != null) n++;
+  if (r.overdueMinDays != null) n++;
+  if (r.volumeMinDropPct != null) n++;
+  return n;
+}
+
+function RefinePill({
+  refine,
+  setRefine,
+  selectedSignals,
+  stackedSignals,
+  toggleStackedSignals,
+}: {
+  refine: PortfolioRefineState;
+  setRefine: (next: PortfolioRefineState | ((prev: PortfolioRefineState) => PortfolioRefineState)) => void;
+  selectedSignals: PortfolioSignalKey[];
+  stackedSignals: boolean;
+  toggleStackedSignals: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useOutsideClose(wrapRef, open, () => setOpen(false));
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const inInput =
+        target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (e.key === "Escape" && open) {
+        setOpen(false);
+        e.preventDefault();
+        return;
+      }
+      if (inInput) return;
+      if (e.metaKey || e.ctrlKey) return;
+      if (!e.shiftKey) return;
+      if (e.key === "R" || e.key === "r") {
+        setOpen((v) => !v);
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("ud-portfolio-popup-state", { detail: open }));
+  }, [open]);
+
+  const active = refineActiveCount(refine);
+  const label = active === 0 ? "None" : `${active} active`;
+
+  function update<K extends keyof PortfolioRefineState>(key: K, value: PortfolioRefineState[K]) {
+    setRefine((prev) => {
+      const next = { ...prev };
+      if (value === undefined || (typeof value === "number" && Number.isNaN(value))) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+      return next;
+    });
+  }
+  function clearAll() {
+    setRefine({});
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <button onClick={() => setOpen((v) => !v)} style={pillTriggerStyle(active > 0)}>
+        <span style={eyebrowStyle}>Refine</span>
+        <span style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{label}</span>
+        <span className="kbd">⇧R</span>
+        <Caret open={open} />
+      </button>
+      {open && (
+        <div className="pf-pop" style={{ left: 0, width: 320, maxWidth: "calc(100vw - 80px)" }}>
+          <div
+            style={{
+              padding: "10px 14px 8px 20px",
+              borderBottom: "1px solid var(--hairline)",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <div style={eyebrowStyle}>Refine results</div>
+            <span style={{ flex: 1 }} />
+            <button
+              onClick={clearAll}
+              style={{
+                background: "transparent",
+                color: "var(--moss)",
+                fontSize: 12,
+                fontWeight: 600,
+                padding: "4px 6px",
+                borderRadius: 6,
+                cursor: "pointer",
+                border: 0,
+              }}
+            >
+              Clear all
+            </button>
+          </div>
+
+          <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Match mode — only relevant when 2+ signals are selected */}
+            <div style={{ opacity: selectedSignals.length < 2 ? 0.5 : 1 }}>
+              <div style={{ ...eyebrowStyle, marginBottom: 6 }}>Match signals</div>
+              <div
+                role="group"
+                style={{
+                  display: "inline-flex",
+                  border: "1px solid var(--hairline-strong)",
+                  borderRadius: 999,
+                  overflow: "hidden",
+                  background: "var(--card-bg)",
+                }}
+              >
+                {[
+                  { id: "any", label: "Any", on: !stackedSignals },
+                  { id: "all", label: "All", on: stackedSignals },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => {
+                      if (selectedSignals.length < 2) return;
+                      if (opt.on) return;
+                      toggleStackedSignals();
+                    }}
+                    disabled={selectedSignals.length < 2}
+                    style={{
+                      padding: "5px 12px",
+                      background: opt.on ? "var(--moss)" : "transparent",
+                      color: opt.on ? "var(--text-on-moss)" : "var(--moss)",
+                      border: 0,
+                      cursor: selectedSignals.length < 2 ? "not-allowed" : "pointer",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--green-100)", marginTop: 4 }}>
+                {selectedSignals.length < 2
+                  ? "Select 2+ signals to combine them"
+                  : stackedSignals
+                  ? "Rows must match every selected signal"
+                  : "Rows match any selected signal"}
+              </div>
+            </div>
+
+            <RefineRangeRow
+              label="ACV (EUR)"
+              minValue={refine.acvMin}
+              maxValue={refine.acvMax}
+              onMin={(v) => update("acvMin", v)}
+              onMax={(v) => update("acvMax", v)}
+            />
+
+            <RefineRangeRow
+              label="Days in stage"
+              minValue={refine.daysInStageMin}
+              maxValue={refine.daysInStageMax}
+              onMin={(v) => update("daysInStageMin", v)}
+              onMax={(v) => update("daysInStageMax", v)}
+            />
+
+            {selectedSignals.length > 0 && (
+              <div
+                style={{
+                  borderTop: "1px solid var(--hairline)",
+                  paddingTop: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}
+              >
+                <div style={eyebrowStyle}>Tighten signals</div>
+
+                {selectedSignals.includes("gone_quiet") && (
+                  <RefineSingleRow
+                    label="Quiet ≥"
+                    suffix="days"
+                    value={refine.goneQuietMinDays}
+                    onChange={(v) => update("goneQuietMinDays", v)}
+                  />
+                )}
+                {selectedSignals.includes("health_dropped") && (
+                  <RefineSingleRow
+                    label="Health ≤"
+                    suffix=""
+                    value={refine.healthMaxScore}
+                    onChange={(v) => update("healthMaxScore", v)}
+                  />
+                )}
+                {selectedSignals.includes("stuck_in_step") && (
+                  <RefineSingleRow
+                    label="Days past expected ≥"
+                    suffix="days"
+                    value={refine.stuckMinDaysPast}
+                    onChange={(v) => update("stuckMinDaysPast", v)}
+                  />
+                )}
+                {selectedSignals.includes("overdue_invoices") && (
+                  <RefineSingleRow
+                    label="Overdue ≥"
+                    suffix="days"
+                    value={refine.overdueMinDays}
+                    onChange={(v) => update("overdueMinDays", v)}
+                  />
+                )}
+                {selectedSignals.includes("volume_declining") && (
+                  <RefineSingleRow
+                    label="Drop ≥"
+                    suffix="%"
+                    value={refine.volumeMinDropPct != null ? Math.round(refine.volumeMinDropPct * 100) : undefined}
+                    onChange={(v) => update("volumeMinDropPct", v == null ? undefined : v / 100)}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const refineInputStyle: CSSProperties = {
+  width: 80,
+  padding: "5px 8px",
+  borderRadius: 8,
+  border: "1px solid var(--hairline-strong)",
+  background: "var(--card-bg)",
+  color: "var(--moss)",
+  fontSize: 12,
+  fontVariantNumeric: "tabular-nums",
+};
+
+function RefineRangeRow({
+  label,
+  minValue,
+  maxValue,
+  onMin,
+  onMax,
+}: {
+  label: string;
+  minValue: number | undefined;
+  maxValue: number | undefined;
+  onMin: (v: number | undefined) => void;
+  onMax: (v: number | undefined) => void;
+}) {
+  return (
+    <div>
+      <div style={{ ...eyebrowStyle, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <input
+          type="number"
+          inputMode="numeric"
+          placeholder="Min"
+          value={minValue ?? ""}
+          onChange={(e) => onMin(e.target.value === "" ? undefined : Number(e.target.value))}
+          style={refineInputStyle}
+        />
+        <span style={{ color: "var(--green-100)", fontSize: 12 }}>to</span>
+        <input
+          type="number"
+          inputMode="numeric"
+          placeholder="Max"
+          value={maxValue ?? ""}
+          onChange={(e) => onMax(e.target.value === "" ? undefined : Number(e.target.value))}
+          style={refineInputStyle}
+        />
+      </div>
+    </div>
+  );
+}
+
+function RefineSingleRow({
+  label,
+  suffix,
+  value,
+  onChange,
+}: {
+  label: string;
+  suffix: string;
+  value: number | undefined;
+  onChange: (v: number | undefined) => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{ flex: 1, fontSize: 12, color: "var(--moss)", fontWeight: 600 }}>{label}</span>
+      <input
+        type="number"
+        inputMode="numeric"
+        placeholder="—"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+        style={refineInputStyle}
+      />
+      {suffix && <span style={{ fontSize: 11, color: "var(--green-100)" }}>{suffix}</span>}
     </div>
   );
 }

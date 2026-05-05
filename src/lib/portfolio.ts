@@ -1,5 +1,5 @@
 import { Cache } from "./cache";
-import { computeGeneratedRevenue, TO_EUR } from "./attention";
+import { TO_EUR } from "./attention";
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { searchObjectsPage } from "./hubspot-search";
 import { fetchOwnerNames } from "./onboarding";
@@ -112,6 +112,7 @@ export function mapKindToKey(kind: string, title: string): PortfolioSignalKey {
     case "stuck_in_step":     return "stuck_in_step";
     case "health_dropped":    return "health_dropped";
     case "gone_quiet":        return "gone_quiet";
+    case "not_on_pay":        return "not_on_pay";
     default:                  return "gone_quiet";
   }
 }
@@ -119,7 +120,15 @@ export function mapKindToKey(kind: string, title: string): PortfolioSignalKey {
 export function extractSortKey(row: PortfolioRow, key: PortfolioSortKey): number | string | null {
   switch (key) {
     // Universal
-    case "urgency":         return row.signals.length * 10000 + row.revenue;
+    case "urgency": {
+      // Severity-weighted: bad counts 3x, warn counts 1x. Multiplier keeps
+      // signal weight dominant over ACV; ACV is the within-tier tie-breaker.
+      const weight = row.signals.reduce(
+        (s, sig) => s + (sig.severity === "bad" ? 3 : 1),
+        0
+      );
+      return weight * 10000 + row.revenue;
+    }
     case "name":            return row.name;
     case "stage":           return STAGE_ORDER[row.stage];
     case "revenue":         return row.revenue;
@@ -172,7 +181,7 @@ const UNIVERSAL_SORTS: SortOption[] = [
   { key: "urgency",       label: "Urgency",        direction: "desc" },
   { key: "stage",         label: "Stage",          direction: "asc"  },
   { key: "name",          label: "Name",           direction: "asc"  },
-  { key: "revenue",       label: "Revenue",        direction: "desc" },
+  { key: "revenue",       label: "ACV",            direction: "desc" },
   { key: "health",        label: "Health",         direction: "asc"  },
   { key: "last_contact",  label: "Last contact",   direction: "desc" },
   { key: "days_in_stage", label: "Days in stage",  direction: "desc" },
@@ -191,7 +200,7 @@ const SIGNAL_SPECIFIC_SORTS: Record<PortfolioSignalKey, SortOption[]> = {
   ],
   no_future_events: [
     { key: "longest_silence_events", label: "Longest silence", direction: "desc" },
-    { key: "revenue_no_events",      label: "Revenue",         direction: "desc" },
+    { key: "revenue_no_events",      label: "ACV",             direction: "desc" },
   ],
   health_dropped: [
     { key: "biggest_drop",      label: "Biggest drop",            direction: "desc" },
@@ -211,6 +220,7 @@ const SIGNAL_SPECIFIC_SORTS: Record<PortfolioSignalKey, SortOption[]> = {
   gone_quiet: [
     { key: "longest_silence_quiet", label: "Longest silence", direction: "desc" },
   ],
+  not_on_pay: [],
 };
 
 // Returns the sort options to render in the dropdown given the active signal
@@ -254,6 +264,7 @@ interface BuildRowInput {
     wishToChurnAt: string | null;
     daysInStep: number | null;
     expectedDaysInStep: number | null;
+    payStatus: string | null;
     hibernationStart: string | null;
     hibernationEnd: string | null;
     productHoldStart: string | null;
@@ -271,6 +282,7 @@ const SIGNAL_KIND_TO_KEY: Record<WatchOutSignalKind, PortfolioSignalKey> = {
   no_future_events: "no_future_events",
   gone_quiet: "gone_quiet",
   stuck_in_step: "stuck_in_step",
+  not_on_pay: "not_on_pay",
 };
 
 function isWithin(nowIso: string, start: string | null, end: string | null): boolean {
@@ -328,6 +340,7 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     notesLastContacted: input.company.notesLastContacted,
     daysInStep: input.deal.daysInStep,
     expectedDaysInStep: input.deal.expectedDaysInStep,
+    payStatus: input.deal.payStatus,
     stage,
   });
 
@@ -446,6 +459,7 @@ const PORTFOLIO_DEAL_PROPS = [
   "confirmed_booking_fee",
   "hs_lastmodifieddate",
   "amount_in_home_currency",
+  "understory_pay_status__customer",
   // Deal-state windows. When today falls inside the [start, end] range we
   // surface a secondary status tag and (by default) hide the row from
   // Portfolio. Property names are best-guess snake_case from the labels;
@@ -637,14 +651,12 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
     const props = companyProps.get(companyId);
     if (!props) continue;
 
-    // Revenue via the shared computation (booking-fee revenue + MRR * tenure).
-    const revenue = computeGeneratedRevenue(
-      props.understory_booking_volume_12m,
-      dealProps.booking_fee || dealProps.confirmed_booking_fee,
-      dealProps.confirmed__contract_mrr,
-      dealProps.deal_currency_code,
-      props.createdate
-    );
+    // ACV = HubSpot's "Amount in company currency" on the lifecycle deal,
+    // which is already the portal's home currency (EUR for Understory). No
+    // FX conversion — show as-is. The legacy revenue helper (booking-fee +
+    // MRR * tenure) is intentionally no longer called.
+    const acvNum = parseFloat(dealProps.amount_in_home_currency || "");
+    const revenue = !isNaN(acvNum) && acvNum > 0 ? Math.round(acvNum) : 0;
 
     const healthScoreRaw = parseFloat(props.health_score || "");
     const healthScore = isNaN(healthScoreRaw) ? null : healthScoreRaw;
@@ -740,6 +752,7 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
         wishToChurnAt,
         daysInStep,
         expectedDaysInStep,
+        payStatus: dealProps.understory_pay_status__customer || null,
         hibernationStart: dealProps.hibernation_start_date || null,
         hibernationEnd: dealProps.hibernation_end_date || null,
         productHoldStart: dealProps.product_hold_start_date || null,
@@ -760,6 +773,7 @@ function aggregatePayload(rows: PortfolioRow[]): PortfolioResponse {
   const totalsBySignal: Record<PortfolioSignalKey, number> = {
     overdue_invoices: 0, open_invoices: 0, no_future_events: 0, health_dropped: 0,
     stuck_in_step: 0, volume_declining: 0, wish_to_churn: 0, gone_quiet: 0,
+    not_on_pay: 0,
   };
 
   for (const r of rows) {

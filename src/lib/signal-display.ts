@@ -74,6 +74,7 @@ export function pillText(signal: WatchOutSignal): string {
   if (kind === "stuck_in_step")    return title;
   if (kind === "health_dropped")   return title.replace("Health score ", "Health ");
   if (kind === "gone_quiet")       return title.replace("Last contact ", "Quiet ");
+  if (kind === "not_on_pay")       return "Not on Pay";
   return title;
 }
 
@@ -119,6 +120,7 @@ export function signalKey(signal: WatchOutSignal): PortfolioSignalKey {
     case "stuck_in_step":     return "stuck_in_step";
     case "health_dropped":    return "health_dropped";
     case "gone_quiet":        return "gone_quiet";
+    case "not_on_pay":        return "not_on_pay";
     default:                  return "gone_quiet";
   }
 }

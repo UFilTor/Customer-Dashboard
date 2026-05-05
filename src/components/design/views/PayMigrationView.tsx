@@ -178,7 +178,7 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
           <Kpi
             label="BV in progress"
             value={<CountUpPct value={topline.pctProg} />}
-            sub={`${fmtEurShort(topline.liveVerifiedBv + topline.inProgressBv)} of ${fmtEurShort(topline.eligibleBv)}`}
+            sub={`${fmtEurShort(topline.inProgressBv)} of ${fmtEurShort(topline.eligibleBv)}`}
           />
           <Kpi
             label="ARR live / verified"

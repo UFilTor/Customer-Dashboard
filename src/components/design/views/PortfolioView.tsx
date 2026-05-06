@@ -1490,8 +1490,8 @@ function refineActiveCount(r: PortfolioRefineState): number {
 
 const STAGE_OPTIONS: PortfolioRow["stage"][] = [
   "Onboarding",
-  "Started",
   "Adopted",
+  "Started",
   "Ramp Up",
   "Established",
 ];
@@ -1582,6 +1582,8 @@ function StageMultiSelect({
       {open && popPos && typeof document !== "undefined" && createPortal(
         <div
           ref={popRef}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             position: "fixed",
             top: popPos.top,

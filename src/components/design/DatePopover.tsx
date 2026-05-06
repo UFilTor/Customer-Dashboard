@@ -154,6 +154,14 @@ export function DatePopover({ value, onChange, ariaLabel, placeholder = "yyyy-mm
       {open && popPos && typeof document !== "undefined" && createPortal(
         <div
           ref={popRef}
+          // The popup is portaled to document.body, so any ancestor's
+          // outside-close listener (e.g. RefinePill's useOutsideClose,
+          // which fires on pointerdown) would treat clicks here as
+          // "outside" and unmount the popover before the day button's
+          // onClick fires. Halt pointerdown + mousedown bubbling so the
+          // click can complete.
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             position: "fixed",
             top: popPos.top,
@@ -312,6 +320,10 @@ const navBtnStyle: CSSProperties = {
   fontSize: 14,
   lineHeight: 1,
   cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 0,
 };
 
 const linkBtnStyle: CSSProperties = {

@@ -80,9 +80,13 @@ const RETENTION_PIPELINE = "1072518362";
 const BRIEF_PIPELINES = [LIFECYCLE_PIPELINE, RETENTION_PIPELINE];
 const SALES_PIPELINE = "81267902";
 
-// customer_stage values that count as "still being onboarded".
+// customer_stage *internal values* that count as "still being onboarded".
+// HubSpot's enum stores values that differ from the labels shown in the UI:
+//   internal "Adoption" displays as "Adopted"; internal "Live" displays as
+//   "Started". Use the internal values here because this list is sent to
+//   HubSpot's search API as a filter — labels would never match.
 // Ramp Up + Established are owned by the Retention dashboard, not this one.
-export const ONBOARDING_STAGES = ["Onboarding", "Adopted", "Started"];
+export const ONBOARDING_STAGES = ["Onboarding", "Adoption", "Live"];
 
 export const EXPECTED_DAYS: Record<OnboardingStep, number> = {
   Adopted: 14,
@@ -105,8 +109,9 @@ export function classifyStep(
     }
   }
   if (customerLiveDate) return "Started";
-  if (stage === "Started") return "Started";
-  if (stage === "Adopted" || stage === "Onboarding") return "Adopted";
+  // Compare against HubSpot internal values (Live=Started, Adoption=Adopted).
+  if (stage === "Live" || stage === "Started") return "Started";
+  if (stage === "Adoption" || stage === "Adopted" || stage === "Onboarding") return "Adopted";
   return "Other";
 }
 

@@ -54,17 +54,32 @@ export function classifyPortfolioStage(
   // and should not be lumped under "Onboarding" just because HubSpot hasn't
   // moved it across pipelines yet. (Pre-2026-05 we hard-coded Lifecycle →
   // Onboarding; that hid Started/Adopted/Ramp-Up deals from those filters.)
-  switch (customerStage) {
-    case "Onboarding": return "Onboarding";
-    case "Adopted": return "Adopted";
-    case "Started": return "Started";
-    case "Ramp Up": return "Ramp Up";
-    case "Established": return "Established";
+  //
+  // HubSpot's customer_stage enum returns internal *values* that don't match
+  // the *labels* shown in the HubSpot UI. The mapping is asymmetric:
+  //   internal value  →  UI label  →  Portfolio bucket
+  //   "Onboarding"       Onboarding    Onboarding
+  //   "Adoption"         Adopted       Adopted
+  //   "Live"             Started       Started
+  //   "Ramp Up"          Ramp Up       Ramp Up
+  //   "Established"      Established   Established
+  // The trim/lowercase/whitespace normalization absorbs minor data hygiene
+  // issues without losing this label↔value mapping. Verified against the
+  // HubSpot property definition on 2026-05-06.
+  const norm = (customerStage || "").trim().toLowerCase().replace(/[\s-_]+/g, " ");
+  switch (norm) {
+    case "onboarding": return "Onboarding";
+    case "adoption": return "Adopted";
+    case "adopted":   return "Adopted";
+    case "live":      return "Started";
+    case "started":   return "Started";
+    case "ramp up":   return "Ramp Up";
+    case "established": return "Established";
   }
 
   // Overlay states. Try to recover the underlying stage from substage; if
   // we can't, fall back conservatively (account stays visible to CS).
-  if (customerStage === "Hibernation" || customerStage === "Product Hold") {
+  if (norm === "hibernation" || norm === "product hold") {
     const substageLower = (customerSubstage ?? "").toLowerCase();
     if (substageLower.includes("established")) return "Established";
     if (substageLower.includes("ramp")) return "Ramp Up";
@@ -310,6 +325,29 @@ function computeDealStatus(
   return null;
 }
 
+// HubSpot DATE properties can come through the search API as either an
+// ISO yyyy-mm-dd string or a millisecond-since-epoch numeric string,
+// depending on how the property was indexed. Normalize to yyyy-mm-dd so
+// downstream string comparisons (Refine adoption-date range filter) are
+// honest. Returns null when the input doesn't parse.
+function toIsoDateOnly(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+  const n = Number(trimmed);
+  if (Number.isFinite(n) && n > 0) {
+    const d = new Date(n);
+    if (!isNaN(d.getTime())) {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const dd = String(d.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${dd}`;
+    }
+  }
+  return null;
+}
+
 function daysBetween(now: string, then: string | null): number | null {
   if (!then) return null;
   const t = new Date(then).getTime();
@@ -466,7 +504,10 @@ const PORTFOLIO_DEAL_PROPS = [
   "hs_lastmodifieddate",
   "amount_in_home_currency",
   "understory_pay_status__customer",
-  "estimated_adoption_date",
+  // HubSpot internal name is `deal_live_date`; the property's label in
+  // HubSpot is "Estimated Adoption Date" (don't get tripped up by the
+  // mismatch — they're the same field).
+  "deal_live_date",
   // Deal-state windows. When today falls inside the [start, end] range we
   // surface a secondary status tag and (by default) hide the row from
   // Portfolio. Property names are best-guess snake_case from the labels;
@@ -760,7 +801,7 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
         daysInStep,
         expectedDaysInStep,
         payStatus: dealProps.understory_pay_status__customer || null,
-        estimatedAdoptionDate: dealProps.estimated_adoption_date || null,
+        estimatedAdoptionDate: toIsoDateOnly(dealProps.deal_live_date),
         hibernationStart: dealProps.hibernation_start_date || null,
         hibernationEnd: dealProps.hibernation_end_date || null,
         productHoldStart: dealProps.product_hold_start_date || null,

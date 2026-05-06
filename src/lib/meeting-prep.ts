@@ -23,6 +23,7 @@ import {
   pickSalesFallback,
   type ContactInfo,
 } from "./onboarding";
+import { hasUnpaidInvoice, unpaidAmountLocal, unpaidInvoiceCount } from "./invoice-fields";
 import { computeWatchOutSignals } from "./signals";
 import { classifyPortfolioStage } from "./portfolio";
 import type {
@@ -66,11 +67,11 @@ export function extractInvoiceState(
   props: Record<string, string>,
   nowIso: string
 ): RetentionInvoiceState {
-  const open = parseInt(props.number_of_open_invoices || "0", 10) || 0;
-  const unpaid = props.unpaid_invoice === "true";
-  const dueIso = props.invoice_due_date || "";
-  const outstandingRaw = parseFloat(props.outstanding_amount || "0") || 0;
-  const currency = props.deal_currency_code;
+  const open = unpaidInvoiceCount(props);
+  const unpaid = hasUnpaidInvoice(props);
+  const dueIso = props.understory_earliest_unpaid_invoice_due_date || "";
+  const outstandingRaw = unpaidAmountLocal(props);
+  const currency = props.currency;
 
   let overdue = 0;
   let overdueDays: number | null = null;
@@ -131,7 +132,7 @@ const LIFECYCLE_DEAL_PROPS = [
   "createdate",
   "customer_live_date",
   "customer_live",
-  "deal_currency_code",
+  "currency",
   "subscription_plan",
   "hubspot_owner_id",
   "self_onboarding",
@@ -156,10 +157,11 @@ const LIFECYCLE_DEAL_PROPS = [
   "wish_to_churn",
   "churn_reason",
   // Invoice
-  "number_of_open_invoices",
-  "unpaid_invoice",
-  "invoice_due_date",
-  "outstanding_amount",
+  "understory_earliest_unpaid_invoice_created_date",
+  "understory_earliest_unpaid_invoice_due_date",
+  "understory_number_of_unpaid_invoices",
+  "understory_unpaid_amount_local_currency",
+  "payment_method",
 ];
 
 const RETENTION_DEAL_PROPS = [
@@ -170,7 +172,7 @@ const RETENTION_DEAL_PROPS = [
   "customer_substage",
   "createdate",
   "customer_live_date",
-  "deal_currency_code",
+  "currency",
   "subscription_plan",
   "hubspot_owner_id",
   // Commercial
@@ -180,10 +182,11 @@ const RETENTION_DEAL_PROPS = [
   "amount_in_home_currency",
   "test_billing_start_date",
   // Invoice
-  "number_of_open_invoices",
-  "unpaid_invoice",
-  "invoice_due_date",
-  "outstanding_amount",
+  "understory_earliest_unpaid_invoice_created_date",
+  "understory_earliest_unpaid_invoice_due_date",
+  "understory_number_of_unpaid_invoices",
+  "understory_unpaid_amount_local_currency",
+  "payment_method",
   // Watch-outs
   "wish_to_churn",
   "churn_reason",
@@ -562,10 +565,10 @@ function buildMeetingPrepDeal(
   // currency on lifecycle is often EUR regardless of the actual deal currency).
   // For retention deals we use the deal's own currency.
   let feeAmount: string | undefined = dp.core_net_price__local_currency;
-  let feeCurrency: string | undefined = dp.deal_currency_code;
+  let feeCurrency: string | undefined = dp.currency;
   if (isLifecycle && salesFallback?.isPriced) {
     feeAmount = salesFallback.deal.properties.core_net_price__local_currency;
-    feeCurrency = salesFallback.deal.properties.deal_currency_code;
+    feeCurrency = salesFallback.deal.properties.currency;
   }
 
   // First billing — lifecycle uses test_billing_start_date with sales fallback;
@@ -659,8 +662,8 @@ function buildMeetingPrepDeal(
 
   const watchOuts: WatchOutSignal[] = computeWatchOutSignals({
     nowIso,
-    unpaidInvoice: dp.unpaid_invoice === "true",
-    invoiceDueDate: dp.invoice_due_date || null,
+    unpaidInvoice: hasUnpaidInvoice(dp),
+    invoiceDueDate: dp.understory_earliest_unpaid_invoice_due_date || null,
     outstandingEur: invoices.outstandingEur,
     overdueDays: invoices.overdueDays,
     wishToChurn: dp.wish_to_churn === "true",

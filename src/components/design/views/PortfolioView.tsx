@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import type { PortfolioRefineState, PortfolioRow, PortfolioSignalKey, PortfolioSortKey } from "@/lib/types";
 import { PORTFOLIO_SIGNALS, PORTFOLIO_SIGNAL_MAP, PORTFOLIO_SIGNAL_ORDER } from "@/lib/signals";
@@ -9,6 +10,7 @@ import { signalStyle, pillText, calmCopy } from "@/lib/signal-display";
 import { OWNER_MAP } from "@/lib/owners";
 import { Avatar } from "../Avatar";
 import { DashboardBanner } from "../DashboardBanner";
+import { DatePopover } from "../DatePopover";
 import { EditorialEmpty } from "../EditorialEmpty";
 
 interface Props {
@@ -1475,12 +1477,185 @@ function refineActiveCount(r: PortfolioRefineState): number {
   if (r.acvMax != null) n++;
   if (r.daysInStageMin != null) n++;
   if (r.daysInStageMax != null) n++;
+  if (r.stages && r.stages.length > 0) n++;
+  if (r.adoptionAfter) n++;
+  if (r.adoptionBefore) n++;
   if (r.goneQuietMinDays != null) n++;
   if (r.healthMaxScore != null) n++;
   if (r.stuckMinDaysPast != null) n++;
   if (r.overdueMinDays != null) n++;
   if (r.volumeMinDropPct != null) n++;
   return n;
+}
+
+const STAGE_OPTIONS: PortfolioRow["stage"][] = [
+  "Onboarding",
+  "Started",
+  "Adopted",
+  "Ramp Up",
+  "Established",
+];
+
+function StageMultiSelect({
+  selected,
+  onToggle,
+  onClear,
+}: {
+  selected: PortfolioRow["stage"][];
+  onToggle: (stage: PortfolioRow["stage"]) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const [popPos, setPopPos] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  // Portal-aware outside-close: useOutsideClose only checks the trigger
+  // wrapper, but our popover lives in document.body via createPortal, so we
+  // need a manual listener that allows clicks inside either node.
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      const target = e.target as Node;
+      if (wrapRef.current?.contains(target)) return;
+      if (popRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function place() {
+      const t = triggerRef.current;
+      if (!t) return;
+      const r = t.getBoundingClientRect();
+      setPopPos({ top: r.bottom + 6, left: r.left, width: r.width });
+    }
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open]);
+
+  const label =
+    selected.length === 0
+      ? "All stages"
+      : selected.length === 1
+      ? selected[0]
+      : selected.length === STAGE_OPTIONS.length
+      ? "All stages"
+      : `${selected.length} selected`;
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          width: "100%",
+          padding: "6px 12px",
+          borderRadius: 8,
+          border: `1px solid ${selected.length > 0 ? "var(--moss)" : "var(--hairline-strong)"}`,
+          background: "var(--card-bg)",
+          color: "var(--moss)",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          textAlign: "left",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {label}
+        </span>
+        <Caret open={open} />
+      </button>
+      {open && popPos && typeof document !== "undefined" && createPortal(
+        <div
+          ref={popRef}
+          style={{
+            position: "fixed",
+            top: popPos.top,
+            left: popPos.left,
+            width: popPos.width,
+            zIndex: 60,
+            background: "var(--card-bg)",
+            border: "1px solid var(--hairline)",
+            borderRadius: 12,
+            boxShadow: "0 8px 28px rgba(2,44,18,0.14)",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: 6 }}>
+            {STAGE_OPTIONS.map((stage) => {
+              const on = selected.includes(stage);
+              return (
+                <button
+                  key={stage}
+                  onClick={() => onToggle(stage)}
+                  className={`pf-pop-row${on ? " selected" : ""}`}
+                  style={{ width: "100%" }}
+                >
+                  <span className={`pf-checkbox${on ? " on" : ""}`}>
+                    {on && (
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path
+                          d="M3 6.5L5 8.5L9 4"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </span>
+                  <span style={{ flex: 1 }}>{stage}</span>
+                </button>
+              );
+            })}
+          </div>
+          {selected.length > 0 && (
+            <div
+              style={{
+                borderTop: "1px solid var(--hairline)",
+                padding: "6px 12px",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                onClick={() => {
+                  onClear();
+                  setOpen(false);
+                }}
+                style={{
+                  background: "transparent",
+                  border: 0,
+                  color: "var(--moss)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: "2px 4px",
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
 }
 
 function RefinePill({
@@ -1647,6 +1822,41 @@ function RefinePill({
               onMax={(v) => update("daysInStageMax", v)}
             />
 
+            <div>
+              <div style={{ ...eyebrowStyle, marginBottom: 6 }}>Stage</div>
+              <StageMultiSelect
+                selected={refine.stages ?? []}
+                onToggle={(stage) => {
+                  const current = refine.stages ?? [];
+                  const on = current.includes(stage);
+                  const next = on
+                    ? current.filter((s) => s !== stage)
+                    : [...current, stage];
+                  update("stages", next.length > 0 ? next : undefined);
+                }}
+                onClear={() => update("stages", undefined)}
+              />
+            </div>
+
+            <div>
+              <div style={{ ...eyebrowStyle, marginBottom: 6 }}>Estimated adoption date</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <DatePopover
+                  value={refine.adoptionBefore}
+                  onChange={(v) => update("adoptionBefore", v)}
+                  ariaLabel="On or before"
+                  placeholder="Before"
+                />
+                <span style={{ color: "var(--green-100)", fontSize: 12 }}>to</span>
+                <DatePopover
+                  value={refine.adoptionAfter}
+                  onChange={(v) => update("adoptionAfter", v)}
+                  ariaLabel="On or after"
+                  placeholder="After"
+                />
+              </div>
+            </div>
+
             {selectedSignals.length > 0 && (
               <div
                 style={{
@@ -1717,6 +1927,11 @@ const refineInputStyle: CSSProperties = {
   color: "var(--moss)",
   fontSize: 12,
   fontVariantNumeric: "tabular-nums",
+  // accent-color paints the selected day in the native date picker. Brand
+  // green keeps it consistent with the rest of the dashboard chrome.
+  accentColor: "var(--moss)",
+  colorScheme: "light",
+  fontFamily: "var(--font-inter, Inter, system-ui)",
 };
 
 function RefineRangeRow({

@@ -753,6 +753,12 @@ export interface PortfolioRow {
   volumeDropPct: number | null;
   prior3mVolume: number | null;
   wishToChurnAt: string | null;
+  /**
+   * Lifecycle deal's "Estimated Adoption Date" property (ISO yyyy-mm-dd or
+   * null). Surfaced as an optional Refine column/subtitle and a Refine
+   * range filter (before / after / both).
+   */
+  estimatedAdoptionDate: string | null;
 }
 
 export interface PortfolioResponse {
@@ -791,6 +797,11 @@ export interface PortfolioRefineState {
   acvMax?: number;
   daysInStageMin?: number;
   daysInStageMax?: number;
+  /** Whitelist of stages to keep. Empty / unset means "all stages". */
+  stages?: PortfolioStage[];
+  /** Estimated Adoption Date range — ISO yyyy-mm-dd. Either bound is optional. */
+  adoptionAfter?: string;
+  adoptionBefore?: string;
   goneQuietMinDays?: number;
   healthMaxScore?: number;
   stuckMinDaysPast?: number;

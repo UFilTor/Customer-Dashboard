@@ -1,5 +1,6 @@
 import { Cache } from "./cache";
 import { TO_EUR } from "./attention";
+import { dealCurrency, hasUnpaidInvoice, unpaidAmountLocal, unpaidInvoiceCount } from "./invoice-fields";
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { searchObjectsPage } from "./hubspot-search";
 import { fetchOwnerNames } from "./onboarding";
@@ -47,11 +48,14 @@ export function classifyPortfolioStage(
   pipelineId: string,
   customerSubstage: string | null = null
 ): PortfolioStage {
-  // Lifecycle = Onboarding, regardless of customer_stage.
-  if (pipelineId === LIFECYCLE_PIPELINE_ID) return "Onboarding";
-
-  // Retention pipeline: customer_stage drives the progression.
+  // customer_stage is the canonical taxonomy. When it's set to a known
+  // stage, trust it regardless of pipeline — a Lifecycle-pipeline deal with
+  // customer_stage="Started" is genuinely past the early-onboarding phase
+  // and should not be lumped under "Onboarding" just because HubSpot hasn't
+  // moved it across pipelines yet. (Pre-2026-05 we hard-coded Lifecycle →
+  // Onboarding; that hid Started/Adopted/Ramp-Up deals from those filters.)
   switch (customerStage) {
+    case "Onboarding": return "Onboarding";
     case "Adopted": return "Adopted";
     case "Started": return "Started";
     case "Ramp Up": return "Ramp Up";
@@ -59,20 +63,19 @@ export function classifyPortfolioStage(
   }
 
   // Overlay states. Try to recover the underlying stage from substage; if
-  // we can't, fall back to "Adopted" — the entry point of Retention. This
-  // is conservative (account stays visible to CS) without claiming the
-  // company is fully Established.
+  // we can't, fall back conservatively (account stays visible to CS).
   if (customerStage === "Hibernation" || customerStage === "Product Hold") {
     const substageLower = (customerSubstage ?? "").toLowerCase();
     if (substageLower.includes("established")) return "Established";
     if (substageLower.includes("ramp")) return "Ramp Up";
     if (substageLower.includes("started")) return "Started";
-    return "Adopted";
+    if (substageLower.includes("adopted")) return "Adopted";
+    return pipelineId === LIFECYCLE_PIPELINE_ID ? "Onboarding" : "Adopted";
   }
 
-  // Empty / unrecognised customer_stage on a Retention deal. Default to
-  // Adopted (the pipeline's entry point) rather than Established (the
-  // bottom). Same reasoning as the overlay fallback.
+  // Empty / unrecognised customer_stage. Pipeline gives us a fallback —
+  // Lifecycle starts at Onboarding, Retention starts at Adopted.
+  if (pipelineId === LIFECYCLE_PIPELINE_ID) return "Onboarding";
   return "Adopted";
 }
 
@@ -265,6 +268,7 @@ interface BuildRowInput {
     daysInStep: number | null;
     expectedDaysInStep: number | null;
     payStatus: string | null;
+    estimatedAdoptionDate: string | null;
     hibernationStart: string | null;
     hibernationEnd: string | null;
     productHoldStart: string | null;
@@ -402,6 +406,7 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     volumeDropPct,
     prior3mVolume: Math.max(0, input.company.volume6m - input.company.volume3m) || null,
     wishToChurnAt: input.deal.wishToChurnAt,
+    estimatedAdoptionDate: input.deal.estimatedAdoptionDate,
   };
 }
 
@@ -435,10 +440,11 @@ const PORTFOLIO_DEAL_PROPS = [
   "customer_substage",
   "customer_live_date",
   "hs_v2_date_entered_current_stage",
-  "unpaid_invoice",
-  "invoice_due_date",
-  "outstanding_amount",
-  "number_of_open_invoices",
+  "understory_earliest_unpaid_invoice_created_date",
+  "understory_earliest_unpaid_invoice_due_date",
+  "understory_number_of_unpaid_invoices",
+  "understory_unpaid_amount_local_currency",
+  "payment_method",
   "wish_to_churn",
   "churn_reason",
   "churn_date",
@@ -454,12 +460,13 @@ const PORTFOLIO_DEAL_PROPS = [
   // surfaces deals that are still actionable.
   "hs_is_closed",
   "confirmed__contract_mrr",
-  "deal_currency_code",
+  "currency",
   "booking_fee",
   "confirmed_booking_fee",
   "hs_lastmodifieddate",
   "amount_in_home_currency",
   "understory_pay_status__customer",
+  "estimated_adoption_date",
   // Deal-state windows. When today falls inside the [start, end] range we
   // surface a secondary status tag and (by default) hide the row from
   // Portfolio. Property names are best-guess snake_case from the labels;
@@ -664,12 +671,12 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
     const upcomingRaw = parseFloat(props.understory_health_score_upcoming_events || "");
     const upcomingEvents = isNaN(upcomingRaw) ? null : upcomingRaw;
 
-    const unpaidInvoice = dealProps.unpaid_invoice === "true";
-    const invoiceDueDate = dealProps.invoice_due_date || null;
+    const unpaidInvoice = hasUnpaidInvoice(dealProps);
+    const invoiceDueDate = dealProps.understory_earliest_unpaid_invoice_due_date || null;
 
-    const outstandingNum = parseFloat(dealProps.outstanding_amount || "");
-    const rate = TO_EUR[(dealProps.deal_currency_code || "EUR").toUpperCase()] ?? 1;
-    const outstandingEur = !isNaN(outstandingNum) && outstandingNum > 0
+    const outstandingNum = unpaidAmountLocal(dealProps);
+    const rate = TO_EUR[dealCurrency(dealProps)] ?? 1;
+    const outstandingEur = outstandingNum > 0
       ? Math.round(outstandingNum * rate)
       : null;
 
@@ -688,8 +695,8 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
       }
     }
 
-    const openInvoiceCountRaw = parseInt(dealProps.number_of_open_invoices || "");
-    const openInvoiceCount = !isNaN(openInvoiceCountRaw) && openInvoiceCountRaw > 0
+    const openInvoiceCountRaw = unpaidInvoiceCount(dealProps);
+    const openInvoiceCount = openInvoiceCountRaw > 0
       ? openInvoiceCountRaw
       : null;
 
@@ -753,6 +760,7 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
         daysInStep,
         expectedDaysInStep,
         payStatus: dealProps.understory_pay_status__customer || null,
+        estimatedAdoptionDate: dealProps.estimated_adoption_date || null,
         hibernationStart: dealProps.hibernation_start_date || null,
         hibernationEnd: dealProps.hibernation_end_date || null,
         productHoldStart: dealProps.product_hold_start_date || null,

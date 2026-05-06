@@ -73,7 +73,7 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
                 headers: headers(),
                 body: JSON.stringify({
                   inputs: dealIds.map((id) => ({ id })),
-                  properties: ["confirmed__contract_mrr", "deal_currency_code", "booking_fee", "confirmed_booking_fee", "pipeline"],
+                  properties: ["confirmed__contract_mrr", "currency", "booking_fee", "confirmed_booking_fee", "pipeline"],
                 }),
               });
               if (batchRes.ok) {
@@ -88,7 +88,7 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
                     bookingVolume,
                     lifecycleDeal.properties.booking_fee || lifecycleDeal.properties.confirmed_booking_fee,
                     lifecycleDeal.properties.confirmed__contract_mrr,
-                    lifecycleDeal.properties.deal_currency_code,
+                    lifecycleDeal.properties.currency,
                     r.properties["createdate"]
                   );
                 }
@@ -182,8 +182,10 @@ const COMPANY_PROPERTIES = [
 const DEAL_PROPERTIES = [
   "hs_object_id",
   "dealname", "dealstage", "confirmed__contract_mrr",
-  "booking_fee", "confirmed_booking_fee", "understory_pay_status__customer", "unpaid_invoice",
-  "pipeline", "deal_currency_code", "Storefront link",
+  "booking_fee", "confirmed_booking_fee", "understory_pay_status__customer",
+  "understory_earliest_unpaid_invoice_due_date", "understory_number_of_unpaid_invoices",
+  "understory_unpaid_amount_local_currency", "payment_method",
+  "pipeline", "currency", "Storefront link",
   "share_of_transactions_via_understory_pay",
   "enable_understory_pay",
   "wish_to_churn", "churn_reason", "churned_reason_elaborated", "churn_date", "customer_stage",

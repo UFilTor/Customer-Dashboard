@@ -39,7 +39,7 @@ const ENTITY_FIELDS: Record<SearchEntityType, Set<string>> = {
     "createdate",
     "amount",
     "amount_in_home_currency",
-    "deal_currency_code",
+    "currency",
     "confirmed__contract_mrr",
     "confirmed_booking_fee",
     "booking_fee",
@@ -59,12 +59,14 @@ const ENTITY_FIELDS: Record<SearchEntityType, Set<string>> = {
     "product_hold_note",
     "hs_next_step",
     // Invoice + step-tracking fields. Mirrors search-llm.ts.
-    "unpaid_invoice",
-    "invoice_due_date",
-    "outstanding_amount",
-    // Pseudo-field handled post-fetch, see executeTarget below.
+    "understory_earliest_unpaid_invoice_created_date",
+    "understory_earliest_unpaid_invoice_due_date",
+    "understory_number_of_unpaid_invoices",
+    "understory_unpaid_amount_local_currency",
+    "payment_method",
+    // Pseudo-field handled post-fetch, see executeTarget below. Computed
+    // from `understory_unpaid_amount_local_currency` × FX rate (currency).
     "outstanding_amount_eur",
-    "number_of_open_invoices",
     "hs_v2_date_entered_current_stage",
   ]),
   company: new Set([
@@ -138,7 +140,7 @@ const HUBSPOT_OBJECT_PATH: Record<SearchEntityType, string> = {
 // these small — search results are bulk and a wide property fan-out doubles
 // payload size.
 const SEARCH_RETURN_PROPS: Record<SearchEntityType, string[]> = {
-  // outstanding_amount + deal_currency_code are returned even when not
+  // outstanding_amount + currency are returned even when not
   // filtered on, because the post-fetch EUR conversion (see PSEUDO_FIELDS)
   // needs both. Adds ~30 bytes per deal payload, no perceivable cost.
   deal: [
@@ -146,8 +148,8 @@ const SEARCH_RETURN_PROPS: Record<SearchEntityType, string[]> = {
     "dealstage",
     "hubspot_owner_id",
     "createdate",
-    "outstanding_amount",
-    "deal_currency_code",
+    "understory_unpaid_amount_local_currency",
+    "currency",
   ],
   company: ["name", "domain", "hubspot_owner_id", "health_score"],
   note: ["hs_note_body", "hs_timestamp", "hubspot_owner_id"],
@@ -358,9 +360,9 @@ function matchesPseudoFilter(
   props: Record<string, string>
 ): boolean {
   if (f.propertyName === "outstanding_amount_eur") {
-    const raw = parseFloat(props.outstanding_amount || "0");
+    const raw = parseFloat(props.understory_unpaid_amount_local_currency || "0");
     if (!Number.isFinite(raw) || raw <= 0) return false;
-    const ccy = (props.deal_currency_code || "EUR").toUpperCase();
+    const ccy = (props.currency || "EUR").toUpperCase();
     const rate = TO_EUR[ccy] ?? 1;
     const eur = raw * rate;
     const target = parseFloat(f.value);

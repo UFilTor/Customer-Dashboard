@@ -1,4 +1,10 @@
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
+import {
+  dealCurrency,
+  hasUnpaidInvoice,
+  unpaidAmountLocal,
+  unpaidInvoiceCount,
+} from "./invoice-fields";
 import { computeWatchOutSignals } from "./signals";
 import type {
   OnboardingCommercial,
@@ -42,11 +48,11 @@ function extractInvoiceStateLocal(
   props: Record<string, string>,
   nowIso: string
 ): RetentionInvoiceState {
-  const open = parseInt(props.number_of_open_invoices || "0", 10) || 0;
-  const unpaid = props.unpaid_invoice === "true";
-  const dueIso = props.invoice_due_date || "";
-  const outstandingRaw = parseFloat(props.outstanding_amount || "0") || 0;
-  const currency = (props.deal_currency_code || "EUR").toUpperCase();
+  const open = unpaidInvoiceCount(props);
+  const unpaid = hasUnpaidInvoice(props);
+  const dueIso = props.understory_earliest_unpaid_invoice_due_date || "";
+  const outstandingRaw = unpaidAmountLocal(props);
+  const currency = dealCurrency(props);
   const rate = ONBOARDING_TO_EUR[currency] ?? 1;
 
   let overdue = 0;
@@ -207,7 +213,7 @@ const LIFECYCLE_DEAL_PROPS = [
   "createdate",
   "customer_live_date",
   "customer_live",
-  "deal_currency_code",
+  "currency",
   "subscription_plan",
   "hubspot_owner_id",
   "self_onboarding",
@@ -231,18 +237,19 @@ const LIFECYCLE_DEAL_PROPS = [
   "notes_last_contacted",
   "wish_to_churn",
   "churn_reason",
-  // Invoice (Retention backport)
-  "number_of_open_invoices",
-  "unpaid_invoice",
-  "invoice_due_date",
-  "outstanding_amount",
+  // Invoice (Retention backport) — post-2026-05 unpaid-invoice rollups
+  "understory_earliest_unpaid_invoice_created_date",
+  "understory_earliest_unpaid_invoice_due_date",
+  "understory_number_of_unpaid_invoices",
+  "understory_unpaid_amount_local_currency",
+  "payment_method",
 ];
 
 const SALES_DEAL_PROPS = [
   "dealname",
   "pipeline",
   "createdate",
-  "deal_currency_code",
+  "currency",
   "core_net_price__local_currency",
   "test_billing_start_date",
   "hubspot_owner_id",
@@ -1104,12 +1111,12 @@ export async function buildOnboardingPayload(
     // actual deal currency. Fall back to the lifecycle deal only when no priced
     // sales deal exists.
     let feeAmount: string | undefined = p.core_net_price__local_currency;
-    let feeCurrency: string | undefined = p.deal_currency_code;
+    let feeCurrency: string | undefined = p.currency;
     if (company) {
       const priced = pickSalesFallback(salesDealsByCompany.get(company.companyId) ?? []);
       if (priced?.isPriced) {
         feeAmount = priced.deal.properties.core_net_price__local_currency;
-        feeCurrency = priced.deal.properties.deal_currency_code;
+        feeCurrency = priced.deal.properties.currency;
       }
     }
 
@@ -1167,8 +1174,8 @@ export async function buildOnboardingPayload(
     const expectedDaysInStep = EXPECTED_DAYS[step] ?? 30;
     const watchOuts = computeWatchOutSignals({
       nowIso: nowIsoForDeal,
-      unpaidInvoice: p.unpaid_invoice === "true",
-      invoiceDueDate: p.invoice_due_date || null,
+      unpaidInvoice: hasUnpaidInvoice(p),
+      invoiceDueDate: p.understory_earliest_unpaid_invoice_due_date || null,
       outstandingEur: invoices.outstandingEur,
       overdueDays: invoices.overdueDays,
       wishToChurn: p.wish_to_churn === "true",
@@ -1503,7 +1510,7 @@ export async function buildOnboardingPayload(
             payStatus: dp ? nullable(dp.understory_pay_status__customer) : null,
           },
           commercial: {
-            monthlyFee: dp ? formatMonthlyFee(dp.core_net_price__local_currency, dp.deal_currency_code) : null,
+            monthlyFee: dp ? formatMonthlyFee(dp.core_net_price__local_currency, dp.currency) : null,
             acv: dp ? formatAcv(dp.amount_in_home_currency) : null,
             bookingFee: dp ? formatBookingFee(dp.booking_fee, dp.confirmed_booking_fee) : null,
             firstBilling: dp ? formatFirstBilling(dp.test_billing_start_date) : null,

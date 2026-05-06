@@ -84,7 +84,7 @@ export async function generateRecap(
     deal ? `Deal: ${deal.dealname || "Unknown"} (Stage: ${dealStage})` : "No active deal",
     deal?.booking_fee ? `Booking fee: ${(parseFloat(deal.booking_fee) * 100).toFixed(2).replace(/\.?0+$/, "")}%` : "",
     deal?.understory_pay_status__customer ? `Understory Pay: ${deal.understory_pay_status__customer}` : "",
-    deal?.unpaid_invoice === "true" ? "Invoice: Overdue" : "",
+    (parseInt(deal?.understory_number_of_unpaid_invoices || "0", 10) || 0) > 0 ? "Invoice: Unpaid" : "",
   ].filter(Boolean).join("\n");
 
   try {

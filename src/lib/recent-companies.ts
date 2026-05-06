@@ -13,7 +13,7 @@ export function computeRevenueFromDetail(
   const fee = parseFloat(deal?.booking_fee || deal?.confirmed_booking_fee || "0") || 0;
   const mrr = parseFloat(deal?.confirmed__contract_mrr || "0") || 0;
   if (volume === 0 && mrr === 0) return undefined;
-  const currency = (deal?.deal_currency_code || "EUR").toUpperCase();
+  const currency = (deal?.currency || "EUR").toUpperCase();
   const mrrRate = TO_EUR[currency] ?? 1;
   const createTime = company.createdate ? new Date(company.createdate).getTime() : 0;
   const monthsAsCustomer = createTime > 0

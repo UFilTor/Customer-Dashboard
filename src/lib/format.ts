@@ -25,11 +25,12 @@ export function formatValue(
   format: FormatType,
   currencyCode?: string
 ): string {
-  // Handle invoice status before the null check - null means no open invoices
+  // Handle invoice status before the null check. Now driven by the unpaid-
+  // invoice count: 0 / null → "Up to date", N>0 → "N unpaid".
   if (format === "invoiceStatus") {
-    if (!value || value === "false" || value === "-" || value === "null") return "Up to date";
-    if (value === "true") return "Overdue";
-    return value;
+    const n = parseInt(value || "0", 10);
+    if (!Number.isFinite(n) || n <= 0) return "Up to date";
+    return `${n} unpaid`;
   }
 
   if (value === null || value === undefined || value === "") return "-";

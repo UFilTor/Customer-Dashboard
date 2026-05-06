@@ -5,7 +5,7 @@ export const dashboardConfig: DashboardConfig = {
     { label: "Booking Volume 12M", property: "understory_booking_volume_12m", source: "company", format: "currency" },
     { label: "Revenue last year", property: "understory_total_platform_fee_cents_received", source: "company", format: "revenue12m" },
     { label: "Understory Pay", property: "understory_pay_status__customer", source: "deal", format: "text" },
-    { label: "Invoice", property: "unpaid_invoice", source: "deal", format: "invoiceStatus" },
+    { label: "Invoice", property: "understory_number_of_unpaid_invoices", source: "deal", format: "invoiceStatus" },
     { label: "Health Score", property: "health_score", source: "company", format: "text" },
   ],
   tabs: {
@@ -23,7 +23,7 @@ export const dashboardConfig: DashboardConfig = {
         { label: "Monthly Fee", property: "confirmed__contract_mrr", format: "currency" },
         { label: "Booking fee", property: "confirmed_booking_fee", format: "percentage" },
         { label: "Understory Pay", property: "understory_pay_status__customer", format: "text" },
-        { label: "Invoice status", property: "unpaid_invoice", format: "invoiceStatus" },
+        { label: "Invoice status", property: "understory_number_of_unpaid_invoices", format: "invoiceStatus" },
       ],
     },
     activity: {

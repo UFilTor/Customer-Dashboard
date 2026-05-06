@@ -56,7 +56,7 @@ async function fetchDealForCompany(companyId: string): Promise<Record<string, st
       headers: hubspotHeaders(),
       body: JSON.stringify({
         inputs: dealIds.map((id) => ({ id })),
-        properties: ["confirmed__contract_mrr", "deal_currency_code", "pipeline", "booking_fee", "understory_pay_status__customer", "subscription_plan", "dealstage", "amount_in_home_currency"],
+        properties: ["confirmed__contract_mrr", "currency", "pipeline", "booking_fee", "understory_pay_status__customer", "subscription_plan", "dealstage", "amount_in_home_currency"],
       }),
     });
     if (!batchRes.ok) return null;
@@ -109,7 +109,7 @@ function mapChipFields(
     companyProps.understory_booking_volume_12m,
     dealProps?.booking_fee || dealProps?.confirmed_booking_fee,
     dealProps?.confirmed__contract_mrr,
-    dealProps?.deal_currency_code,
+    dealProps?.currency,
     companyProps.createdate
   );
   return {
@@ -134,10 +134,10 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
         filterGroups: pipelineIds.map((pid) => ({
           filters: [
             { propertyName: "pipeline", operator: "EQ", value: pid },
-            { propertyName: "number_of_open_invoices", operator: "GT", value: "0" },
+            { propertyName: "understory_number_of_unpaid_invoices", operator: "GT", value: "0" },
           ],
         })),
-        properties: ["confirmed__contract_mrr", "deal_currency_code", "booking_fee", "outstanding_amount", "invoice_due_date", "number_of_open_invoices", "understory_pay_status__customer", "subscription_plan"],
+        properties: ["confirmed__contract_mrr", "currency", "booking_fee", "understory_unpaid_amount_local_currency", "understory_earliest_unpaid_invoice_due_date", "understory_number_of_unpaid_invoices", "understory_pay_status__customer", "subscription_plan"],
         limit: 100,
       }),
     });
@@ -150,11 +150,11 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
       (d: { id: string; properties: Record<string, string> }) => ({
         id: d.id,
         mrr: d.properties.confirmed__contract_mrr || "",
-        currency: d.properties.deal_currency_code || "EUR",
+        currency: d.properties.currency || "EUR",
         bookingFee: d.properties.booking_fee || "",
-        outstandingAmount: d.properties.outstanding_amount || "",
-        invoiceDueDate: d.properties.invoice_due_date || "",
-        openInvoices: parseInt(d.properties.number_of_open_invoices || "0") || 0,
+        outstandingAmount: d.properties.understory_unpaid_amount_local_currency || "",
+        invoiceDueDate: d.properties.understory_earliest_unpaid_invoice_due_date || "",
+        openInvoices: parseInt(d.properties.understory_number_of_unpaid_invoices || "0") || 0,
         payStatus: d.properties.understory_pay_status__customer || "",
       })
     ) || [];
@@ -185,7 +185,7 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
     }
 
     // Aggregate every open-invoice deal per company. A company is "overdue"
-    // when at least one of its deals is past invoice_due_date; daysOverdue
+    // when at least one of its deals is past understory_earliest_unpaid_invoice_due_date; daysOverdue
     // becomes the oldest of those (max). outstandingLocal sums per currency
     // and is reported only when every deal shares one currency — mixed-
     // currency companies surface only the EUR total.
@@ -300,7 +300,7 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
         const dealProps: Record<string, string> = {};
         if (entry._dealBookingFee) dealProps.booking_fee = entry._dealBookingFee;
         if (entry._dealMrr) dealProps.confirmed__contract_mrr = entry._dealMrr;
-        if (entry._dealCurrency) dealProps.deal_currency_code = entry._dealCurrency;
+        if (entry._dealCurrency) dealProps.currency = entry._dealCurrency;
         if (entry._payStatus) dealProps.understory_pay_status__customer = entry._payStatus;
         const chipFields = mapChipFields(props, Object.keys(dealProps).length > 0 ? dealProps : null);
         Object.assign(entry, chipFields);
@@ -450,7 +450,7 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
             { propertyName: "dealstage", operator: "IN", values: activeStageIds },
           ],
         }],
-        properties: ["dealname", "confirmed__contract_mrr", "deal_currency_code", "booking_fee", "understory_pay_status__customer", "subscription_plan", "pipeline", "amount_in_home_currency"],
+        properties: ["dealname", "confirmed__contract_mrr", "currency", "booking_fee", "understory_pay_status__customer", "subscription_plan", "pipeline", "amount_in_home_currency"],
         limit: 100,
       };
       if (after) body.after = after;
@@ -572,7 +572,7 @@ export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
             { propertyName: "wish_to_churn", operator: "EQ", value: "true" },
           ],
         })),
-        properties: ["dealname", "churn_reason", "churned_reason_elaborated", "churn_date", "customer_stage", "deal_currency_code", "confirmed__contract_mrr", "booking_fee", "understory_pay_status__customer", "subscription_plan"],
+        properties: ["dealname", "churn_reason", "churned_reason_elaborated", "churn_date", "customer_stage", "currency", "confirmed__contract_mrr", "booking_fee", "understory_pay_status__customer", "subscription_plan"],
         limit: 100,
       }),
     });
@@ -612,7 +612,7 @@ export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
                 payStatus: deal.properties.understory_pay_status__customer || "",
                 bookingFee: deal.properties.booking_fee || "",
                 mrr: deal.properties.confirmed__contract_mrr || "",
-                currency: deal.properties.deal_currency_code || "",
+                currency: deal.properties.currency || "",
               }
             } : null;
           } catch { return null; }
@@ -653,8 +653,8 @@ export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
         const dealProps: Record<string, string> = {};
         if (dealEntry._dealBookingFee) dealProps.booking_fee = dealEntry._dealBookingFee;
         if (dealEntry._dealMrr) dealProps.confirmed__contract_mrr = dealEntry._dealMrr;
-        if (dealEntry._dealCurrency) dealProps.deal_currency_code = dealEntry._dealCurrency;
-        const revenue = computeGeneratedRevenue(props.understory_booking_volume_12m, dealProps.booking_fee, dealProps.confirmed__contract_mrr, dealProps.deal_currency_code, props.createdate);
+        if (dealEntry._dealCurrency) dealProps.currency = dealEntry._dealCurrency;
+        const revenue = computeGeneratedRevenue(props.understory_booking_volume_12m, dealProps.booking_fee, dealProps.confirmed__contract_mrr, dealProps.currency, props.createdate);
         entry.mrr = revenue > 0 ? formatRevenue(revenue) : "-";
         const chipFields = mapChipFields(props, Object.keys(dealProps).length > 0 ? dealProps : null);
         Object.assign(entry, chipFields);

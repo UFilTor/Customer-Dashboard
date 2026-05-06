@@ -62,9 +62,9 @@ function payStatusLabel(company: Record<string, string>, deal: Record<string, st
 
 function invoiceLabel(deal: Record<string, string> | null): { label: string; tone?: "good" | "warn" | "bad" } {
   if (!deal) return { label: "Up to date", tone: "good" };
-  const open = parseInt(deal.number_of_open_invoices || "0") || 0;
+  const open = parseInt(deal.understory_number_of_unpaid_invoices || "0") || 0;
   if (open <= 0) return { label: "Up to date", tone: "good" };
-  const due = deal.invoice_due_date;
+  const due = deal.understory_earliest_unpaid_invoice_due_date;
   if (due && due < new Date().toISOString().split("T")[0]) {
     const days = Math.floor((Date.now() - new Date(due).getTime()) / 86400000);
     return { label: `${days}d overdue`, tone: "bad" };
@@ -80,7 +80,7 @@ function generatedRevenueEur(company: Record<string, string>, deal: Record<strin
   const volume = parseFloat(company.understory_booking_volume_12m || "0") || 0;
   const fee = parseFloat(deal?.booking_fee || deal?.confirmed_booking_fee || "0") || 0;
   const mrr = parseFloat(deal?.confirmed__contract_mrr || "0") || 0;
-  const currency = (deal?.deal_currency_code || "EUR").toUpperCase();
+  const currency = (deal?.currency || "EUR").toUpperCase();
   const rate = TO_EUR[currency] ?? 1;
   const created = company.createdate ? new Date(company.createdate).getTime() : 0;
   const months = created > 0

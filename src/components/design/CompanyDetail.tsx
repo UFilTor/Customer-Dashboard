@@ -167,7 +167,7 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
     };
     const signals = computeWatchOutSignals({
       nowIso: new Date().toISOString(),
-      unpaidInvoice: deal?.unpaid_invoice === "true",
+      unpaidInvoice: (parseInt(deal?.understory_number_of_unpaid_invoices || "0", 10) || 0) > 0,
       invoiceDueDate: null,
       outstandingEur: null,
       overdueDays: null,

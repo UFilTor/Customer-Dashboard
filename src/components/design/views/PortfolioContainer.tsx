@@ -236,6 +236,9 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
       if (refine.acvMax != null && r.revenue > refine.acvMax) return false;
       if (refine.daysInStageMin != null && (r.daysInStage ?? 0) < refine.daysInStageMin) return false;
       if (refine.daysInStageMax != null && (r.daysInStage ?? 0) > refine.daysInStageMax) return false;
+      if (refine.stages && refine.stages.length > 0 && !refine.stages.includes(r.stage)) return false;
+      if (refine.adoptionAfter && (!r.estimatedAdoptionDate || r.estimatedAdoptionDate < refine.adoptionAfter)) return false;
+      if (refine.adoptionBefore && (!r.estimatedAdoptionDate || r.estimatedAdoptionDate > refine.adoptionBefore)) return false;
       if (selectedSignals.includes("gone_quiet") && refine.goneQuietMinDays != null) {
         if ((r.daysSilent ?? 0) < refine.goneQuietMinDays) return false;
       }

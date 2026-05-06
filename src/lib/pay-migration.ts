@@ -4,6 +4,7 @@ import { getOwners } from "./hubspot";
 import { OWNERS } from "./owners";
 import type { PayDeal, PayStage, PayOwnerSummary, PayMigrationData } from "./types";
 import { classifyUnwillingForQ2 } from "./pay-q2-classifier";
+import { hasUnpaidInvoice } from "./invoice-fields";
 
 const PAY_PIPELINE = "1072518362";
 // Excluded customer_stage values from the Pay Migration scope. Paused
@@ -26,9 +27,8 @@ const DEAL_PROPERTIES = [
   "notes_last_contacted",
   "hs_object_id",
   "understory_pay_unwilling_reason__deal",
-  "unpaid_invoice",
-  "number_of_open_invoices",
-  "invoice_due_date",
+  "understory_earliest_unpaid_invoice_due_date",
+  "understory_number_of_unpaid_invoices",
 ];
 
 const LIVE_STAGES: PayStage[] = ["Verified", "Live"];
@@ -356,7 +356,7 @@ export async function fetchPayMigrationData(
       lastActivityDate,
       daysSinceActivity,
       unwillingReason,
-      hasOpenInvoice: (p.unpaid_invoice === "true") || (parseInt(p.number_of_open_invoices || "0") || 0) > 0,
+      hasOpenInvoice: hasUnpaidInvoice(p),
       zeroEvents: zeroEventDealIds.has(raw.id),
     });
   }

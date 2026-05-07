@@ -499,6 +499,7 @@ const PORTFOLIO_DEAL_PROPS = [
   "hs_is_closed",
   "confirmed__contract_mrr",
   "currency",
+  "deal_currency_code",
   "booking_fee",
   "confirmed_booking_fee",
   "hs_lastmodifieddate",

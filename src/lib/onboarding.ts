@@ -219,6 +219,7 @@ const LIFECYCLE_DEAL_PROPS = [
   "customer_live_date",
   "customer_live",
   "currency",
+  "deal_currency_code",
   "subscription_plan",
   "hubspot_owner_id",
   "self_onboarding",
@@ -255,6 +256,7 @@ const SALES_DEAL_PROPS = [
   "pipeline",
   "createdate",
   "currency",
+  "deal_currency_code",
   "core_net_price__local_currency",
   "test_billing_start_date",
   "hubspot_owner_id",
@@ -1116,12 +1118,12 @@ export async function buildOnboardingPayload(
     // actual deal currency. Fall back to the lifecycle deal only when no priced
     // sales deal exists.
     let feeAmount: string | undefined = p.core_net_price__local_currency;
-    let feeCurrency: string | undefined = p.currency;
+    let feeCurrency: string | undefined = p.deal_currency_code || p.currency;
     if (company) {
       const priced = pickSalesFallback(salesDealsByCompany.get(company.companyId) ?? []);
       if (priced?.isPriced) {
         feeAmount = priced.deal.properties.core_net_price__local_currency;
-        feeCurrency = priced.deal.properties.currency;
+        feeCurrency = priced.deal.properties.deal_currency_code || priced.deal.properties.currency;
       }
     }
 

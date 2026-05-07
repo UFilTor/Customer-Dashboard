@@ -71,7 +71,7 @@ export function extractInvoiceState(
   const unpaid = hasUnpaidInvoice(props);
   const dueIso = props.understory_earliest_unpaid_invoice_due_date || "";
   const outstandingRaw = unpaidAmountLocal(props);
-  const currency = props.currency;
+  const currency = props.deal_currency_code || props.currency;
 
   let overdue = 0;
   let overdueDays: number | null = null;
@@ -133,6 +133,7 @@ const LIFECYCLE_DEAL_PROPS = [
   "customer_live_date",
   "customer_live",
   "currency",
+  "deal_currency_code",
   "subscription_plan",
   "hubspot_owner_id",
   "self_onboarding",
@@ -173,6 +174,7 @@ const RETENTION_DEAL_PROPS = [
   "createdate",
   "customer_live_date",
   "currency",
+  "deal_currency_code",
   "subscription_plan",
   "hubspot_owner_id",
   // Commercial

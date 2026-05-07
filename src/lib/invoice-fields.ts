@@ -11,6 +11,7 @@ export const UNPAID_INVOICE_DEAL_PROPS = [
   "understory_number_of_unpaid_invoices",
   "understory_unpaid_amount_local_currency",
   "payment_method",
+  "deal_currency_code",
   "currency",
 ] as const;
 
@@ -29,5 +30,5 @@ export function unpaidAmountLocal(p: Record<string, string | undefined>): number
 }
 
 export function dealCurrency(p: Record<string, string | undefined>): string {
-  return (p.currency || "EUR").toUpperCase();
+  return (p.deal_currency_code || p.currency || "EUR").toUpperCase();
 }

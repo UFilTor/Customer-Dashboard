@@ -137,7 +137,7 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
             { propertyName: "understory_number_of_unpaid_invoices", operator: "GT", value: "0" },
           ],
         })),
-        properties: ["confirmed__contract_mrr", "currency", "booking_fee", "understory_unpaid_amount_local_currency", "understory_earliest_unpaid_invoice_due_date", "understory_number_of_unpaid_invoices", "understory_pay_status__customer", "subscription_plan"],
+        properties: ["confirmed__contract_mrr", "currency", "deal_currency_code", "booking_fee", "understory_unpaid_amount_local_currency", "understory_earliest_unpaid_invoice_due_date", "understory_number_of_unpaid_invoices", "understory_pay_status__customer", "subscription_plan"],
         limit: 100,
       }),
     });
@@ -150,7 +150,7 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
       (d: { id: string; properties: Record<string, string> }) => ({
         id: d.id,
         mrr: d.properties.confirmed__contract_mrr || "",
-        currency: d.properties.currency || "EUR",
+        currency: d.properties.deal_currency_code || d.properties.currency || "EUR",
         bookingFee: d.properties.booking_fee || "",
         outstandingAmount: d.properties.understory_unpaid_amount_local_currency || "",
         invoiceDueDate: d.properties.understory_earliest_unpaid_invoice_due_date || "",

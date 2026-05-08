@@ -373,6 +373,7 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     invoiceDueDate: input.deal.invoiceDueDate,
     outstandingEur: input.deal.outstandingEur,
     overdueDays: input.deal.overdueDays,
+    openInvoiceCount: input.deal.openInvoiceCount,
     wishToChurn: input.deal.wishToChurn,
     churnReason: input.deal.churnReason,
     volume3m: input.company.volume3m,

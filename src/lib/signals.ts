@@ -147,6 +147,7 @@ export interface WatchOutContext {
   invoiceDueDate: string | null;
   outstandingEur: number | null;
   overdueDays: number | null;
+  openInvoiceCount?: number | null;
   // Churn intent
   wishToChurn: boolean;
   churnReason: string | null;
@@ -188,11 +189,14 @@ export function computeWatchOutSignals(ctx: WatchOutContext): WatchOutSignal[] {
     if (!isNaN(due) && due < now) {
       const days = ctx.overdueDays ?? Math.floor((now - due) / (24 * 60 * 60 * 1000));
       const amt = ctx.outstandingEur ? ` · ${fmtEur(ctx.outstandingEur)} EUR outstanding` : "";
+      const count = (ctx.openInvoiceCount ?? 0) > 1
+        ? ` · ${ctx.openInvoiceCount} invoices`
+        : "";
       out.push({
         kind: "overdue_invoice",
         severity: "bad",
         title: "Overdue invoice",
-        detail: `Invoice overdue ${days} day${days === 1 ? "" : "s"}${amt}`,
+        detail: `Invoice overdue ${days} day${days === 1 ? "" : "s"}${amt}${count}`,
       });
     }
   }

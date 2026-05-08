@@ -1116,9 +1116,16 @@ const Row = memo(function Row({
   // line so the days-in-step figure shows in BOTH the row's metadata header
   // AND its Signals column — same dual-surface treatment Meeting Prep gives
   // its lifecycle deals (header copy + WatchOutFor card).
+  // Subtitle priority: invoice info first (due date + amount + count), then
+  // no-future-events, then stuck-in-step, else the highest-severity signal.
+  const invoiceSignal = safeSignals.find((s) => s.kind === "overdue_invoice");
+  const noEventsSignal = safeSignals.find((s) => s.kind === "no_future_events");
   const stuckSignal = safeSignals.find((s) => s.kind === "stuck_in_step");
-  const stuckDetail = stuckSignal
-    ? `${stuckSignal.title} · ${stuckSignal.detail}`
+  const prioritized = invoiceSignal ?? noEventsSignal ?? stuckSignal;
+  const stuckDetail = prioritized
+    ? prioritized.kind === "stuck_in_step"
+      ? prioritized.title
+      : prioritized.detail
     : null;
   const firstDetail = safeSignals[0]?.detail;
   // Health number is exact, so the column doesn't need to encode severity in

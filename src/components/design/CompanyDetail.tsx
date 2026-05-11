@@ -376,7 +376,6 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
         </div>
       </div>
 
-      <SignalStrip signals={signalData.signals} stage={signalData.stage} />
       <MetricStrip company={company} deal={deal} />
       <RecapCardBig recap={recap} loading={recapLoading} companyId={companyId} dealId={deal?.hs_object_id ?? null} />
 
@@ -411,6 +410,8 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
           </button>
         ))}
       </div>
+
+      <SignalStrip signals={signalData.signals} stage={signalData.stage} />
 
       {tab === "overview" && (
         <div role="tabpanel" id="detail-panel-overview" aria-labelledby="detail-tab-overview">

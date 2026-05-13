@@ -6,6 +6,9 @@ export interface Owner {
   name: string;
   region: RegionKey;
   color: string;
+  // Optional override for the avatar initial. Defaults to name[0].
+  // Used to disambiguate owners who share a first letter (e.g. Anders vs Alessandro).
+  initial?: string;
 }
 
 export type RegionKey = "DK" | "SE" | "IT";
@@ -18,10 +21,12 @@ export type GlobalFilter =
 export const ALL_FILTER: GlobalFilter = { kind: "all" };
 
 export const OWNERS: Owner[] = [
-  { id: "962517007", name: "Anders", region: "DK", color: "#D1BEE7" },
+  { id: "34100335", name: "Alessandro", region: "IT", color: "#FFE0B5", initial: "Al" },
+  { id: "962517007", name: "Anders", region: "DK", color: "#D1BEE7", initial: "An" },
   { id: "559364799", name: "Cecilia", region: "SE", color: "#CFE8FF" },
   { id: "1939229547", name: "Filip", region: "SE", color: "#D5DFCA" },
   { id: "44912650", name: "Marc", region: "DK", color: "#F1F97E" },
+  { id: "34100332", name: "Nicoletta", region: "IT", color: "#E8D5F0" },
   { id: "90324081", name: "Vlad", region: "IT", color: "#F4C4A0" },
 ];
 

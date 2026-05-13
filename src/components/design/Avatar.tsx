@@ -3,6 +3,7 @@ import { memo } from "react";
 interface OwnerLike {
   name: string;
   color?: string;
+  initial?: string;
 }
 
 interface AvatarProps {
@@ -16,7 +17,7 @@ interface AvatarProps {
 // Wrapped in React.memo because Portfolio renders this 774x and the props
 // (owner reference + size) rarely change between paints.
 export const Avatar = memo(function Avatar({ owner, size = 22 }: AvatarProps) {
-  const initial = owner?.name?.[0] ?? "?";
+  const initial = owner?.initial || owner?.name?.[0] || "?";
   const bg = owner?.color || (owner ? "var(--lichen)" : "#E5E3D8");
   const fg = owner ? "var(--moss)" : "var(--green-100)";
   const label = owner?.name ? `Owner: ${owner.name}` : "Unassigned";

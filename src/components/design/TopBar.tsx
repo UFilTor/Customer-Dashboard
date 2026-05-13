@@ -486,7 +486,7 @@ function FilterValuePill({ filter, setFilter, isDefault, setAsDefault, clearDefa
             fontWeight: 700,
           }}
         >
-          {owner ? owner.name[0] : "?"}
+          {owner ? (owner.initial || owner.name[0]) : "?"}
         </span>
         <span>{owner?.name || "Pick"}</span>
         <Caret open={open} />
@@ -499,7 +499,7 @@ function FilterValuePill({ filter, setFilter, isDefault, setAsDefault, clearDefa
               key={o.id}
               label={o.name}
               sub={o.region}
-              icon={o.name[0]}
+              icon={o.initial || o.name[0]}
               color={o.color}
               active={filter.ownerId === o.id}
               focused={focusedIdx === i}
@@ -646,7 +646,7 @@ function Dropdown({
           {sub}
         </div>
       </div>
-      <div style={{ padding: 6, maxHeight: 360, overflowY: "auto" }}>{children}</div>
+      <div style={{ padding: 6, maxHeight: 560, overflowY: "auto" }}>{children}</div>
     </div>
   );
 }

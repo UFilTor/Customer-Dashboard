@@ -231,6 +231,7 @@ export interface PayMigrationData {
   allOwnersSummary: PayOwnerSummary;
   needsAPush: PayDeal[];
   unwilling: PayDeal[];
+  ineligible: PayDeal[];
   notEnrolled: PayDeal[];
   allDeals: PayDeal[];
   updatedAt: string;

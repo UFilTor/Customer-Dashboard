@@ -289,6 +289,19 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
           onDealClick={onDealClick}
         />
 
+        {/* INELIGIBLE */}
+        <SectionTitle title="Ineligible" subtitle="Customers who cant move, for reasons" />
+        <UnwillingTable
+          deals={data.ineligible.filter((d) =>
+            payFilter === "all" || payFilter === "default"
+              ? true
+              : d.ownerId === payFilter
+          )}
+          allEligBv={data.eligibleBv}
+          onDealClick={onDealClick}
+          hidePercent
+        />
+
         {/* NOT YET ENROLLED */}
         <SectionTitle title="Not yet enrolled" subtitle="Top by BV, no Pay status in HubSpot" />
         <div
@@ -990,10 +1003,12 @@ function UnwillingTable({
   deals,
   allEligBv,
   onDealClick,
+  hidePercent = false,
 }: {
   deals: PayDeal[];
   allEligBv: number;
   onDealClick: (deal: PayDeal) => void;
+  hidePercent?: boolean;
 }) {
   const sorted = [...deals].sort((a, b) => b.bv - a.bv);
   const total = sorted.reduce((s, d) => s + d.bv, 0);
@@ -1028,7 +1043,8 @@ function UnwillingTable({
             letterSpacing: "0.04em",
           }}
         >
-          {sorted.length} customers, {fmtEurShort(total)} ({pctOfElig.toFixed(1)}% of eligible BV)
+          {sorted.length} customers, {fmtEurShort(total)}
+          {hidePercent ? "" : ` (${pctOfElig.toFixed(1)}% of eligible BV)`}
         </div>
         {q2Deals.length > 0 && (
           <div

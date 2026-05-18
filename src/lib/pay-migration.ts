@@ -29,6 +29,7 @@ const DEAL_PROPERTIES = [
   "understory_pay_unwilling_reason__deal",
   "understory_earliest_unpaid_invoice_due_date",
   "understory_number_of_unpaid_invoices",
+  "enable_understory_pay",
 ];
 
 const LIVE_STAGES: PayStage[] = ["Verified", "Live"];
@@ -313,11 +314,22 @@ export async function fetchPayMigrationData(
   const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
 
   const allDeals: PayDeal[] = [];
+  const ineligibleDealIds = new Set<string>();
   for (const raw of deduped.values()) {
     const p = raw.properties;
     const rawPayStatus = (p.understory_pay_status__customer || "").trim();
 
     const stage = mapStage(rawPayStatus);
+
+    // `enable_understory_pay` is a HubSpot multi-select checkbox enum
+    // (values: "true", "false", "Ineligible") returned as a semicolon-
+    // separated string, so split before matching.
+    const payEnabledValues = (p.enable_understory_pay || "")
+      .split(";")
+      .map((v) => v.trim().toLowerCase());
+    if (payEnabledValues.includes("ineligible")) {
+      ineligibleDealIds.add(raw.id);
+    }
 
     // Merge unwilling reasons: HubSpot field > API fetch > fallback dict
     const unwillingReason =
@@ -374,6 +386,16 @@ export async function fetchPayMigrationData(
       FOUNDATION_RX.test(deal.unwillingReason)
     ) {
       deal.stage = "Unwilling";
+    }
+  }
+
+  // Ineligible override takes priority over every other classification —
+  // including foundation -> Unwilling and rawPayStatus -> Unwilling. If the
+  // deal is flagged `enable_understory_pay = ineligible` it belongs in the
+  // Ineligible section and nowhere else.
+  for (const deal of allDeals) {
+    if (ineligibleDealIds.has(deal.dealId)) {
+      deal.stage = "Ineligible";
     }
   }
 
@@ -453,6 +475,12 @@ export async function fetchPayMigrationData(
     .filter((d) => d.rawPayStatus === "" && !["Unwilling", "Ineligible", "Live", "Verified"].includes(d.stage))
     .sort((a, b) => b.bv - a.bv);
 
+  // Ineligible deals: customers who can't move (enable_understory_pay = ineligible
+  // or other Ineligible-stage mappings).
+  const ineligible = allDeals
+    .filter((d) => d.stage === "Ineligible")
+    .sort((a, b) => b.bv - a.bv);
+
   return {
     bvLiveVerifiedPercent,
     bvInProgressPercent,
@@ -470,6 +498,7 @@ export async function fetchPayMigrationData(
     allOwnersSummary,
     needsAPush,
     unwilling,
+    ineligible,
     notEnrolled,
     allDeals,
     updatedAt: new Date().toISOString(),

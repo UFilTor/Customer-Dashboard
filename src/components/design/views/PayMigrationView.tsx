@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useMemo, useState } from "react";
-import type { PayMigrationData, PayDeal, PayOwnerSummary, PayStage, CompanySearchResult } from "@/lib/types";
+import type { PayMigrationData, PayDeal, PayOwnerSummary, PayStage, RecentStageChange, CompanySearchResult } from "@/lib/types";
 import { CountUpPct, AnimBar, Stagger } from "../Motion";
 import { DashboardBanner } from "../DashboardBanner";
 import { Kpi } from "../Kpi";
@@ -254,6 +254,15 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
             />
           ))}
         </div>
+
+        {/* RECENT STAGE CHANGES */}
+        <SectionTitle title="Recent stage changes" subtitle="Latest movement between Pay stages" />
+        <RecentStageChanges
+          changes={data.recentStageChanges}
+          payFilter={payFilter}
+          onDealClick={onDealClick}
+          deals={data.allDeals}
+        />
 
         {/* PATH TO TARGET */}
         <SectionTitle title={`Path to ${data.targetPct}%`} />
@@ -1222,6 +1231,105 @@ function NotEnrolledCard({
                   </Td>
                   <Td>{act}</Td>
                   <Td align="right">{bvWithPct(d.bv, allEligBv)}</Td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ---------------- recent stage changes ---------------- */
+
+function RecentStageChanges({
+  changes,
+  payFilter,
+  deals,
+  onDealClick,
+}: {
+  changes: RecentStageChange[];
+  payFilter: PayFilter;
+  deals: PayDeal[];
+  onDealClick: (deal: PayDeal) => void;
+}) {
+  const filtered = changes
+    .filter((c) => {
+      if (payFilter === "all") return true;
+      if (payFilter === "default") return KEY_OWNER_IDS.has(c.ownerId);
+      return c.ownerId === payFilter;
+    })
+    .slice(0, 10);
+
+  const dealById = useMemo(() => {
+    const m = new Map<string, PayDeal>();
+    for (const d of deals) m.set(d.dealId, d);
+    return m;
+  }, [deals]);
+
+  return (
+    <div
+      style={{
+        background: "var(--light-grey)",
+        border: "1px solid var(--beige-gray)",
+        borderRadius: 10,
+        padding: 18,
+        marginBottom: 32,
+      }}
+    >
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <Th>Customer</Th>
+            <Th>Owner</Th>
+            <Th>Transition</Th>
+            <Th align="right">BV</Th>
+            <Th align="right">When</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.length === 0 ? (
+            <tr>
+              <td
+                colSpan={5}
+                style={{
+                  padding: 16,
+                  textAlign: "center",
+                  color: "var(--green-100)",
+                  fontStyle: "italic",
+                  fontFamily: "var(--font-editorial)",
+                }}
+              >
+                No recent stage changes in this scope
+              </td>
+            </tr>
+          ) : (
+            filtered.map((c) => {
+              const deal = dealById.get(c.dealId);
+              return (
+                <tr
+                  key={`${c.dealId}-${c.timestamp}`}
+                  style={{ cursor: deal ? "pointer" : "default" }}
+                  onClick={() => deal && onDealClick(deal)}
+                >
+                  <Td>
+                    <strong style={{ color: "var(--moss)" }}>{c.dealName}</strong>
+                  </Td>
+                  <Td muted>{c.ownerName}</Td>
+                  <Td>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5 }}>
+                      {c.fromStage ? (
+                        <StageLabel stage={c.fromStage} />
+                      ) : (
+                        <span style={{ color: "var(--green-100)", fontStyle: "italic" }}>new</span>
+                      )}
+                      <span style={{ color: "var(--green-100)" }}>→</span>
+                      <StageLabel stage={c.toStage} />
+                    </span>
+                  </Td>
+                  <Td align="right">{fmtEurShort(c.bv)}</Td>
+                  <Td align="right" muted>{timeAgo(c.timestamp)}</Td>
                 </tr>
               );
             })

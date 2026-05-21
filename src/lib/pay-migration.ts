@@ -2,7 +2,7 @@ import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { searchObjectsPage } from "./hubspot-search";
 import { getOwners } from "./hubspot";
 import { OWNERS } from "./owners";
-import type { PayDeal, PayStage, PayOwnerSummary, PayMigrationData } from "./types";
+import type { PayDeal, PayStage, PayOwnerSummary, PayMigrationData, RecentStageChange } from "./types";
 import { classifyUnwillingForQ2 } from "./pay-q2-classifier";
 import { hasUnpaidInvoice } from "./invoice-fields";
 
@@ -247,6 +247,74 @@ async function fetchZeroEventDealIds(): Promise<Set<string>> {
   return dealIds;
 }
 
+// Batch-read property history for `understory_pay_status__customer` across
+// every Pay deal so we can derive a "Recent stage changes" feed for the
+// dashboard. HubSpot returns each property's history newest-first, so a
+// single pass yields the transition pairs.
+async function fetchRecentStageChanges(
+  deals: PayDeal[]
+): Promise<RecentStageChange[]> {
+  if (deals.length === 0) return [];
+  const dealById = new Map(deals.map((d) => [d.dealId, d]));
+  const ids = deals.map((d) => d.dealId);
+  const batches: string[][] = [];
+  // HubSpot caps property-history batch reads at 50 inputs (regular batch
+  // reads allow 100, but the `propertiesWithHistory` variant has a stricter
+  // limit and returns 400 otherwise).
+  for (let i = 0; i < ids.length; i += 50) batches.push(ids.slice(i, i + 50));
+
+  const changes: RecentStageChange[] = [];
+  await Promise.all(
+    batches.map(async (batch) => {
+      try {
+        const res = await fetch(
+          `${HUBSPOT_API}/crm/v3/objects/deals/batch/read`,
+          {
+            method: "POST",
+            headers: hubspotHeaders(),
+            body: JSON.stringify({
+              inputs: batch.map((id) => ({ id })),
+              properties: [],
+              propertiesWithHistory: ["understory_pay_status__customer"],
+            }),
+          }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const result of data.results || []) {
+          const deal = dealById.get(String(result.id));
+          if (!deal) continue;
+          const history: Array<{ value?: string; timestamp?: string }> =
+            result.propertiesWithHistory?.understory_pay_status__customer || [];
+          for (let i = 0; i < history.length; i++) {
+            const entry = history[i];
+            if (!entry?.timestamp) continue;
+            const toStage = mapStage(entry.value);
+            const prev = history[i + 1];
+            const fromStage = prev ? mapStage(prev.value) : null;
+            if (fromStage === toStage) continue; // skip Connected -> Verified renames
+            changes.push({
+              dealId: deal.dealId,
+              dealName: deal.dealName,
+              ownerId: deal.ownerId,
+              ownerName: deal.ownerName,
+              fromStage,
+              toStage,
+              timestamp: entry.timestamp,
+              bv: deal.bv,
+            });
+          }
+        }
+      } catch {
+        // Best-effort — a partial recent list is fine.
+      }
+    })
+  );
+
+  changes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return changes.slice(0, 30);
+}
+
 function buildOwnerSummary(ownerId: string, ownerName: string, deals: PayDeal[]): PayOwnerSummary {
   const stageCounts = emptyStageRecord();
   let ownerTotalBv = 0;
@@ -481,6 +549,12 @@ export async function fetchPayMigrationData(
     .filter((d) => d.stage === "Ineligible")
     .sort((a, b) => b.bv - a.bv);
 
+  // Recent stage changes across all Pay deals — enriched after the deal list
+  // is finalized so each change carries the current owner/name/BV snapshot.
+  const recentStageChanges = await time("hubspot.payStageHistory", () =>
+    fetchRecentStageChanges(allDeals)
+  );
+
   return {
     bvLiveVerifiedPercent,
     bvInProgressPercent,
@@ -501,6 +575,7 @@ export async function fetchPayMigrationData(
     ineligible,
     notEnrolled,
     allDeals,
+    recentStageChanges,
     updatedAt: new Date().toISOString(),
   };
 }

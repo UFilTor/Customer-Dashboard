@@ -234,7 +234,19 @@ export interface PayMigrationData {
   ineligible: PayDeal[];
   notEnrolled: PayDeal[];
   allDeals: PayDeal[];
+  recentStageChanges: RecentStageChange[];
   updatedAt: string;
+}
+
+export interface RecentStageChange {
+  dealId: string;
+  dealName: string;
+  ownerId: string;
+  ownerName: string;
+  fromStage: PayStage | null;
+  toStage: PayStage;
+  timestamp: string;
+  bv: number;
 }
 
 // Watch-out signals — shared between Retention and Onboarding briefs.

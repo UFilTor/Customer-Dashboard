@@ -567,10 +567,12 @@ function buildMeetingPrepDeal(
   // currency on lifecycle is often EUR regardless of the actual deal currency).
   // For retention deals we use the deal's own currency.
   let feeAmount: string | undefined = dp.core_net_price__local_currency;
-  let feeCurrency: string | undefined = dp.currency;
+  let feeCurrency: string | undefined = dp.deal_currency_code || dp.currency;
   if (isLifecycle && salesFallback?.isPriced) {
     feeAmount = salesFallback.deal.properties.core_net_price__local_currency;
-    feeCurrency = salesFallback.deal.properties.currency;
+    feeCurrency =
+      salesFallback.deal.properties.deal_currency_code ||
+      salesFallback.deal.properties.currency;
   }
 
   // First billing — lifecycle uses test_billing_start_date with sales fallback;

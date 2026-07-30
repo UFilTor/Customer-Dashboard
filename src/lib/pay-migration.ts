@@ -7,6 +7,15 @@ import { classifyUnwillingForQ2 } from "./pay-q2-classifier";
 import { hasUnpaidInvoice } from "./invoice-fields";
 
 const PAY_PIPELINE = "1072518362";
+// Onboarding pipeline customers count toward Pay migration once they're far
+// enough along to be real customers: only Adopted + Started stages. This is
+// how IT-region owners (Alessandro, Nicoletta) get their book included —
+// their customers live in the Onboarding pipeline, not Customer retention.
+const ONBOARDING_PIPELINE = "166333631";
+const ONBOARDING_INCLUDED_STAGE_IDS = [
+  "307938522", // Adopted
+  "5691910345", // Started
+];
 // Excluded customer_stage values from the Pay Migration scope. Paused
 // customers stay in the calculation (per Filip 2026-04-30) — they're still
 // active relationships even if temporarily on hold, and we want their pay
@@ -121,12 +130,22 @@ async function fetchAllPayDeals(): Promise<RawDeal[]> {
 
   do {
     const body: Record<string, unknown> = {
-      filterGroups: [{
-        filters: [
-          { propertyName: "pipeline", operator: "EQ", value: PAY_PIPELINE },
-          { propertyName: "customer_stage", operator: "NOT_IN", values: RETENTION_EXCLUDED_STAGES },
-        ],
-      }],
+      // Two OR'ed groups: the whole retention pipeline (minus churned), plus
+      // Onboarding-pipeline deals in Adopted/Started.
+      filterGroups: [
+        {
+          filters: [
+            { propertyName: "pipeline", operator: "EQ", value: PAY_PIPELINE },
+            { propertyName: "customer_stage", operator: "NOT_IN", values: RETENTION_EXCLUDED_STAGES },
+          ],
+        },
+        {
+          filters: [
+            { propertyName: "pipeline", operator: "EQ", value: ONBOARDING_PIPELINE },
+            { propertyName: "dealstage", operator: "IN", values: ONBOARDING_INCLUDED_STAGE_IDS },
+          ],
+        },
+      ],
       properties: DEAL_PROPERTIES,
       // HubSpot search pagination is reliable only when a `sorts` clause is
       // present — without it the cursor can stop early. createdate desc gives
@@ -181,11 +200,12 @@ async function fetchUnwillingReasons(): Promise<Record<string, string>> {
 // upcoming-events property — a handful of parallel batch calls total.
 // Matches the old `LTE 0` search semantics: companies MISSING the property
 // are not zero-event.
-async function fetchZeroEventDealIds(dealIds: string[]): Promise<Set<string>> {
+async function fetchZeroEventDealIds(
+  dealIds: string[]
+): Promise<{ zeroEventDeals: Set<string>; companiesByDeal: Record<string, string[]> }> {
   const zeroEventDeals = new Set<string>();
-  if (dealIds.length === 0) return zeroEventDeals;
-
   const companiesByDeal: Record<string, string[]> = {};
+  if (dealIds.length === 0) return { zeroEventDeals, companiesByDeal };
   const allCompanyIds = new Set<string>();
   const assocBatches: string[][] = [];
   for (let i = 0; i < dealIds.length; i += 100) {
@@ -256,7 +276,7 @@ async function fetchZeroEventDealIds(dealIds: string[]): Promise<Set<string>> {
       zeroEventDeals.add(dealId);
     }
   }
-  return zeroEventDeals;
+  return { zeroEventDeals, companiesByDeal };
 }
 
 // Batch-read property history for `understory_pay_status__customer` across
@@ -405,6 +425,7 @@ export async function fetchPayMigrationData(
 
   const allDeals: PayDeal[] = [];
   const ineligibleDealIds = new Set<string>();
+  const pipelineByDeal = new Map<string, string>();
   for (const raw of deduped.values()) {
     const p = raw.properties;
     const rawPayStatus = (p.understory_pay_status__customer || "").trim();
@@ -461,6 +482,7 @@ export async function fetchPayMigrationData(
       hasOpenInvoice: hasUnpaidInvoice(p),
       zeroEvents: false, // applied below once the zeroEvents fetch resolves
     });
+    pipelineByDeal.set(raw.id, p.pipeline || "");
   }
 
   // Foundation override: Pay can't onboard foundations today, so any deal
@@ -500,7 +522,28 @@ export async function fetchPayMigrationData(
     fetchRecentStageChanges(allDeals)
   );
 
-  const zeroEventDealIds = await zeroEventPromise;
+  const { zeroEventDeals: zeroEventDealIds, companiesByDeal } = await zeroEventPromise;
+
+  // A company far enough along to have a retention-pipeline deal shouldn't
+  // also count via its (still-open) Onboarding deal — drop the duplicate so
+  // BV isn't double counted. Retention wins because that deal carries the
+  // authoritative pay status.
+  const retentionCompanies = new Set<string>();
+  for (const deal of allDeals) {
+    if (pipelineByDeal.get(deal.dealId) === PAY_PIPELINE) {
+      for (const c of companiesByDeal[deal.dealId] || []) retentionCompanies.add(c);
+    }
+  }
+  for (let i = allDeals.length - 1; i >= 0; i--) {
+    const deal = allDeals[i];
+    if (
+      pipelineByDeal.get(deal.dealId) === ONBOARDING_PIPELINE &&
+      (companiesByDeal[deal.dealId] || []).some((c) => retentionCompanies.has(c))
+    ) {
+      allDeals.splice(i, 1);
+    }
+  }
+
   for (const deal of allDeals) {
     deal.zeroEvents = zeroEventDealIds.has(deal.dealId);
   }
@@ -569,10 +612,15 @@ export async function fetchPayMigrationData(
   // Unwilling deals (foundation-override applied above pre-partition;
   // unwillingRaw computed and classifier started right after the overrides).
   const q2Map = await q2MapPromise;
-  const unwilling = unwillingRaw.map((d) => ({
-    ...d,
-    q2Likely: q2Map.get(d.dealId) ?? false,
-  }));
+  // Rebuild from the deduped allDeals (unwillingRaw was computed before the
+  // onboarding/retention duplicate drop; q2Map may contain extra ids, fine).
+  const unwilling = allDeals
+    .filter((d) => d.stage === "Unwilling")
+    .sort((a, b) => b.bv - a.bv)
+    .map((d) => ({
+      ...d,
+      q2Likely: q2Map.get(d.dealId) ?? false,
+    }));
 
   // Not yet enrolled: raw pay status is blank AND not overridden to another stage
   const notEnrolled = allDeals
@@ -585,9 +633,12 @@ export async function fetchPayMigrationData(
     .filter((d) => d.stage === "Ineligible")
     .sort((a, b) => b.bv - a.bv);
 
-  // Recent stage changes across all Pay deals — enriched after the deal list
-  // is finalized so each change carries the current owner/name/BV snapshot.
-  const recentStageChanges = await recentStageChangesPromise;
+  // Recent stage changes across all Pay deals — the fetch started before the
+  // duplicate drop, so filter its result down to deals still in scope.
+  const keptDealIds = new Set(allDeals.map((d) => d.dealId));
+  const recentStageChanges = (await recentStageChangesPromise).filter((c) =>
+    keptDealIds.has(c.dealId)
+  );
 
   return {
     bvLiveVerifiedPercent,

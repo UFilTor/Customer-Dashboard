@@ -39,35 +39,112 @@ async function fetchCompanyBatch(
   }
 }
 
-async function fetchDealForCompany(companyId: string): Promise<Record<string, string> | null> {
+type PropertyHistoryEntry = { value: string; timestamp: string };
+
+// Batched replacement for per-company `?propertiesWithHistory=health_score`
+// GETs: one companies batch/read returns history for up to 100 ids per call.
+async function fetchHealthScoreHistoryBatch(
+  companyIds: string[]
+): Promise<Record<string, PropertyHistoryEntry[]>> {
+  const map: Record<string, PropertyHistoryEntry[]> = {};
+  if (companyIds.length === 0) return map;
+  const chunks: string[][] = [];
+  for (let i = 0; i < companyIds.length; i += 100) {
+    chunks.push(companyIds.slice(i, i + 100));
+  }
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      try {
+        const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/batch/read`, {
+          method: "POST",
+          headers: hubspotHeaders(),
+          body: JSON.stringify({
+            inputs: chunk.map((id) => ({ id })),
+            properties: ["health_score"],
+            propertiesWithHistory: ["health_score"],
+          }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const c of data.results || []) {
+          const history = c.propertiesWithHistory?.["health_score"];
+          if (history) map[c.id] = history;
+        }
+      } catch { /* continue without history */ }
+    })
+  );
+  return map;
+}
+
+// Batched replacement for per-company `fetchDealForCompany`: one v4
+// associations batch/read (company -> deals) plus deals batch/read chunks.
+async function fetchLifecycleDealsBatch(
+  companyIds: string[]
+): Promise<Record<string, Record<string, string>>> {
+  const result: Record<string, Record<string, string>> = {};
+  if (companyIds.length === 0) return result;
   try {
     const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
-    const assocRes = await fetch(
-      `${HUBSPOT_API}/crm/v3/objects/companies/${companyId}/associations/deals`,
-      { headers: hubspotHeaders(), cache: "no-store" as RequestCache }
-    );
-    if (!assocRes.ok) return null;
-    const assocData = await assocRes.json();
-    const dealIds: string[] = assocData.results?.map((r: { id: string }) => r.id) || [];
-    if (dealIds.length === 0) return null;
 
-    const batchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/batch/read`, {
-      method: "POST",
-      headers: hubspotHeaders(),
-      body: JSON.stringify({
-        inputs: dealIds.map((id) => ({ id })),
-        properties: ["confirmed__contract_mrr", "currency", "pipeline", "booking_fee", "understory_pay_status__customer", "subscription_plan", "dealstage", "amount_in_home_currency"],
-      }),
-    });
-    if (!batchRes.ok) return null;
-    const batchData = await batchRes.json();
-
-    const deal = batchData.results?.find(
-      (d: { properties: Record<string, string> }) => pipelineIds.includes(d.properties.pipeline)
+    const dealIdsByCompany: Record<string, string[]> = {};
+    const allDealIds = new Set<string>();
+    const assocChunks: string[][] = [];
+    for (let i = 0; i < companyIds.length; i += 100) {
+      assocChunks.push(companyIds.slice(i, i + 100));
+    }
+    await Promise.all(
+      assocChunks.map(async (chunk) => {
+        const assocRes = await fetch(
+          `${HUBSPOT_API}/crm/v4/associations/companies/deals/batch/read`,
+          {
+            method: "POST",
+            headers: hubspotHeaders(),
+            body: JSON.stringify({ inputs: chunk.map((id) => ({ id })) }),
+          }
+        );
+        if (!assocRes.ok) return;
+        const assocData = await assocRes.json();
+        for (const row of assocData.results || []) {
+          const ids = (row.to || []).map((t: { toObjectId: number | string }) => String(t.toObjectId));
+          dealIdsByCompany[String(row.from?.id)] = ids;
+          for (const id of ids) allDealIds.add(id);
+        }
+      })
     );
-    return deal?.properties || null;
+
+    const dealProps: Record<string, Record<string, string>> = {};
+    const dealIdList = Array.from(allDealIds);
+    const dealChunks: string[][] = [];
+    for (let i = 0; i < dealIdList.length; i += 100) {
+      dealChunks.push(dealIdList.slice(i, i + 100));
+    }
+    await Promise.all(
+      dealChunks.map(async (chunk) => {
+        const batchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/batch/read`, {
+          method: "POST",
+          headers: hubspotHeaders(),
+          body: JSON.stringify({
+            inputs: chunk.map((id) => ({ id })),
+            properties: ["confirmed__contract_mrr", "currency", "pipeline", "booking_fee", "understory_pay_status__customer", "subscription_plan", "dealstage", "amount_in_home_currency"],
+          }),
+        });
+        if (!batchRes.ok) return;
+        const batchData = await batchRes.json();
+        for (const d of batchData.results || []) {
+          dealProps[d.id] = d.properties;
+        }
+      })
+    );
+
+    for (const [companyId, dealIds] of Object.entries(dealIdsByCompany)) {
+      const match = dealIds
+        .map((id) => dealProps[id])
+        .find((p) => p && pipelineIds.includes(p.pipeline));
+      if (match) result[companyId] = match;
+    }
+    return result;
   } catch {
-    return null;
+    return result;
   }
 }
 
@@ -367,56 +444,47 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
       return isNaN(contactedAt) || contactedAt < fourteenDaysAgo;
     });
 
-    // Fetch property history and ACV for each company (batched to avoid rate limits)
+    // Fetch property history and ACV for all companies via three batched
+    // calls instead of 4 sequential round-trips per company.
     const toExcludeImproved = new Set<string>();
+    const companyIds = notRecentlyContacted.map((c) => c.id);
 
-    for (let i = 0; i < notRecentlyContacted.length; i += 5) {
-      const batch = notRecentlyContacted.slice(i, i + 5);
-      await Promise.all(
-        batch.map(async (company) => {
-        try {
-          // Get health score property history
-          const histRes = await fetch(
-            `${HUBSPOT_API}/crm/v3/objects/companies/${company.id}?propertiesWithHistory=health_score`,
-            { headers: hubspotHeaders(), cache: "no-store" as RequestCache }
-          );
-          if (histRes.ok) {
-            const histData = await histRes.json();
-            const history = histData.propertiesWithHistory?.["health_score"];
-            if (history && history.length >= 2) {
-              company.previousCategory = history[1].value;
-              company.categoryChangedAt = history[0].timestamp;
+    const [historyMap, dealsByCompany] = await Promise.all([
+      fetchHealthScoreHistoryBatch(companyIds),
+      fetchLifecycleDealsBatch(companyIds),
+    ]);
 
-              // Exclude if score improved 15+ points within last 14 days
-              const changeTimestamp = new Date(history[0].timestamp).getTime();
-              const currentScore = parseFloat(history[0].value);
-              const previousScore = parseFloat(history[1].value);
-              if (
-                !isNaN(changeTimestamp) &&
-                changeTimestamp >= fourteenDaysAgo &&
-                !isNaN(currentScore) &&
-                !isNaN(previousScore) &&
-                currentScore - previousScore >= 15
-              ) {
-                toExcludeImproved.add(company.id);
-              }
-            } else if (history && history.length === 1) {
-              company.categoryChangedAt = history[0].timestamp;
-            }
-          }
-        } catch { /* continue without history */ }
+    for (const company of notRecentlyContacted) {
+      const history = historyMap[company.id];
+      if (history && history.length >= 2) {
+        company.previousCategory = history[1].value;
+        company.categoryChangedAt = history[0].timestamp;
 
-        // Get ACV from lifecycle deal for sorting
-        const deal = await fetchDealForCompany(company.id);
-        if (deal) {
-          const acv = parseFloat(deal.amount_in_home_currency || "0") || 0;
-          company.mrr = formatRevenue(acv);
-          company.revenue = acv || undefined;
-          company.currency = "EUR";
-          company.payStatus = deal.understory_pay_status__customer || undefined;
+        // Exclude if score improved 15+ points within last 14 days
+        const changeTimestamp = new Date(history[0].timestamp).getTime();
+        const currentScore = parseFloat(history[0].value);
+        const previousScore = parseFloat(history[1].value);
+        if (
+          !isNaN(changeTimestamp) &&
+          changeTimestamp >= fourteenDaysAgo &&
+          !isNaN(currentScore) &&
+          !isNaN(previousScore) &&
+          currentScore - previousScore >= 15
+        ) {
+          toExcludeImproved.add(company.id);
         }
-      })
-      );
+      } else if (history && history.length === 1) {
+        company.categoryChangedAt = history[0].timestamp;
+      }
+
+      const deal = dealsByCompany[company.id];
+      if (deal) {
+        const acv = parseFloat(deal.amount_in_home_currency || "0") || 0;
+        company.mrr = formatRevenue(acv);
+        company.revenue = acv || undefined;
+        company.currency = "EUR";
+        company.payStatus = deal.understory_pay_status__customer || undefined;
+      }
     }
 
     // Remove companies whose score improved 15+ points in the last 14 days
@@ -451,6 +519,7 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
           ],
         }],
         properties: ["dealname", "confirmed__contract_mrr", "currency", "booking_fee", "understory_pay_status__customer", "subscription_plan", "pipeline", "amount_in_home_currency"],
+        sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
         limit: 100,
       };
       if (after) body.after = after;
@@ -472,30 +541,39 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
     const companyToDeal = new Map<string, { id: string; properties: Record<string, string> }>();
     const dealMap = new Map(allDeals.map((d) => [d.id, d]));
 
-    for (let i = 0; i < allDeals.length; i += 50) {
-      const batch = allDeals.slice(i, i + 50);
-      try {
-        const res = await fetch(
-          `${HUBSPOT_API}/crm/v4/associations/deals/companies/batch/read`,
-          {
-            method: "POST",
-            headers: hubspotHeaders(),
-            body: JSON.stringify({ inputs: batch.map((d) => ({ id: d.id })) }),
-          }
-        );
-        if (!res.ok) continue;
-        const data = await res.json();
-        for (const result of data.results || []) {
-          const deal = dealMap.get(String(result.from.id));
-          if (!deal) continue;
-          for (const to of result.to || []) {
-            const companyId = String(to.toObjectId);
-            if (!companyToDeal.has(companyId)) {
-              companyToDeal.set(companyId, deal);
+    const assocChunks: { id: string }[][] = [];
+    for (let i = 0; i < allDeals.length; i += 100) {
+      assocChunks.push(allDeals.slice(i, i + 100).map((d) => ({ id: d.id })));
+    }
+    const assocResponses = await Promise.all(
+      assocChunks.map(async (inputs) => {
+        try {
+          const res = await fetch(
+            `${HUBSPOT_API}/crm/v4/associations/deals/companies/batch/read`,
+            {
+              method: "POST",
+              headers: hubspotHeaders(),
+              body: JSON.stringify({ inputs }),
             }
+          );
+          if (!res.ok) return null;
+          return await res.json();
+        } catch {
+          return null;
+        }
+      })
+    );
+    for (const data of assocResponses) {
+      for (const result of data?.results || []) {
+        const deal = dealMap.get(String(result.from.id));
+        if (!deal) continue;
+        for (const to of result.to || []) {
+          const companyId = String(to.toObjectId);
+          if (!companyToDeal.has(companyId)) {
+            companyToDeal.set(companyId, deal);
           }
         }
-      } catch { /* skip */ }
+      }
     }
 
     const companyIds = Array.from(companyToDeal.keys());
@@ -503,24 +581,30 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
 
     // Step 4: Batch-read company properties including upcoming events
     const companyProps: Record<string, Record<string, string>> = {};
+    const companyChunks: string[][] = [];
     for (let i = 0; i < companyIds.length; i += 100) {
-      const batch = companyIds.slice(i, i + 100);
-      try {
-        const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/batch/read`, {
-          method: "POST",
-          headers: hubspotHeaders(),
-          body: JSON.stringify({
-            inputs: batch.map((id) => ({ id })),
-            properties: ["name", "hubspot_owner_id", "understory_company_country", "createdate", "understory_health_score_upcoming_events", "understory_latest_event", ...CHIP_COMPANY_PROPS],
-          }),
-        });
-        if (!res.ok) continue;
-        const data = await res.json();
-        for (const c of data.results || []) {
-          companyProps[c.id] = c.properties;
-        }
-      } catch { /* skip */ }
+      companyChunks.push(companyIds.slice(i, i + 100));
     }
+    await Promise.all(
+      companyChunks.map(async (batch) => {
+        try {
+          const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/batch/read`, {
+            method: "POST",
+            headers: hubspotHeaders(),
+            body: JSON.stringify({
+              inputs: batch.map((id) => ({ id })),
+              properties: ["name", "hubspot_owner_id", "understory_company_country", "createdate", "understory_health_score_upcoming_events", "understory_latest_event", ...CHIP_COMPANY_PROPS],
+            }),
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          for (const c of data.results || []) {
+            companyProps[c.id] = c.properties;
+          }
+        } catch { /* skip */ }
+      })
+    );
+
 
     // Step 5: Filter to companies with 0 upcoming events and build results
     const results: AttentionCompany[] = [];

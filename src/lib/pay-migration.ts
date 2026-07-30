@@ -132,7 +132,8 @@ async function fetchAllPayDeals(): Promise<RawDeal[]> {
       // present — without it the cursor can stop early. createdate desc gives
       // a stable order for the page-through to honor.
       sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
-      limit: 100,
+      // 200 is the search-endpoint max page size — halves round-trips vs 100.
+      limit: 200,
     };
     if (after) body.after = after;
 
@@ -157,74 +158,44 @@ async function fetchUnwillingReasons(): Promise<Record<string, string>> {
         ],
       }],
       properties: ["dealname", "understory_pay_unwilling_reason__deal", "hs_object_id"],
+      sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
       limit: 200,
     };
     if (after) body.after = after;
 
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
-      method: "POST",
-      headers: hubspotHeaders(),
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) break;
-    const data = await res.json();
-    for (const d of data.results || []) {
+    const { results, nextAfter } = await searchDealsPage(body);
+    for (const d of results) {
       const reason = d.properties.understory_pay_unwilling_reason__deal;
       if (reason) reasons[d.id] = reason;
     }
-    after = data.paging?.next?.after;
+    after = nextAfter;
   } while (after);
 
   return reasons;
 }
 
-async function fetchZeroEventDealIds(): Promise<Set<string>> {
-  const companyIds: string[] = [];
-  let after: string | undefined;
+// Flag pay deals whose associated company has 0 upcoming events. Inverted
+// from the old approach (search ALL zero-event companies org-wide, ~19
+// sequential pages) to start from the pay deals we already fetched:
+// deals->companies associations, then a companies batch/read of the
+// upcoming-events property — a handful of parallel batch calls total.
+// Matches the old `LTE 0` search semantics: companies MISSING the property
+// are not zero-event.
+async function fetchZeroEventDealIds(dealIds: string[]): Promise<Set<string>> {
+  const zeroEventDeals = new Set<string>();
+  if (dealIds.length === 0) return zeroEventDeals;
 
-  do {
-    const body: Record<string, unknown> = {
-      filterGroups: [{
-        filters: [{
-          propertyName: "understory_health_score_upcoming_events",
-          operator: "LTE",
-          value: "0",
-        }],
-      }],
-      properties: ["name"],
-      limit: 200,
-    };
-    if (after) body.after = after;
-
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/search`, {
-      method: "POST",
-      headers: hubspotHeaders(),
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) break;
-    const data = await res.json();
-    for (const c of data.results || []) {
-      companyIds.push(c.id);
-    }
-    after = data.paging?.next?.after;
-  } while (after);
-
-  if (companyIds.length === 0) return new Set();
-
-  // Use HubSpot's batch associations endpoint (up to 100 IDs per request,
-  // running batches in parallel) instead of per-company GETs. This collapses
-  // ~zeroEventCompanies/5 sequential calls into ~zeroEventCompanies/100
-  // parallel calls — typically ~99% reduction in wall time.
-  const dealIds = new Set<string>();
-  const batches: string[][] = [];
-  for (let i = 0; i < companyIds.length; i += 100) {
-    batches.push(companyIds.slice(i, i + 100));
+  const companiesByDeal: Record<string, string[]> = {};
+  const allCompanyIds = new Set<string>();
+  const assocBatches: string[][] = [];
+  for (let i = 0; i < dealIds.length; i += 100) {
+    assocBatches.push(dealIds.slice(i, i + 100));
   }
   await Promise.all(
-    batches.map(async (batch) => {
+    assocBatches.map(async (batch) => {
       try {
         const res = await fetch(
-          `${HUBSPOT_API}/crm/v4/associations/companies/deals/batch/read`,
+          `${HUBSPOT_API}/crm/v4/associations/deals/companies/batch/read`,
           {
             method: "POST",
             headers: hubspotHeaders(),
@@ -234,9 +205,11 @@ async function fetchZeroEventDealIds(): Promise<Set<string>> {
         if (!res.ok) return;
         const data = await res.json();
         for (const result of data.results || []) {
-          for (const t of result.to || []) {
-            dealIds.add(String(t.toObjectId));
-          }
+          const ids = (result.to || []).map(
+            (t: { toObjectId: number | string }) => String(t.toObjectId)
+          );
+          companiesByDeal[String(result.from?.id)] = ids;
+          for (const id of ids) allCompanyIds.add(id);
         }
       } catch {
         // Best-effort — partial result is better than total failure.
@@ -244,7 +217,46 @@ async function fetchZeroEventDealIds(): Promise<Set<string>> {
     })
   );
 
-  return dealIds;
+  const zeroEventCompanies = new Set<string>();
+  const companyIdList = Array.from(allCompanyIds);
+  const companyBatches: string[][] = [];
+  for (let i = 0; i < companyIdList.length; i += 100) {
+    companyBatches.push(companyIdList.slice(i, i + 100));
+  }
+  await Promise.all(
+    companyBatches.map(async (batch) => {
+      try {
+        const res = await fetch(
+          `${HUBSPOT_API}/crm/v3/objects/companies/batch/read`,
+          {
+            method: "POST",
+            headers: hubspotHeaders(),
+            body: JSON.stringify({
+              inputs: batch.map((id) => ({ id })),
+              properties: ["understory_health_score_upcoming_events"],
+            }),
+          }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const c of data.results || []) {
+          const raw = c.properties?.understory_health_score_upcoming_events;
+          if (raw === null || raw === undefined || raw === "") continue;
+          const value = parseFloat(raw);
+          if (!isNaN(value) && value <= 0) zeroEventCompanies.add(String(c.id));
+        }
+      } catch {
+        // Best-effort — partial result is better than total failure.
+      }
+    })
+  );
+
+  for (const [dealId, companyIds] of Object.entries(companiesByDeal)) {
+    if (companyIds.some((id) => zeroEventCompanies.has(id))) {
+      zeroEventDeals.add(dealId);
+    }
+  }
+  return zeroEventDeals;
 }
 
 // Batch-read property history for `understory_pay_status__customer` across
@@ -365,10 +377,20 @@ export async function fetchPayMigrationData(
     }
   };
 
-  const [rawDeals, unwillingReasons, zeroEventDealIds, ownerMap] = await Promise.all([
-    time("hubspot.payDeals", () => fetchAllPayDeals()),
+  // zeroEventDeals needs the deal ids, so chain it off the payDeals promise
+  // instead of awaiting the block first — it overlaps with the other fetches.
+  const payDealsPromise = time("hubspot.payDeals", () => fetchAllPayDeals());
+  const zeroEventPromise = payDealsPromise.then((deals) =>
+    time("hubspot.zeroEventDeals", () =>
+      fetchZeroEventDealIds(Array.from(new Set(deals.map((d) => d.id))))
+    )
+  );
+  // Don't await zeroEvents here — the per-deal flag is applied after the
+  // deal list is built, so the LLM classifier (which only needs deals +
+  // unwilling reasons) can start while zeroEvents is still fetching.
+  const [rawDeals, unwillingReasons, ownerMap] = await Promise.all([
+    payDealsPromise,
     time("hubspot.unwillingReasons", () => fetchUnwillingReasons()),
-    time("hubspot.zeroEventDeals", () => fetchZeroEventDealIds()),
     time("hubspot.owners", () => getOwners()),
   ]);
 
@@ -437,7 +459,7 @@ export async function fetchPayMigrationData(
       daysSinceActivity,
       unwillingReason,
       hasOpenInvoice: hasUnpaidInvoice(p),
-      zeroEvents: zeroEventDealIds.has(raw.id),
+      zeroEvents: false, // applied below once the zeroEvents fetch resolves
     });
   }
 
@@ -465,6 +487,22 @@ export async function fetchPayMigrationData(
     if (ineligibleDealIds.has(deal.dealId)) {
       deal.stage = "Ineligible";
     }
+  }
+
+  // Stages are final now, so kick off the LLM classifier and the stage-
+  // history fetch immediately — both overlap the still-pending zeroEvents
+  // fetch instead of running after it.
+  const unwillingRaw = allDeals
+    .filter((d) => d.stage === "Unwilling")
+    .sort((a, b) => b.bv - a.bv);
+  const q2MapPromise = classifyUnwillingForQ2(unwillingRaw);
+  const recentStageChangesPromise = time("hubspot.payStageHistory", () =>
+    fetchRecentStageChanges(allDeals)
+  );
+
+  const zeroEventDealIds = await zeroEventPromise;
+  for (const deal of allDeals) {
+    deal.zeroEvents = zeroEventDealIds.has(deal.dealId);
   }
 
   // Compute stage breakdown
@@ -528,11 +566,9 @@ export async function fetchPayMigrationData(
     })
     .sort((a, b) => b.bv - a.bv);
 
-  // Unwilling deals (foundation-override applied above pre-partition).
-  const unwillingRaw = allDeals
-    .filter((d) => d.stage === "Unwilling")
-    .sort((a, b) => b.bv - a.bv);
-  const q2Map = await classifyUnwillingForQ2(unwillingRaw);
+  // Unwilling deals (foundation-override applied above pre-partition;
+  // unwillingRaw computed and classifier started right after the overrides).
+  const q2Map = await q2MapPromise;
   const unwilling = unwillingRaw.map((d) => ({
     ...d,
     q2Likely: q2Map.get(d.dealId) ?? false,
@@ -551,9 +587,7 @@ export async function fetchPayMigrationData(
 
   // Recent stage changes across all Pay deals — enriched after the deal list
   // is finalized so each change carries the current owner/name/BV snapshot.
-  const recentStageChanges = await time("hubspot.payStageHistory", () =>
-    fetchRecentStageChanges(allDeals)
-  );
+  const recentStageChanges = await recentStageChangesPromise;
 
   return {
     bvLiveVerifiedPercent,

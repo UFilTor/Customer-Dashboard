@@ -26,6 +26,8 @@ function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
     volumeDropPct: null,
     prior3mVolume: null,
     wishToChurnAt: null,
+    dealStatus: null,
+    estimatedAdoptionDate: null,
     ...overrides,
   };
 }
@@ -36,10 +38,14 @@ const LIFECYCLE_PIPELINE = "166333631";
 const RETENTION_PIPELINE = "1072518362";
 
 describe("classifyPortfolioStage", () => {
-  it("treats every Lifecycle-pipeline deal as Onboarding, regardless of customer_stage", () => {
+  it("trusts a known customer_stage on the Lifecycle pipeline, falling back to Onboarding otherwise", () => {
+    // Unrecognised / empty stages fall back to the pipeline entry stage.
     expect(classifyPortfolioStage("In progress", LIFECYCLE_PIPELINE)).toBe("Onboarding");
     expect(classifyPortfolioStage("", LIFECYCLE_PIPELINE)).toBe("Onboarding");
-    expect(classifyPortfolioStage("Adopted", LIFECYCLE_PIPELINE)).toBe("Onboarding");
+    // A known customer_stage wins regardless of pipeline: Lifecycle deals
+    // that reached Adopted/Started must not hide under "Onboarding".
+    expect(classifyPortfolioStage("Adopted", LIFECYCLE_PIPELINE)).toBe("Adopted");
+    expect(classifyPortfolioStage("Live", LIFECYCLE_PIPELINE)).toBe("Started");
   });
 
   it("maps Retention customer_stage values directly", () => {
@@ -180,6 +186,14 @@ describe("buildRow", () => {
       wishToChurnAt: null as string | null,
       daysInStep: null as number | null,
       expectedDaysInStep: null as number | null,
+      payStatus: null as string | null,
+      estimatedAdoptionDate: null as string | null,
+      hibernationStart: null as string | null,
+      hibernationEnd: null as string | null,
+      productHoldStart: null as string | null,
+      productHoldEnd: null as string | null,
+      pauseStart: null as string | null,
+      pauseEnd: null as string | null,
     },
   };
 

@@ -11,10 +11,10 @@ vi.mock("@anthropic-ai/sdk", () => {
   };
 });
 
-import { generateRecap } from "@/lib/summarize";
+import { buildRecapPrompt, generateRecap } from "@/lib/summarize";
 import type { Engagement } from "@/lib/types";
 
-const { __mockCreate: mockCreate } = await import("@anthropic-ai/sdk") as { __mockCreate: ReturnType<typeof vi.fn> };
+const { __mockCreate: mockCreate } = await import("@anthropic-ai/sdk") as unknown as { __mockCreate: ReturnType<typeof vi.fn> };
 
 const mockEngagement: Engagement = {
   type: "call",
@@ -98,5 +98,61 @@ describe("generateRecap", () => {
       suggestedAction: null,
       error: true,
     });
+  });
+});
+
+describe("buildRecapPrompt", () => {
+  it("omits the ACCOUNT STATE block when no state is provided", () => {
+    const prompt = buildRecapPrompt([mockEngagement], { name: "Acme" }, null, {}, {});
+    expect(prompt).not.toContain("ACCOUNT STATE");
+    expect(prompt).toContain("RECENT ACTIVITY");
+  });
+
+  it("renders signals and since-last-touch changes in the ACCOUNT STATE block", () => {
+    const prompt = buildRecapPrompt([mockEngagement], { name: "Acme" }, null, {}, {}, {
+      signals: [
+        { kind: "overdue_invoice", severity: "bad", title: "Overdue invoice", detail: "2,140 EUR" },
+      ],
+      sinceLastTouch: {
+        lastTouch: "2026-07-20T10:00:00.000Z",
+        daysSinceTouch: 14,
+        changes: [
+          {
+            field: "health_score",
+            label: "Health score",
+            from: "72",
+            to: "58",
+            timestamp: "2026-07-28T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    expect(prompt).toContain("ACCOUNT STATE");
+    expect(prompt).toContain("[BAD] Overdue invoice: 2,140 EUR");
+    expect(prompt).toContain("Health score: 72 -> 58");
+    expect(prompt).toContain("14 days ago");
+  });
+
+  it("tags future-dated engagements as UPCOMING and includes the tense/time rules", () => {
+    const future: Engagement = {
+      ...mockEngagement,
+      type: "meeting",
+      title: "Implementation call",
+      timestamp: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    };
+    const prompt = buildRecapPrompt([future, mockEngagement], { name: "Acme" }, null, {}, {});
+    expect(prompt).toContain("UPCOMING MEETING (scheduled, has not happened yet)");
+    expect(prompt).toContain("24-hour format");
+    expect(prompt).toContain("Never use AM/PM");
+    // The past engagement keeps its plain tag
+    expect(prompt).toContain("[CALL]");
+  });
+
+  it("omits the block when state is present but empty", () => {
+    const prompt = buildRecapPrompt([mockEngagement], { name: "Acme" }, null, {}, {}, {
+      signals: [],
+      sinceLastTouch: null,
+    });
+    expect(prompt).not.toContain("ACCOUNT STATE");
   });
 });

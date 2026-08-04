@@ -1,6 +1,8 @@
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
+import { searchObjectsPage } from "./hubspot-search";
 import { getDealStages } from "./hubspot";
 import { AttentionCompany } from "./types";
+import { TO_EUR } from "./fx";
 
 const CHIP_COMPANY_PROPS = [
   "health_score",
@@ -148,10 +150,6 @@ async function fetchLifecycleDealsBatch(
   }
 }
 
-export const TO_EUR: Record<string, number> = {
-  EUR: 1, USD: 0.92, GBP: 1.16, SEK: 0.087, NOK: 0.086, DKK: 0.134,
-};
-
 export function computeGeneratedRevenue(
   bookingVolume12m: string | undefined,
   bookingFee: string | undefined,
@@ -201,29 +199,92 @@ function mapChipFields(
   };
 }
 
-export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; open: AttentionCompany[] }> {
-  try {
-    const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
-      method: "POST",
-      headers: hubspotHeaders(),
-      body: JSON.stringify({
-        filterGroups: pipelineIds.map((pid) => ({
-          filters: [
-            { propertyName: "pipeline", operator: "EQ", value: pid },
-            { propertyName: "understory_number_of_unpaid_invoices", operator: "GT", value: "0" },
-          ],
-        })),
-        properties: ["confirmed__contract_mrr", "currency", "deal_currency_code", "booking_fee", "understory_unpaid_amount_local_currency", "understory_earliest_unpaid_invoice_due_date", "understory_number_of_unpaid_invoices", "understory_pay_status__customer", "subscription_plan"],
-        limit: 100,
-      }),
-    });
-    const emptyResult = { overdue: [] as AttentionCompany[], open: [] as AttentionCompany[] };
-    if (!res.ok) return emptyResult;
-    const data = await res.json();
+// Paginate a HubSpot search through the shared retry helper, capped at
+// maxPages (HubSpot refuses paging past 10k results with a 400, and an
+// unbounded walk could loop forever on a repeated cursor). Throws on a
+// first-page failure so callers / caches reject empty datasets, but keeps
+// what it has if a later page fails terminally: partial data beats a
+// permanently 500ing route once a result set outgrows the paging wall.
+async function searchAllPages<T = { id: string; properties: Record<string, string> }>(
+  objectType: string,
+  body: Record<string, unknown>,
+  maxPages = 20
+): Promise<T[]> {
+  const all: T[] = [];
+  let after: string | undefined;
+  for (let pageNo = 0; pageNo < maxPages; pageNo++) {
+    let page;
+    try {
+      page = await searchObjectsPage<T>(objectType, after ? { ...body, after } : body);
+    } catch (err) {
+      if (pageNo === 0) throw err;
+      break;
+    }
+    all.push(...page.results);
+    after = page.nextAfter;
+    if (!after) break;
+  }
+  return all;
+}
 
-    interface DealInfo { id: string; mrr: string; currency: string; bookingFee: string; outstandingAmount: string; invoiceDueDate: string; openInvoices: number; payStatus: string }
-    const deals: DealInfo[] = data.results?.map(
+// Batched deal -> primary company association lookup via the v4 batch API.
+// Chunks of 100, chunks fetched in parallel. Throws on failed chunk so a
+// partial map never gets cached.
+async function fetchDealCompanyAssociations(
+  dealIds: string[]
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (dealIds.length === 0) return map;
+  const chunks: string[][] = [];
+  for (let i = 0; i < dealIds.length; i += 100) {
+    chunks.push(dealIds.slice(i, i + 100));
+  }
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      const res = await fetch(
+        `${HUBSPOT_API}/crm/v4/associations/deals/companies/batch/read`,
+        {
+          method: "POST",
+          headers: hubspotHeaders(),
+          body: JSON.stringify({ inputs: chunk.map((id) => ({ id })) }),
+        }
+      );
+      if (!res.ok) {
+        throw new Error(`HubSpot deals->companies associations batch read ${res.status}`);
+      }
+      const data = await res.json();
+      for (const row of data.results || []) {
+        const companyId = row.to?.[0]?.toObjectId;
+        if (companyId !== undefined) {
+          map.set(String(row.from?.id), String(companyId));
+        }
+      }
+    })
+  );
+  return map;
+}
+
+export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; open: AttentionCompany[] }> {
+  const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  // Empty filterGroups would match every deal in the portal; bail instead.
+  if (pipelineIds.length === 0) {
+    return { overdue: [], open: [] };
+  }
+  const searchResults = await searchAllPages("deals", {
+    filterGroups: pipelineIds.map((pid) => ({
+      filters: [
+        { propertyName: "pipeline", operator: "EQ", value: pid },
+        { propertyName: "understory_number_of_unpaid_invoices", operator: "GT", value: "0" },
+      ],
+    })),
+    properties: ["confirmed__contract_mrr", "currency", "deal_currency_code", "booking_fee", "understory_unpaid_amount_local_currency", "understory_earliest_unpaid_invoice_due_date", "understory_number_of_unpaid_invoices", "understory_pay_status__customer", "subscription_plan"],
+    sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
+    limit: 100,
+  });
+  const emptyResult = { overdue: [] as AttentionCompany[], open: [] as AttentionCompany[] };
+
+  interface DealInfo { id: string; mrr: string; currency: string; bookingFee: string; outstandingAmount: string; invoiceDueDate: string; openInvoices: number; payStatus: string }
+    const deals: DealInfo[] = searchResults.map(
       (d: { id: string; properties: Record<string, string> }) => ({
         id: d.id,
         mrr: d.properties.confirmed__contract_mrr || "",
@@ -234,32 +295,16 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
         openInvoices: parseInt(d.properties.understory_number_of_unpaid_invoices || "0") || 0,
         payStatus: d.properties.understory_pay_status__customer || "",
       })
-    ) || [];
+    );
 
     if (deals.length === 0) return emptyResult;
 
-    // Fetch deal->company associations in batches of 5 to avoid rate limits
-    const assocResults: ({ companyId: string; deal: DealInfo } | null)[] = [];
-    for (let i = 0; i < deals.length; i += 5) {
-      const batch = deals.slice(i, i + 5);
-      const batchResults = await Promise.all(
-        batch.map(async (deal) => {
-          try {
-            const assocRes = await fetch(
-              `${HUBSPOT_API}/crm/v3/objects/deals/${deal.id}/associations/companies`,
-              { headers: hubspotHeaders(), cache: "no-store" as RequestCache }
-            );
-            if (!assocRes.ok) return null;
-            const assocData = await assocRes.json();
-            const companyId = assocData.results?.[0]?.id;
-            return companyId ? { companyId, deal } : null;
-          } catch {
-            return null;
-          }
-        })
-      );
-      assocResults.push(...batchResults);
-    }
+    // Batch-read deal->company associations (v4 API, chunks of 100 in parallel)
+    const dealCompanyMap = await fetchDealCompanyAssociations(deals.map((d) => d.id));
+    const assocResults: ({ companyId: string; deal: DealInfo } | null)[] = deals.map((deal) => {
+      const companyId = dealCompanyMap.get(deal.id);
+      return companyId ? { companyId, deal } : null;
+    });
 
     // Aggregate every open-invoice deal per company. A company is "overdue"
     // when at least one of its deals is past understory_earliest_unpaid_invoice_due_date; daysOverdue
@@ -389,36 +434,29 @@ export async function fetchInvoices(): Promise<{ overdue: AttentionCompany[]; op
       overdue: all.filter((c) => c._isOverdue === true),
       open: all.filter((c) => c._isOverdue !== true),
     };
-  } catch {
-    return { overdue: [], open: [] };
-  }
 }
 
 export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
-  try {
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/companies/search`, {
-      method: "POST",
-      headers: hubspotHeaders(),
-      body: JSON.stringify({
-        filterGroups: [
-          {
-            filters: [{
-              propertyName: "health_score",
-              operator: "LT",
-              value: "60",
-            }],
-          },
-        ],
-        properties: ["name", "health_score", "hubspot_owner_id", "understory_booking_volume_12m", "understory_booking_volume_3m", "understory_booking_volume_6m", "understory_company_country", "notes_last_contacted", "createdate"],
-        limit: 100,
-      }),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
+    // Cap at 5 pages (500 companies): downstream history + deal batch fetches
+    // fan out per 100 companies, and the UI group is unusable far before 500.
+    const searchResults = await searchAllPages("companies", {
+      filterGroups: [
+        {
+          filters: [{
+            propertyName: "health_score",
+            operator: "LT",
+            value: "60",
+          }],
+        },
+      ],
+      properties: ["name", "health_score", "hubspot_owner_id", "understory_booking_volume_12m", "understory_booking_volume_3m", "understory_booking_volume_6m", "understory_company_country", "notes_last_contacted", "createdate"],
+      sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
+      limit: 100,
+    }, 5);
 
     const fourteenDaysAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
 
-    const companies: (AttentionCompany & { _bookingVolume?: string; _createdate?: string })[] = (data.results || []).map(
+    const companies: (AttentionCompany & { _bookingVolume?: string; _createdate?: string })[] = searchResults.map(
       (c: { id: string; properties: Record<string, string> }) => ({
         id: c.id,
         name: c.properties.name || "Unknown",
@@ -489,16 +527,12 @@ export async function fetchHealthScoreIssues(): Promise<AttentionCompany[]> {
 
     // Remove companies whose score improved 15+ points in the last 14 days
     return notRecentlyContacted.filter((company) => !toExcludeImproved.has(company.id));
-  } catch {
-    return [];
-  }
 }
 
 const ACTIVE_LIFECYCLE_LABELS = ["adopted", "started", "ramp up", "established"];
 const RETENTION_PIPELINE = "1072518362";
 
 export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
-  try {
     // Step 1: Get stage map and find active retention stage IDs
     const stageMap = await getDealStages();
     const activeStageIds = Object.entries(stageMap)
@@ -507,33 +541,19 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
 
     if (activeStageIds.length === 0) return [];
 
-    // Step 2: Query deals in Customer retention pipeline with active stages (paginated)
-    const allDeals: { id: string; properties: Record<string, string> }[] = [];
-    let after: string | undefined;
-    do {
-      const body: Record<string, unknown> = {
-        filterGroups: [{
-          filters: [
-            { propertyName: "pipeline", operator: "EQ", value: RETENTION_PIPELINE },
-            { propertyName: "dealstage", operator: "IN", values: activeStageIds },
-          ],
-        }],
-        properties: ["dealname", "confirmed__contract_mrr", "currency", "booking_fee", "understory_pay_status__customer", "subscription_plan", "pipeline", "amount_in_home_currency"],
-        sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
-        limit: 100,
-      };
-      if (after) body.after = after;
-
-      const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
-        method: "POST",
-        headers: hubspotHeaders(),
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) break;
-      const data = await res.json();
-      allDeals.push(...(data.results || []));
-      after = data.paging?.next?.after;
-    } while (after);
+    // Step 2: Query deals in Customer retention pipeline with active stages
+    // (paginated through the shared retry helper; throws on terminal failure)
+    const allDeals = await searchAllPages("deals", {
+      filterGroups: [{
+        filters: [
+          { propertyName: "pipeline", operator: "EQ", value: RETENTION_PIPELINE },
+          { propertyName: "dealstage", operator: "IN", values: activeStageIds },
+        ],
+      }],
+      properties: ["dealname", "confirmed__contract_mrr", "currency", "booking_fee", "understory_pay_status__customer", "subscription_plan", "pipeline", "amount_in_home_currency"],
+      sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
+      limit: 100,
+    });
 
     if (allDeals.length === 0) return [];
 
@@ -547,20 +567,18 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
     }
     const assocResponses = await Promise.all(
       assocChunks.map(async (inputs) => {
-        try {
-          const res = await fetch(
-            `${HUBSPOT_API}/crm/v4/associations/deals/companies/batch/read`,
-            {
-              method: "POST",
-              headers: hubspotHeaders(),
-              body: JSON.stringify({ inputs }),
-            }
-          );
-          if (!res.ok) return null;
-          return await res.json();
-        } catch {
-          return null;
+        const res = await fetch(
+          `${HUBSPOT_API}/crm/v4/associations/deals/companies/batch/read`,
+          {
+            method: "POST",
+            headers: hubspotHeaders(),
+            body: JSON.stringify({ inputs }),
+          }
+        );
+        if (!res.ok) {
+          throw new Error(`HubSpot deals->companies associations batch read ${res.status}`);
         }
+        return await res.json();
       })
     );
     for (const data of assocResponses) {
@@ -638,120 +656,5 @@ export async function fetchNoFutureEvents(): Promise<AttentionCompany[]> {
     }
 
     return results.sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
-  } catch {
-    return [];
-  }
-}
-
-export async function fetchChurnRisk(): Promise<AttentionCompany[]> {
-  try {
-    const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
-      method: "POST",
-      headers: hubspotHeaders(),
-      body: JSON.stringify({
-        filterGroups: pipelineIds.map((pid) => ({
-          filters: [
-            { propertyName: "pipeline", operator: "EQ", value: pid },
-            { propertyName: "wish_to_churn", operator: "EQ", value: "true" },
-          ],
-        })),
-        properties: ["dealname", "churn_reason", "churned_reason_elaborated", "churn_date", "customer_stage", "currency", "confirmed__contract_mrr", "booking_fee", "understory_pay_status__customer", "subscription_plan"],
-        limit: 100,
-      }),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-
-    // Only show companies NOT yet churned (active churn risks)
-    const activeDeals = (data.results || []).filter(
-      (d: { properties: Record<string, string> }) => d.properties.customer_stage !== "Churned"
-    );
-
-    if (activeDeals.length === 0) return [];
-
-    const companyMap = new Map<string, AttentionCompany>();
-
-    // Fetch associations in batches of 5
-    const assocResults: ({ companyId: string; deal: { dealname: string; churnReason: string; churnDetail: string; stage: string; payStatus: string; bookingFee: string; mrr: string; currency: string } } | null)[] = [];
-    for (let i = 0; i < activeDeals.length; i += 5) {
-      const batch = activeDeals.slice(i, i + 5);
-      const batchResults = await Promise.all(
-        batch.map(async (deal: { id: string; properties: Record<string, string> }) => {
-          try {
-            const assocRes = await fetch(
-              `${HUBSPOT_API}/crm/v3/objects/deals/${deal.id}/associations/companies`,
-              { headers: hubspotHeaders(), cache: "no-store" as RequestCache }
-            );
-            if (!assocRes.ok) return null;
-            const assocData = await assocRes.json();
-            const companyId = assocData.results?.[0]?.id;
-            return companyId ? {
-              companyId,
-              deal: {
-                dealname: deal.properties.dealname || "",
-                churnReason: deal.properties.churn_reason || "",
-                churnDetail: deal.properties.churned_reason_elaborated || "",
-                stage: deal.properties.customer_stage || "",
-                payStatus: deal.properties.understory_pay_status__customer || "",
-                bookingFee: deal.properties.booking_fee || "",
-                mrr: deal.properties.confirmed__contract_mrr || "",
-                currency: deal.properties.currency || "",
-              }
-            } : null;
-          } catch { return null; }
-        })
-      );
-      assocResults.push(...batchResults);
-    }
-
-    for (const result of assocResults) {
-      if (!result || companyMap.has(result.companyId)) continue;
-      const { companyId, deal } = result;
-      const reasonText = deal.churnReason
-        ? `${deal.churnReason}${deal.churnDetail ? ` - ${deal.churnDetail.slice(0, 80)}` : ""}`
-        : deal.stage || "Wants to churn";
-      companyMap.set(companyId, {
-        id: companyId,
-        name: "",
-        detail: reasonText,
-        ownerId: "",
-        currency: "EUR",
-        payStatus: deal.payStatus || undefined,
-        _dealBookingFee: deal.bookingFee,
-        _dealMrr: deal.mrr,
-        _dealCurrency: deal.currency,
-      } as AttentionCompany & { _dealBookingFee: string; _dealMrr: string; _dealCurrency: string });
-    }
-
-    if (companyMap.size === 0) return [];
-
-    const companies = await fetchCompanyBatch(Array.from(companyMap.keys()), ["understory_company_country", ...CHIP_COMPANY_PROPS]);
-    for (const [id, props] of Object.entries(companies)) {
-      const entry = companyMap.get(id);
-      if (entry) {
-        entry.name = props.name || "Unknown";
-        entry.ownerId = props.hubspot_owner_id || "";
-        entry.country = props.understory_company_country || "";
-        const dealEntry = entry as AttentionCompany & { _dealBookingFee?: string; _dealMrr?: string; _dealCurrency?: string };
-        const dealProps: Record<string, string> = {};
-        if (dealEntry._dealBookingFee) dealProps.booking_fee = dealEntry._dealBookingFee;
-        if (dealEntry._dealMrr) dealProps.confirmed__contract_mrr = dealEntry._dealMrr;
-        if (dealEntry._dealCurrency) dealProps.currency = dealEntry._dealCurrency;
-        const revenue = computeGeneratedRevenue(props.understory_booking_volume_12m, dealProps.booking_fee, dealProps.confirmed__contract_mrr, dealProps.currency, props.createdate);
-        entry.mrr = revenue > 0 ? formatRevenue(revenue) : "-";
-        const chipFields = mapChipFields(props, Object.keys(dealProps).length > 0 ? dealProps : null);
-        Object.assign(entry, chipFields);
-        // payStatus was set from the deal during association loop; preserve it
-        if (!entry.payStatus) {
-          entry.payStatus = chipFields.payStatus;
-        }
-      }
-    }
-
-    return Array.from(companyMap.values()).filter((c) => c.name);
-  } catch {
-    return [];
-  }
 }
 

@@ -662,5 +662,6 @@ export async function fetchPayMigrationData(
     allDeals,
     recentStageChanges,
     updatedAt: new Date().toISOString(),
+    generatedAt: new Date().toISOString(),
   };
 }

@@ -21,12 +21,14 @@ describe("isMeetingPrepPipeline", () => {
 
 describe("isLifecycleScope", () => {
   it("matches active onboarding stages on the lifecycle pipeline", () => {
+    // ONBOARDING_STAGES uses HubSpot internal values: Onboarding / Adoption / Live
     expect(isLifecycleScope({ pipeline: "166333631", customer_stage: "Onboarding" })).toBe(true);
-    expect(isLifecycleScope({ pipeline: "166333631", customer_stage: "Adopted" })).toBe(true);
-    expect(isLifecycleScope({ pipeline: "166333631", customer_stage: "Started" })).toBe(true);
+    expect(isLifecycleScope({ pipeline: "166333631", customer_stage: "Adoption" })).toBe(true);
+    expect(isLifecycleScope({ pipeline: "166333631", customer_stage: "Live" })).toBe(true);
   });
   it("rejects non-onboarding stages on the lifecycle pipeline", () => {
     expect(isLifecycleScope({ pipeline: "166333631", customer_stage: "Established" })).toBe(false);
+    expect(isLifecycleScope({ pipeline: "166333631", customer_stage: "Ramp Up" })).toBe(false);
     expect(isLifecycleScope({ pipeline: "166333631", customer_stage: "Churned" })).toBe(false);
     expect(isLifecycleScope({ pipeline: "166333631" })).toBe(false);
   });
@@ -64,17 +66,20 @@ describe("extractInvoiceState", () => {
     });
   });
 
-  it("counts open invoices from number_of_open_invoices", () => {
-    const r = extractInvoiceState({ number_of_open_invoices: "3" }, "2026-05-02T00:00:00.000Z");
+  it("counts open invoices from understory_number_of_unpaid_invoices", () => {
+    const r = extractInvoiceState(
+      { understory_number_of_unpaid_invoices: "3" },
+      "2026-05-02T00:00:00.000Z"
+    );
     expect(r.open).toBe(3);
   });
 
-  it("flags overdue when unpaid_invoice=true AND invoice_due_date is in past", () => {
+  it("flags overdue when unpaid count > 0 AND earliest unpaid due date is in past", () => {
     const r = extractInvoiceState(
       {
-        unpaid_invoice: "true",
-        invoice_due_date: "2026-04-24T00:00:00.000Z",
-        outstanding_amount: "4200",
+        understory_number_of_unpaid_invoices: "1",
+        understory_earliest_unpaid_invoice_due_date: "2026-04-24T00:00:00.000Z",
+        understory_unpaid_amount_local_currency: "4200",
         deal_currency_code: "EUR",
       },
       "2026-05-02T00:00:00.000Z"
@@ -87,9 +92,9 @@ describe("extractInvoiceState", () => {
   it("does not flag overdue when due date is in future", () => {
     const r = extractInvoiceState(
       {
-        unpaid_invoice: "true",
-        invoice_due_date: "2026-05-15T00:00:00.000Z",
-        outstanding_amount: "4200",
+        understory_number_of_unpaid_invoices: "1",
+        understory_earliest_unpaid_invoice_due_date: "2026-05-15T00:00:00.000Z",
+        understory_unpaid_amount_local_currency: "4200",
       },
       "2026-05-02T00:00:00.000Z"
     );

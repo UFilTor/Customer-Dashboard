@@ -5,6 +5,8 @@ import type {
   MeetingPrepDeal,
   MeetingPrepMeetingEntry,
   OnboardingHistoryEntry,
+  Recap,
+  WatchOutSignal,
 } from "@/lib/types";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 import { fmtFutureEvents } from "@/lib/format-design";
@@ -12,8 +14,9 @@ import { OWNER_MAP } from "@/lib/owners";
 import { VolumeChart } from "../VolumeChart";
 import { HealthRings } from "../HealthRings";
 import { Avatar } from "../Avatar";
-import { HistoryItem } from "./OnboardingView";
+import { HistoryItem } from "./HistoryItem";
 import { WatchOutFor } from "../WatchOutFor";
+import { SinceLastTouchBlock } from "../SinceLastTouch";
 
 interface Props {
   entry: MeetingPrepMeetingEntry;
@@ -128,6 +131,7 @@ export function MeetingPrepBrief({
   onSelectCompany,
 }: Props) {
   const { deal, meeting } = entry;
+  const { recap, recapLoading, noteSignals } = useCompanyExtras(deal.companyId);
   const start = new Date(meeting.startsAt);
   const ownerLocal = OWNER_MAP[deal.ownerId] || null;
   const companyHref = hubspotCompanyUrl(deal.companyId);
@@ -374,6 +378,7 @@ export function MeetingPrepBrief({
             gap: 10,
           }}
         >
+          <RecapLine recap={recap} loading={recapLoading} />
           {deal.pipeline === "lifecycle" ? (
             <LifecycleBriefBlocks deal={deal} />
           ) : (
@@ -397,15 +402,96 @@ export function MeetingPrepBrief({
             expandedIds={expandedIds}
             onToggleExpand={toggleExpanded}
           />
+          <SinceLastTouchBlock data={deal.sinceLastTouch} />
           <div>
             <SectionHeader>Watch out for</SectionHeader>
             <WatchOutFor
-              signals={deal.watchOuts}
+              signals={[...deal.watchOuts, ...noteSignals]}
               stage={briefPortfolioStage(deal.pipeline, deal.customerStage)}
+              taskHref={dealHref ? `${dealHref}&interaction=task` : null}
             />
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   AI recap line — lazy-fetched per card from /api/companies/[id]/recap
+   (server-cached 60 min + warmed by cron, so this is usually instant).
+   Only the selected day's briefs render, which bounds the fetch count.
+   ============================================================ */
+
+function useCompanyExtras(companyId: string | null): {
+  recap: Recap | null;
+  recapLoading: boolean;
+  noteSignals: WatchOutSignal[];
+} {
+  const [recap, setRecap] = useState<Recap | null>(null);
+  const [recapLoading, setRecapLoading] = useState(!!companyId);
+  const [noteSignals, setNoteSignals] = useState<WatchOutSignal[]>([]);
+  // Adjust-state-during-render reset when the company changes (see AGENTS.md
+  // "Strict react-hooks lint") — no setState inside the effect body.
+  const [prevCompanyId, setPrevCompanyId] = useState(companyId);
+  if (prevCompanyId !== companyId) {
+    setPrevCompanyId(companyId);
+    setRecap(null);
+    setRecapLoading(!!companyId);
+    setNoteSignals([]);
+  }
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/companies/${companyId}/recap`);
+        if (!res.ok) return;
+        const json: { recap: Recap | null } = await res.json();
+        if (!cancelled) setRecap(json.recap ?? null);
+      } catch {
+        /* silent — the brief works without a recap */
+      } finally {
+        if (!cancelled) setRecapLoading(false);
+      }
+    })();
+    (async () => {
+      try {
+        const res = await fetch(`/api/companies/${companyId}/note-signals`);
+        if (!res.ok) return;
+        const json: { signals: WatchOutSignal[] } = await res.json();
+        if (!cancelled && Array.isArray(json.signals)) setNoteSignals(json.signals);
+      } catch {
+        /* silent — rule-based signals still render */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+  return { recap, recapLoading, noteSignals };
+}
+
+function RecapLine({ recap, loading }: { recap: Recap | null; loading: boolean }) {
+  // Distinguish "still generating" from "no logged activity to recap" so a
+  // slow cold recap doesn't read as broken.
+  if (!recap?.summary) {
+    if (!loading) return null;
+    return (
+      <div>
+        <SectionHeader>Recap</SectionHeader>
+        <div style={{ opacity: 0.5, fontSize: 12, fontStyle: "italic", color: "var(--moss)" }}>
+          Generating recap…
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <SectionHeader>Recap</SectionHeader>
+      <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: "var(--moss)", opacity: 0.85 }}>
+        {recap.summary}
+      </p>
     </div>
   );
 }

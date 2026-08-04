@@ -7,6 +7,7 @@ import type {
   PortfolioSignalKey,
   PortfolioStage,
 } from "./types";
+import { GONE_QUIET_BAD_DAYS, GONE_QUIET_WARN_DAYS } from "@/config/thresholds";
 
 // Stage gating, system-wide. The Portfolio dashboard pioneered this set of
 // rules to silence noisy signals on stages where they don't carry useful
@@ -245,19 +246,19 @@ export function computeWatchOutSignals(ctx: WatchOutContext): WatchOutSignal[] {
     });
   }
 
-  // 6. Gone quiet — warn (30+ days) or bad (45+ days)
+  // 6. Gone quiet — warn or bad, cutoffs in src/config/thresholds.ts
   if (ctx.notesLastContacted) {
     const last = new Date(ctx.notesLastContacted).getTime();
     if (!isNaN(last)) {
       const days = Math.floor((now - last) / (24 * 60 * 60 * 1000));
-      if (days >= 45) {
+      if (days >= GONE_QUIET_BAD_DAYS) {
         out.push({
           kind: "gone_quiet",
           severity: "bad",
           title: `Last contact ${days} days ago`,
           detail: `No outbound since ${ctx.notesLastContacted.slice(0, 10)}`,
         });
-      } else if (days >= 30) {
+      } else if (days >= GONE_QUIET_WARN_DAYS) {
         out.push({
           kind: "gone_quiet",
           severity: "warn",

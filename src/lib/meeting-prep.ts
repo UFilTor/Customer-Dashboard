@@ -1,6 +1,9 @@
-import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import {
+  DEFAULT_EXPECTED_DAYS,
   EXPECTED_DAYS,
+  RETENTION_EXPECTED_DAYS,
+} from "@/config/thresholds";
+import {
   LIFECYCLE_PIPELINE,
   ONBOARDING_STAGES,
   classifyStep,
@@ -24,8 +27,17 @@ import {
   type ContactInfo,
 } from "./onboarding";
 import { hasUnpaidInvoice, unpaidAmountLocal, unpaidInvoiceCount } from "./invoice-fields";
+import {
+  SLT_COMPANY_PROPS,
+  SLT_DEAL_PROPS,
+  buildSinceLastTouch,
+  fetchPropertyHistories,
+} from "./since-last-touch";
 import { computeWatchOutSignals } from "./signals";
+import { OWNERS } from "./owners";
+import { searchObjectsPage } from "./hubspot-search";
 import { classifyPortfolioStage } from "./portfolio";
+import { toEur } from "./fx";
 import type {
   MeetingPrepDeal,
   MeetingPrepMeetingEntry,
@@ -45,22 +57,6 @@ export const RETENTION_PIPELINE = "1072518362";
 // customer_stage values to EXCLUDE from the retention pipeline. Churned
 // customers are out of scope: nothing to prep, nothing to retain.
 const EXCLUDED_RETENTION_STAGES = new Set(["Churned"]);
-
-// EUR conversion table — kept in sync with src/lib/pay-migration.ts. Only
-// covers the currencies the CS team actually transacts in.
-const TO_EUR: Record<string, number> = {
-  EUR: 1,
-  SEK: 0.087,
-  DKK: 0.134,
-  NOK: 0.085,
-  GBP: 1.18,
-  USD: 0.92,
-};
-
-function toEur(amount: number, currency: string | undefined): number {
-  const rate = TO_EUR[(currency || "EUR").toUpperCase()] ?? 1;
-  return amount * rate;
-}
 
 /** Extract the deal's invoice state for the brief's Commercial section. */
 export function extractInvoiceState(
@@ -224,11 +220,17 @@ interface BuildOptions {
   ownerIds?: string[];
   meetingFromIso?: string;
   meetingToIso?: string;
+  spans?: { label: string; ms: number }[];
 }
 
 interface PayloadOnly {
+  // Meetings-first build: `deals` only contains deals attached to a surfaced
+  // meeting (a handful), never the full pipeline pool. Pool sizes for the
+  // count tiles come from HubSpot's search `total` instead.
   deals: MeetingPrepDeal[];
   meetings: MeetingPrepMeetingEntry[];
+  lifecycleDealsTotal: number;
+  retentionDealsTotal: number;
 }
 
 // `understory_health_score_upcoming_events` is a 0-1 score, not a count.
@@ -248,48 +250,94 @@ export async function buildMeetingPrepPayload(
 ): Promise<PayloadOnly> {
   const ownerIds = opts.ownerIds;
   const nowIso = new Date().toISOString();
+  const mark = (label: string, t0: number) => {
+    opts.spans?.push({ label, ms: Math.round(performance.now() - t0) });
+  };
 
-  // 1. Search both pipelines in parallel. Pagination caps at 50 pages each.
-  const [lifecycleDeals, retentionDeals] = await Promise.all([
-    searchDealsByPipeline({
-      ownerIds,
-      pipeline: LIFECYCLE_PIPELINE,
-      stages: ONBOARDING_STAGES,
-      excludeStages: null,
-      properties: LIFECYCLE_DEAL_PROPS,
-    }),
-    searchDealsByPipeline({
-      ownerIds,
-      pipeline: RETENTION_PIPELINE,
-      stages: null,
-      excludeStages: [...EXCLUDED_RETENTION_STAGES],
-      properties: RETENTION_DEAL_PROPS,
-    }),
-  ]);
+  // Meetings-first build. The old flow paginated ALL ~700 deals in both
+  // pipelines up front (the bulk of a 6s cold build) just to (a) derive the
+  // meeting-search owner scope, (b) match meetings to deals, and (c) count
+  // two tiles. Instead: fetch the calendar meetings, resolve THEIR deals via
+  // the meetings->deals association (verified reliable against HubSpot), and
+  // get pool counts from the search API's `total` field.
 
-  const allRawDeals = [...lifecycleDeals, ...retentionDeals];
-  const dealIds = allRawDeals.map((d) => d.id);
-
-  // 2. Meeting window setup. Default = today + next 4 work days (5 total).
+  // 1. Meeting window setup. Default = today + next 4 work days (5 total).
   const meetingFromIso =
     opts.meetingFromIso ?? new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
   const meetingToIso =
     opts.meetingToIso ?? endOfNthWorkDay(new Date(), 5).toISOString();
 
   // CS owner scope for the meeting fetch. When the caller doesn't restrict,
-  // use the deals' owners. Mirrors onboarding/retention behavior.
-  const dealOwnerIds = Array.from(
-    new Set(
-      allRawDeals
-        .map((d) => d.properties?.hubspot_owner_id || "")
-        .filter(Boolean)
-    )
-  );
+  // use the static CS owner roster (the same universe the filter UI offers).
   const csOwnerIds =
-    ownerIds && ownerIds.length > 0 ? ownerIds : dealOwnerIds;
+    ownerIds && ownerIds.length > 0 ? ownerIds : OWNERS.map((o) => o.id);
 
-  // 3. Independent fetches concurrently. Sales deals depend on companyMap, so
-  // chain it off the companies promise to overlap with the others.
+  // 2. Everything without a data dependency starts at t=0: the calendar
+  // meetings, the two pool counts, and the owner directory.
+  const tMeetings = performance.now();
+  const ownerMeetingsPromise = fetchUpcomingMeetingsByOwners(
+    csOwnerIds,
+    meetingFromIso,
+    meetingToIso
+  );
+  const countsPromise = Promise.all([
+    countDealsInScope("lifecycle", ownerIds),
+    countDealsInScope("retention", ownerIds),
+  ]);
+  const ownerNamesPromise = fetchOwnerNames(OWNERS.map((o) => o.id));
+
+  const ownerMeetings = await ownerMeetingsPromise;
+  mark("hubspot.meetings", tMeetings);
+
+  // 3. meetings -> deals association, then batch-read only those deals and
+  // keep the ones in scope (lifecycle onboarding stages / retention
+  // non-churned). A meeting maps to its first in-scope deal.
+  const tDeals = performance.now();
+  const meetingIds = ownerMeetings.map((m) => m.id);
+  const meetingAssocs = meetingIds.length > 0
+    ? await fetchAssociations("meetings", "deals", meetingIds)
+    : [];
+  const candidateDealIds = Array.from(
+    new Set(meetingAssocs.flatMap((a) => a.toIds))
+  );
+  const candidateProps = candidateDealIds.length > 0
+    ? await fetchObjectsBatch("deals", candidateDealIds, ALL_MEETING_PREP_DEAL_PROPS)
+    : new Map<string, Record<string, string>>();
+
+  const inScope = (props: Record<string, string> | undefined): boolean => {
+    if (!props) return false;
+    const scopeProps = { pipeline: props.pipeline, customer_stage: props.customer_stage };
+    return isLifecycleScope(scopeProps) || isRetentionScope(scopeProps);
+  };
+  // Optional owner restriction also applies to the deal (mirrors the old
+  // owner-filtered pipeline search).
+  const ownerSet = ownerIds && ownerIds.length > 0 ? new Set(ownerIds) : null;
+  const dealAllowed = (props: Record<string, string> | undefined): boolean => {
+    if (!inScope(props)) return false;
+    if (ownerSet && !ownerSet.has(props?.hubspot_owner_id || "")) return false;
+    return true;
+  };
+
+  const meetingToDeal = new Map<string, string>();
+  const surfacedDealIds = new Set<string>();
+  for (const a of meetingAssocs) {
+    const match = a.toIds.find((dealId) => dealAllowed(candidateProps.get(dealId)));
+    if (match) {
+      meetingToDeal.set(a.fromId, match);
+      surfacedDealIds.add(match);
+    }
+  }
+  const allRawDeals = Array.from(surfacedDealIds).map((id) => ({
+    id,
+    properties: candidateProps.get(id) || {},
+  }));
+  const dealIds = allRawDeals.map((d) => d.id);
+  mark("hubspot.deals", tDeals);
+
+  // 4. Per-deal enrichment — companies, contacts, sales deals — now over the
+  // handful of surfaced deals instead of the full pool. Sales deals depend on
+  // companyMap, so chain it off the companies promise to overlap.
+  const tEnrich = performance.now();
   const dealToCompanyPromise = fetchDealToCompany(dealIds);
   const companyMapPromise = dealToCompanyPromise.then(async (
     dealIdToCompanyId
@@ -313,19 +361,15 @@ export async function buildMeetingPrepPayload(
   const salesDealsPromise = companyMapPromise.then(({ companyIds }) =>
     fetchSalesDealsForCompanies(companyIds)
   );
-  const ownerMeetingsPromise =
-    csOwnerIds.length > 0
-      ? fetchUpcomingMeetingsByOwners(csOwnerIds, meetingFromIso, meetingToIso)
-      : Promise.resolve([] as Awaited<ReturnType<typeof fetchUpcomingMeetingsByOwners>>);
 
-  const [companyData, contactMap, salesDealsByCompany, ownerMeetings] =
+  const [companyData, contactMap, salesDealsByCompany] =
     await Promise.all([
       companyMapPromise,
       contactsPromise,
       salesDealsPromise,
-      ownerMeetingsPromise,
     ]);
   const { dealIdToCompanyId, byDeal: companyMap } = companyData;
+  mark("hubspot.enrich", tEnrich);
 
   // 4. Sales fallback per company so each deal can attribute a sales owner.
   const salesFallbackByCompany = new Map<string, { ownerId: string; isPriced: boolean; deal: { properties: Record<string, string> } }>();
@@ -340,26 +384,11 @@ export async function buildMeetingPrepPayload(
     });
   }
 
-  // 5. Resolve owner names for the union of deal owners and sales-deal owners.
-  const dealOwnerIdsRaw = allRawDeals
-    .map((d) => d.properties?.hubspot_owner_id || "")
-    .filter(Boolean);
-  const salesOwnerIdsRaw: string[] = [];
-  for (const list of salesDealsByCompany.values()) {
-    for (const d of list) {
-      if (d.properties.hubspot_owner_id) salesOwnerIdsRaw.push(d.properties.hubspot_owner_id);
-    }
-  }
-  const ownerNameMap = await fetchOwnerNames(
-    Array.from(new Set([...dealOwnerIdsRaw, ...salesOwnerIdsRaw]))
-  );
+  // 5. Owner names: the directory promise from t=0 covers every owner
+  // (fetchOwnerNames returns the whole directory for any non-empty input).
+  const ownerNameMap = await ownerNamesPromise;
 
-  // 6. Resolve which deal each meeting belongs to. Walk deals → meetings; HubSpot
-  // indexes that direction reliably, the inverse can return empty.
-  const meetingToDeal = await resolveDealsForMeetings(
-    ownerMeetings.map((m) => m.id),
-    new Set(dealIds)
-  );
+  // 6. (meetings -> deals already resolved above, meetings-first.)
 
   // 7. Build MeetingPrepDeal[] from raw deals + companies.
   const meetingPrepDeals: MeetingPrepDeal[] = allRawDeals.map((d) =>
@@ -376,11 +405,7 @@ export async function buildMeetingPrepPayload(
   const dealById = new Map(meetingPrepDeals.map((d) => [d.dealId, d]));
 
   // 8. Build the meeting entries (only meetings that resolved to a deal).
-  const meetingOwnerIds = new Set<string>();
-  for (const m of ownerMeetings) {
-    if (m.properties?.hubspot_owner_id) meetingOwnerIds.add(m.properties.hubspot_owner_id);
-  }
-  const meetingOwnerNames = await fetchOwnerNames(Array.from(meetingOwnerIds));
+  const meetingOwnerNames = ownerNameMap;
 
   // First pass: turn each raw HubSpot meeting that resolved to a deal into an
   // OnboardingMeeting + record the dealId. Group by deal so the calendar+Gong
@@ -424,81 +449,82 @@ export async function buildMeetingPrepPayload(
     a.meeting.startsAt.localeCompare(b.meeting.startsAt)
   );
 
-  return { deals: meetingPrepDeals, meetings: meetingEntries };
+  // 9. "Since last touch" change feed — only for the deals actually attached
+  // to a surfaced meeting (a handful), never the full pool. Two parallel
+  // history batch reads; best-effort.
+  const surfacedDeals = Array.from(
+    new Map(meetingEntries.map((e) => [e.deal.dealId, e.deal])).values()
+  );
+  const surfacedCompanyIds = Array.from(
+    new Set(surfacedDeals.map((d) => d.companyId).filter((id): id is string => !!id))
+  );
+  const [companyHistories, dealHistories] = await Promise.all([
+    fetchPropertyHistories("companies", surfacedCompanyIds, SLT_COMPANY_PROPS),
+    fetchPropertyHistories("deals", surfacedDeals.map((d) => d.dealId), SLT_DEAL_PROPS),
+  ]);
+  for (const deal of surfacedDeals) {
+    deal.sinceLastTouch = buildSinceLastTouch(
+      deal.companyId ? companyHistories.get(deal.companyId) : undefined,
+      dealHistories.get(deal.dealId),
+      deal.lastTouch,
+      nowIso
+    );
+  }
+
+  const [lifecycleDealsTotal, retentionDealsTotal] = await countsPromise;
+
+  return {
+    deals: meetingPrepDeals,
+    meetings: meetingEntries,
+    lifecycleDealsTotal,
+    retentionDealsTotal,
+  };
 }
+
+// Union of both pipelines' property lists — the meetings-first flow batch
+// reads candidate deals before knowing which pipeline they belong to.
+const ALL_MEETING_PREP_DEAL_PROPS = Array.from(
+  new Set([...LIFECYCLE_DEAL_PROPS, ...RETENTION_DEAL_PROPS])
+);
 
 /**
- * Search HubSpot for deals on a given pipeline. Always sends a sorts clause to
- * keep pagination working (see AGENTS.md). Retries 429/5xx.
+ * Pool size for one pipeline scope via HubSpot's search `total` — a single
+ * limit:1 request instead of paginating the full result set. The filters
+ * exactly mirror the old full-pool searches so the count-tile numbers are
+ * unchanged.
  */
-async function searchDealsByPipeline(opts: {
-  ownerIds: string[] | undefined;
-  pipeline: string;
-  stages: string[] | null;
-  excludeStages: string[] | null;
-  properties: string[];
-}): Promise<Array<{ id: string; properties: Record<string, string> }>> {
-  const baseFilters: unknown[] = [
-    { propertyName: "pipeline", operator: "EQ", value: opts.pipeline },
-  ];
-  if (opts.stages && opts.stages.length > 0) {
-    baseFilters.push({ propertyName: "customer_stage", operator: "IN", values: opts.stages });
-  }
-  if (opts.excludeStages && opts.excludeStages.length > 0) {
-    baseFilters.push({
-      propertyName: "customer_stage",
-      operator: "NOT_IN",
-      values: opts.excludeStages,
-    });
-  }
+async function countDealsInScope(
+  scope: "lifecycle" | "retention",
+  ownerIds: string[] | undefined
+): Promise<number> {
   const filters: unknown[] =
-    opts.ownerIds && opts.ownerIds.length > 0
-      ? [...baseFilters, { propertyName: "hubspot_owner_id", operator: "IN", values: opts.ownerIds }]
-      : baseFilters;
-  const filterGroups = [{ filters }];
-
-  const results: Array<{ id: string; properties: Record<string, string> }> = [];
-  let after: string | undefined;
-  for (let page = 0; page < 50; page++) {
-    const body: Record<string, unknown> = {
-      filterGroups,
-      properties: opts.properties,
-      limit: 100,
+    scope === "lifecycle"
+      ? [
+          { propertyName: "pipeline", operator: "EQ", value: LIFECYCLE_PIPELINE },
+          { propertyName: "customer_stage", operator: "IN", values: ONBOARDING_STAGES },
+        ]
+      : [
+          { propertyName: "pipeline", operator: "EQ", value: RETENTION_PIPELINE },
+          {
+            propertyName: "customer_stage",
+            operator: "NOT_IN",
+            values: [...EXCLUDED_RETENTION_STAGES],
+          },
+        ];
+  if (ownerIds && ownerIds.length > 0) {
+    filters.push({ propertyName: "hubspot_owner_id", operator: "IN", values: ownerIds });
+  }
+  try {
+    const page = await searchObjectsPage("deals", {
+      filterGroups: [{ filters }],
+      properties: ["hs_object_id"],
       sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
-    };
-    if (after) body.after = after;
-    const res = await retryFetch(async () =>
-      fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
-        method: "POST",
-        headers: hubspotHeaders(),
-        body: JSON.stringify(body),
-        cache: "no-store",
-      })
-    );
-    if (!res.ok) break;
-    const json = await res.json();
-    if (Array.isArray(json.results)) results.push(...json.results);
-    after = json.paging?.next?.after;
-    if (!after) break;
+      limit: 1,
+    });
+    return page.total;
+  } catch {
+    return 0; // count tiles degrade gracefully; the meeting list is unaffected
   }
-  return results;
-}
-
-// Small retry wrapper for transient HubSpot 429/5xx errors.
-async function retryFetch(do_fetch: () => Promise<Response>): Promise<Response> {
-  let last: Response | null = null;
-  for (let i = 0; i < 3; i++) {
-    try {
-      const res = await do_fetch();
-      if (res.ok) return res;
-      if (res.status !== 429 && res.status < 500) return res;
-      last = res;
-    } catch {
-      // network error — retry
-    }
-    await new Promise((r) => setTimeout(r, 200 * (i + 1)));
-  }
-  return last ?? Promise.reject(new Error("HubSpot fetch failed"));
 }
 
 // Batch-fetch the dealId -> companyId map via associations API.
@@ -508,30 +534,6 @@ async function fetchDealToCompany(dealIds: string[]): Promise<Map<string, string
   const assocs = await fetchAssociations("deals", "companies", dealIds);
   for (const a of assocs) {
     if (a.toIds[0]) out.set(a.fromId, a.toIds[0]);
-  }
-  return out;
-}
-
-// Resolve a list of meeting IDs to their associated deal (any of ours).
-async function resolveDealsForMeetings(
-  meetingIds: string[],
-  allowedDealIds: Set<string>
-): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (meetingIds.length === 0 || allowedDealIds.size === 0) return out;
-  const wanted = new Set(meetingIds);
-  const assocs = await fetchAssociations(
-    "deals",
-    "meetings",
-    Array.from(allowedDealIds)
-  );
-  for (const a of assocs) {
-    if (!allowedDealIds.has(a.fromId)) continue;
-    for (const meetingId of a.toIds) {
-      if (wanted.has(meetingId) && !out.has(meetingId)) {
-        out.set(meetingId, a.fromId);
-      }
-    }
   }
   return out;
 }
@@ -612,13 +614,6 @@ function buildMeetingPrepDeal(
   let expectedDaysInStep: number | null = null;
   let obNotes: OnboardingObNotesExtended | null = null;
 
-  // Retention-stage expected step durations. Mirrors PORTFOLIO_EXPECTED_DAYS
-  // in portfolio.ts; inlined to avoid a cross-lib import for two numbers.
-  const RETENTION_EXPECTED_DAYS: Record<string, number> = {
-    Adopted: 14,
-    Started: 30,
-  };
-
   // Retention-only fields
   const liveDate = dp.customer_live_date || null;
   const daysLive = isLifecycle ? null : daysSinceIso(nowIso, liveDate);
@@ -633,7 +628,7 @@ function buildMeetingPrepDeal(
     daysInStep = enteredStageDate != null
       ? daysSince(enteredStageDate)
       : daysSince(nullable(dp.createdate));
-    expectedDaysInStep = EXPECTED_DAYS[step] ?? 30;
+    expectedDaysInStep = EXPECTED_DAYS[step] ?? DEFAULT_EXPECTED_DAYS;
 
     const contact = contactMap.get(rawDeal.id);
     const contactName = contact
@@ -724,6 +719,7 @@ function buildMeetingPrepDeal(
     history: [], // backfilled by /api/meeting-prep/history
     watchOuts,
     lastTouch: cp.notes_last_contacted || dp.notes_last_contacted || null,
+    sinceLastTouch: null, // filled for surfaced meetings in buildMeetingPrepPayload
   };
 }
 
@@ -739,17 +735,12 @@ export async function buildMeetingPrepResponse(
   opts: BuildOptions = {}
 ): Promise<MeetingPrepResponse> {
   const payload = await buildMeetingPrepPayload(opts);
-  let lifecycle = 0;
-  let retention = 0;
-  for (const d of payload.deals) {
-    if (d.pipeline === "lifecycle") lifecycle++;
-    else if (d.pipeline === "retention") retention++;
-  }
   return {
     meetings: payload.meetings,
-    dealsTotal: payload.deals.length,
-    lifecycleDealsTotal: lifecycle,
-    retentionDealsTotal: retention,
+    dealsTotal: payload.lifecycleDealsTotal + payload.retentionDealsTotal,
+    lifecycleDealsTotal: payload.lifecycleDealsTotal,
+    retentionDealsTotal: payload.retentionDealsTotal,
     updatedAt: new Date().toISOString(),
+    generatedAt: new Date().toISOString(),
   };
 }

@@ -58,6 +58,7 @@ import {
 } from "@/lib/owners";
 import { addRecentCompany, computeRevenueFromDetail } from "@/lib/recent-companies";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
+import { reportFreshness } from "@/lib/freshness";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 
 type DetailData = CompanyDetailData & { owners: OwnerMap; stages: StageMap };
@@ -151,6 +152,12 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   const [attention, setAttention] = useState<AttentionResponse | null>(initialAttention);
   const [isLoadingAttention, setIsLoadingAttention] = useState(initialAttention === null);
   const [errorAttention, setErrorAttention] = useState<string | null>(null);
+
+  // Report the Status payload's build time so the TopBar freshness label
+  // can show data age. Covers both the SSR-seeded payload and refetches.
+  useEffect(() => {
+    reportFreshness("status", attention?.generatedAt);
+  }, [attention]);
 
   // Selection state. Each Status-dashboard variant (briefing/split) owns
   // its own slot — switching variants brings back what was selected there last,

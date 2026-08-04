@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "analyze": "ANALYZE=true next build",
-    "perf": "node scripts/perf-fetch.mjs"
+    "perf": "node scripts/perf-fetch.mjs",
+    "warm": "node scripts/warm.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

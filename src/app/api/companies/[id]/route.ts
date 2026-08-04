@@ -3,10 +3,10 @@ import { getCompanyDetail, getOwners, getDealStages } from "@/lib/hubspot";
 import { Cache } from "@/lib/cache";
 import { CompanyDetail, OwnerMap, StageMap } from "@/lib/types";
 
-// Edge runtime — fast cold start matters most here since clicks into
-// detail are the second most common cold path after first paint.
-// The Anthropic SDK + HubSpot calls are all `fetch`-based and edge-safe.
-export const runtime = "edge";
+// Node runtime (was edge): the recap and note-signals routes reuse the
+// company detail via the lib-level cache in getCompanyDetail, and edge
+// isolates don't share memory with node lambdas. One shared process means
+// clicking a company fetches HubSpot once and the two LLM routes ride it.
 
 const companyCache = new Cache<CompanyDetail>(5 * 60 * 1000);
 const ownerCache = new Cache<OwnerMap>(60 * 60 * 1000);

@@ -35,7 +35,7 @@
   --status-good-bold: #0E7C4C;
   --status-warn-bold: #B8761F;
 
-  /* Event-kind chip colours. Used in OnboardingView meeting prep and
+  /* Event-kind chip colours. Used in Meeting Prep history and
      CompanyDetail history. Foregrounds chosen for ≥4.5:1 on the bg pastel. */
   --event-meeting-bg: var(--lilac);
   --event-meeting-fg: #581C87;

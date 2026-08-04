@@ -14,6 +14,10 @@ import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 export interface SearchPage<T = unknown> {
   results: T[];
   nextAfter: string | undefined;
+  // HubSpot's server-side match count for the whole filter, not just this
+  // page. Lets callers get pool sizes from a single limit:1 request instead
+  // of paginating the full result set.
+  total: number;
 }
 
 const RETRIES = 3;
@@ -46,6 +50,7 @@ export async function searchObjectsPage<T = unknown>(
       return {
         results: (data.results || []) as T[],
         nextAfter: data.paging?.next?.after,
+        total: typeof data.total === "number" ? data.total : 0,
       };
     }
     // Retry on rate-limits and server errors. 4xx other than 429 are terminal.

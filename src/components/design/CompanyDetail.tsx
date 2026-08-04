@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CompanyDetail as CompanyDetailData, OwnerMap, StageMap, Engagement } from "@/lib/types";
+import type { CompanyDetail as CompanyDetailData, OwnerMap, StageMap, Engagement, WatchOutSignal } from "@/lib/types";
 import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
 import { MetricStrip } from "./MetricStrip";
 import { RecapCardBig } from "./RecapCardBig";
+import { SinceLastTouchBlock } from "./SinceLastTouch";
 import { HealthRings } from "./HealthRings";
 import { VolumeChart } from "./VolumeChart";
 import { OWNER_MAP } from "@/lib/owners";
@@ -148,6 +149,33 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
     if (within(deal?.pause_start_date, deal?.pause_end_date)) return "Paused";
     return null;
   })();
+
+  // LLM note signals (churn risk mentioned in a call, etc.) — lazy-fetched so
+  // the panel paints from rule-based signals immediately; extracted flags
+  // append to the same strip when the classifier responds.
+  const [noteSignals, setNoteSignals] = useState<WatchOutSignal[]>([]);
+  // Adjust-state-during-render reset on company switch (react-hooks lint).
+  const [prevNoteCompanyId, setPrevNoteCompanyId] = useState(companyId);
+  if (prevNoteCompanyId !== companyId) {
+    setPrevNoteCompanyId(companyId);
+    setNoteSignals([]);
+  }
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/companies/${companyId}/note-signals`);
+        if (!res.ok) return;
+        const json: { signals: WatchOutSignal[] } = await res.json();
+        if (!cancelled && Array.isArray(json.signals)) setNoteSignals(json.signals);
+      } catch {
+        /* silent — rule-based signals still render */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
   const signalData = useMemo(() => {
     const stage = classifyPortfolioStage(
@@ -378,6 +406,11 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
 
       <MetricStrip company={company} deal={deal} />
       <RecapCardBig recap={recap} loading={recapLoading} companyId={companyId} dealId={deal?.hs_object_id ?? null} />
+      {data.sinceLastTouch && data.sinceLastTouch.changes.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <SinceLastTouchBlock data={data.sinceLastTouch} />
+        </div>
+      )}
 
       <div role="tablist" aria-label="Company detail sections" style={{ display: "flex", gap: 24, borderBottom: "1px solid var(--hairline)", marginBottom: 18 }}>
         {(["overview", "activity"] as const).map((t) => (
@@ -411,7 +444,7 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
         ))}
       </div>
 
-      <SignalStrip signals={signalData.signals} stage={signalData.stage} />
+      <SignalStrip signals={[...signalData.signals, ...noteSignals]} stage={signalData.stage} />
 
       {tab === "overview" && (
         <div role="tabpanel" id="detail-panel-overview" aria-labelledby="detail-tab-overview">
@@ -591,7 +624,7 @@ function OverviewPanel({
 
 // ObNotesCard / ObRow / Blocker were removed — onboarding notes belong on
 // the Onboarding meeting brief, not the general company-detail panel. See
-// `MeetingBriefCard` in `src/components/design/views/OnboardingView.tsx`.
+// the Meeting Prep brief (`src/components/design/views/MeetingPrepBrief.tsx`).
 
 function PlatformActivityCard({ company }: { company: Record<string, string> }) {
   const items = [

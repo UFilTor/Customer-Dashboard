@@ -82,6 +82,7 @@ export async function buildAttentionPayload(
     return {
       groups: enrichedGroups,
       updatedAt: new Date().toISOString(),
+      generatedAt: new Date().toISOString(),
     };
   });
 }

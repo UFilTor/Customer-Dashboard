@@ -1,4 +1,5 @@
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
+import { searchObjectsPage } from "./hubspot-search";
 import {
   dealCurrency,
   hasUnpaidInvoice,
@@ -6,6 +7,12 @@ import {
   unpaidInvoiceCount,
 } from "./invoice-fields";
 import { computeWatchOutSignals } from "./signals";
+import { TO_EUR } from "./fx";
+import {
+  DEFAULT_EXPECTED_DAYS,
+  EXPECTED_DAYS,
+  RISK_HIGH_MULTIPLIER,
+} from "@/config/thresholds";
 import type {
   OnboardingCommercial,
   OnboardingDeal,
@@ -30,18 +37,6 @@ function parseUpcomingEventsScore(raw: string | undefined): number | null {
   return isNaN(n) ? null : n;
 }
 
-// EUR conversion subset — mirrors retention.ts. Kept inline here to avoid an
-// onboarding ↔ retention import cycle (retention.ts imports primitives from
-// this file). Update both when adding a new currency.
-const ONBOARDING_TO_EUR: Record<string, number> = {
-  EUR: 1,
-  SEK: 0.087,
-  DKK: 0.134,
-  NOK: 0.085,
-  GBP: 1.18,
-  USD: 0.92,
-};
-
 // Inline copy of retention.ts's extractInvoiceState — same logic, lives here
 // so onboarding.ts doesn't need to import retention.ts (would be a cycle).
 function extractInvoiceStateLocal(
@@ -53,7 +48,7 @@ function extractInvoiceStateLocal(
   const dueIso = props.understory_earliest_unpaid_invoice_due_date || "";
   const outstandingRaw = unpaidAmountLocal(props);
   const currency = dealCurrency(props);
-  const rate = ONBOARDING_TO_EUR[currency] ?? 1;
+  const rate = TO_EUR[currency] ?? 1;
 
   let overdue = 0;
   let overdueDays: number | null = null;
@@ -88,14 +83,6 @@ const SALES_PIPELINE = "81267902";
 // Ramp Up + Established are owned by the Retention dashboard, not this one.
 export const ONBOARDING_STAGES = ["Onboarding", "Adoption", "Live"];
 
-export const EXPECTED_DAYS: Record<OnboardingStep, number> = {
-  Adopted: 14,
-  Started: 30,
-  Hibernation: 30,
-  "Product Hold": 14,
-  Other: 30,
-};
-
 export function classifyStep(
   stage: string,
   substage: string | null,
@@ -122,8 +109,8 @@ function computeRisk(
 ): OnboardingRisk {
   if (step === "Hibernation" || step === "Product Hold") return "high";
   if (blockers.length > 0) return "high";
-  const expected = EXPECTED_DAYS[step] ?? 30;
-  if (daysInStep > expected * 1.5) return "high";
+  const expected = EXPECTED_DAYS[step] ?? DEFAULT_EXPECTED_DAYS;
+  if (daysInStep > expected * RISK_HIGH_MULTIPLIER) return "high";
   if (daysInStep > expected) return "medium";
   return "low";
 }
@@ -428,7 +415,7 @@ export interface RawObject {
 // returns the full list (~5-20 names) regardless of the IDs we pass — the
 // `ownerIds` arg here only existed to short-circuit when none were needed.
 // Owners change rarely, and the previous shape made this function get called
-// 4-5 times per `/api/onboarding` request, paying ~150ms each. Cache for
+// 4-5 times per `/api/meeting-prep` request, paying ~150ms each. Cache for
 // 10 minutes; the in-flight promise dedupe collapses concurrent callers.
 let ownerCacheData: Record<string, string> | null = null;
 let ownerCacheAt = 0;
@@ -491,19 +478,16 @@ async function fetchLifecycleDeals(ownerIds?: string[]): Promise<RawObject[]> {
         },
       ],
       properties: LIFECYCLE_DEAL_PROPS,
+      // Required — without a sorts clause HubSpot's search pagination can
+      // silently truncate. See AGENTS.md "HubSpot fetch patterns".
+      sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
       limit: 100,
     };
     if (after) body.after = after;
 
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/search`, {
-      method: "POST",
-      headers: hubspotHeaders(),
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) break;
-    const data = await res.json();
-    out.push(...(data.results || []));
-    after = data.paging?.next?.after;
+    const page = await searchObjectsPage<RawObject>("deals", body);
+    out.push(...page.results);
+    after = page.nextAfter;
   } while (after);
   return out;
 }
@@ -744,19 +728,11 @@ export async function fetchUpcomingMeetingsByOwners(
       limit: 200,
     };
     if (after) body.after = after;
-    try {
-      const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/meetings/search`, {
-        method: "POST",
-        headers: hubspotHeaders(),
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) break;
-      const data = await res.json();
-      out.push(...(data.results || []));
-      after = data.paging?.next?.after;
-    } catch {
-      break;
-    }
+    // searchObjectsPage retries 429/5xx and throws on terminal failure so a
+    // transient error can't silently truncate the meeting list into the cache.
+    const page = await searchObjectsPage<RawObject>("meetings", body);
+    out.push(...page.results);
+    after = page.nextAfter;
   } while (after);
   return out;
 }
@@ -1164,7 +1140,7 @@ export async function buildOnboardingPayload(
       });
     }
 
-    // Calls + emails are deferred to /api/onboarding/history. The list payload
+    // Calls + emails are deferred to /api/meeting-prep/history. The list payload
     // ships only meeting-derived history so the meeting-prep view has something
     // to render immediately while the heavier history backfills.
     const history = [...meetingHistory].sort(
@@ -1178,7 +1154,7 @@ export async function buildOnboardingPayload(
     const invoices = extractInvoiceStateLocal(p, nowIsoForDeal);
     const cp = company?.props ?? {};
     const futureEvents = parseUpcomingEventsScore(cp.understory_health_score_upcoming_events);
-    const expectedDaysInStep = EXPECTED_DAYS[step] ?? 30;
+    const expectedDaysInStep = EXPECTED_DAYS[step] ?? DEFAULT_EXPECTED_DAYS;
     const watchOuts = computeWatchOutSignals({
       nowIso: nowIsoForDeal,
       unpaidInvoice: hasUnpaidInvoice(p),

@@ -11,6 +11,12 @@ import {
   type RegionKey,
 } from "@/lib/owners";
 import { DashboardPicker, type DashboardKey } from "./VariantPicker";
+import {
+  FRESHNESS_EVENT,
+  formatFreshness,
+  getFreshnessSnapshot,
+  type FreshnessDetail,
+} from "@/lib/freshness";
 
 interface TopBarProps {
   filter: GlobalFilter;
@@ -116,6 +122,7 @@ export function TopBar({
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <FreshnessLabel dashboard={dashboard} />
         <FilterTypePill
           filter={filter}
           setFilter={setFilter}
@@ -136,6 +143,56 @@ export function TopBar({
         <DashboardPicker dashboard={dashboard} setDashboard={setDashboard} />
       </div>
     </nav>
+  );
+}
+
+// Subtle "Updated 6m ago" data-age label for the active dashboard. Containers
+// broadcast their payload's generatedAt via the ud-payload-freshness event;
+// payloads cached before generatedAt shipped never report, so we render
+// nothing for them. The label re-derives once a minute.
+function FreshnessLabel({ dashboard }: { dashboard: DashboardKey }) {
+  // Seed from the module-level snapshot in case a container dispatched
+  // before this listener attached (mount-order race on first paint).
+  const [freshness, setFreshness] = useState<Record<string, string>>(() =>
+    getFreshnessSnapshot()
+  );
+  useEffect(() => {
+    function onFreshness(e: Event) {
+      const detail = (e as CustomEvent<FreshnessDetail>).detail;
+      if (!detail?.dashboard || !detail.generatedAt) return;
+      setFreshness((prev) =>
+        prev[detail.dashboard] === detail.generatedAt
+          ? prev
+          : { ...prev, [detail.dashboard]: detail.generatedAt }
+      );
+    }
+    window.addEventListener(FRESHNESS_EVENT, onFreshness);
+    return () => window.removeEventListener(FRESHNESS_EVENT, onFreshness);
+  }, []);
+
+  // Minute tick so the relative label stays current without new events.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const iso = freshness[dashboard];
+  const label = iso ? formatFreshness(iso) : null;
+  if (!label) return null;
+
+  return (
+    <span
+      title={`Data fetched from HubSpot at ${new Date(iso).toLocaleTimeString()}`}
+      style={{
+        fontSize: 11,
+        color: "rgba(255,255,255,0.6)",
+        whiteSpace: "nowrap",
+        marginRight: 4,
+      }}
+    >
+      {label}
+    </span>
   );
 }
 

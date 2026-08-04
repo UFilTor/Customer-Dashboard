@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PayMigrationData, PayDeal, CompanySearchResult } from "@/lib/types";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
+import { reportFreshness } from "@/lib/freshness";
 import { PayMigrationView } from "./PayMigrationView";
 
 interface Props {
@@ -12,6 +13,11 @@ interface Props {
 
 export function PayMigrationContainer({ payFilter, onSelectCompany }: Props) {
   const [data, setData] = useState<PayMigrationData | null>(null);
+
+  // Report payload build time for the TopBar freshness label.
+  useEffect(() => {
+    reportFreshness("pay_migration", data?.generatedAt);
+  }, [data]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);

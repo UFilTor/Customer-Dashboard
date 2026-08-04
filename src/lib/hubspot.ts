@@ -1,9 +1,31 @@
 import { CompanySearchResult, CompanyDetail, Engagement, TaskItem, OwnerMap, StageMap } from "./types";
 import { HUBSPOT_API, hubspotHeaders as headers } from "./hubspot-api";
 
-const SEARCH_TO_EUR: Record<string, number> = {
-  EUR: 1, USD: 0.92, GBP: 1.16, SEK: 0.087, NOK: 0.086, DKK: 0.134,
-};
+import { TO_EUR } from "./fx";
+import { Cache } from "./cache";
+import {
+  SLT_COMPANY_PROPS,
+  SLT_DEAL_PROPS,
+  buildSinceLastTouch,
+  fetchPropertyHistories,
+} from "./since-last-touch";
+
+// Retry transient HubSpot errors (429 / 5xx) with linear backoff. Returns the
+// final response either way; callers still check res.ok for terminal 4xx.
+async function fetchWithRetry(url: string, init: RequestInit, retries = 3): Promise<Response> {
+  let res: Response | null = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      res = await fetch(url, init);
+    } catch {
+      res = null;
+    }
+    if (res && res.status !== 429 && res.status < 500) return res;
+    if (attempt < retries) await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+  }
+  if (res) return res;
+  throw new Error(`HubSpot request failed after retries: ${url}`);
+}
 
 function computeSearchRevenue(
   bookingVolume12m: string | undefined,
@@ -16,7 +38,7 @@ function computeSearchRevenue(
   const fee = parseFloat(bookingFee || "0") || 0;
   const mrr = parseFloat(contractMrr || "0") || 0;
   if (volume === 0 && mrr === 0) return undefined;
-  const mrrRate = SEARCH_TO_EUR[(currency || "EUR").toUpperCase()] ?? 1;
+  const mrrRate = TO_EUR[(currency || "EUR").toUpperCase()] ?? 1;
   const createTime = createdate ? new Date(createdate).getTime() : 0;
   const monthsAsCustomer = createTime > 0
     ? Math.min(12, Math.floor((Date.now() - createTime) / (30.44 * 24 * 60 * 60 * 1000)))
@@ -204,7 +226,20 @@ const DEAL_PROPERTIES = [
   "pause_end_date",
 ];
 
+// Lib-level cache so the three routes that need the detail payload
+// (/api/companies/[id], .../recap, .../note-signals) share ONE HubSpot fetch
+// per company per 5 min instead of each paying the ~1.5-3s round trip.
+// getOrBuild also dedupes the burst when the panel + recap + note-signals
+// all fire within the same second.
+const detailCache = new Cache<CompanyDetail>(5 * 60 * 1000, 128);
+
 export async function getCompanyDetail(companyId: string): Promise<CompanyDetail> {
+  const cached = detailCache.get(companyId);
+  if (cached) return cached;
+  return detailCache.getOrBuild(companyId, () => buildCompanyDetail(companyId));
+}
+
+async function buildCompanyDetail(companyId: string): Promise<CompanyDetail> {
   // Tasks need dealIds from the lifecycle deal but nothing else, so chain it
   // off the deal promise — that way it overlaps with the company / engagements
   // / primary-contact fetches instead of running serially after the parallel
@@ -223,12 +258,39 @@ export async function getCompanyDetail(companyId: string): Promise<CompanyDetail
       tasksPromise,
     ]);
 
+  // "Since last touch": last touch = most recent logged meeting/call in the
+  // past. Two small history batch reads (company + deal), best-effort.
+  const nowIso = new Date().toISOString();
+  const lastTouchIso =
+    engagementsRes
+      .filter((e) => (e.type === "meeting" || e.type === "call") && e.timestamp <= nowIso)
+      .map((e) => e.timestamp)
+      .sort()
+      .pop() || null;
+  let sinceLastTouch = null;
+  if (lastTouchIso) {
+    const dealId = dealResult?.properties?.hs_object_id || null;
+    const [companyHistories, dealHistories] = await Promise.all([
+      fetchPropertyHistories("companies", [companyId], SLT_COMPANY_PROPS),
+      dealId
+        ? fetchPropertyHistories("deals", [dealId], SLT_DEAL_PROPS)
+        : Promise.resolve(new Map()),
+    ]);
+    sinceLastTouch = buildSinceLastTouch(
+      companyHistories.get(companyId),
+      dealId ? dealHistories.get(dealId) : undefined,
+      lastTouchIso,
+      nowIso
+    );
+  }
+
   return {
     company: companyRes,
     deal: dealResult?.properties || null,
     engagements: engagementsRes,
     tasks: tasksRes,
     recap: null,
+    sinceLastTouch,
     primaryContact,
   };
 }
@@ -315,9 +377,9 @@ async function fetchLifecycleDeal(companyId: string): Promise<{ properties: Reco
 }
 
 async function fetchEngagements(companyId: string): Promise<Engagement[]> {
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 365);
-  const sinceTimestamp = ninetyDaysAgo.getTime();
+  const oneYearAgo = new Date();
+  oneYearAgo.setDate(oneYearAgo.getDate() - 365);
+  const sinceTimestamp = oneYearAgo.getTime();
 
   const types = [
     { type: "calls" as const, props: ["hs_call_title", "hs_call_body", "hs_body_preview", "hs_call_direction", "hs_timestamp", "hs_call_status", "hubspot_owner_id"] },
@@ -329,7 +391,7 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
   const results = await Promise.all(
     types.map(async ({ type, props }) => {
       try {
-        const assocRes = await fetch(
+        const assocRes = await fetchWithRetry(
           `${HUBSPOT_API}/crm/v3/objects/companies/${companyId}/associations/${type}`,
           { headers: headers(), cache: "no-store" as RequestCache }
         );
@@ -338,23 +400,27 @@ async function fetchEngagements(companyId: string): Promise<Engagement[]> {
         const ids: string[] = assocData.results?.map((r: { id: string }) => r.id) || [];
         if (ids.length === 0) return [];
 
-        // Batch read in chunks of 100 (HubSpot limit per batch)
-        const allResults: { properties: Record<string, string> }[] = [];
+        // Batch read in chunks of 100 (HubSpot limit per batch), fetched in parallel
+        const chunks: string[][] = [];
         for (let i = 0; i < ids.length; i += 100) {
-          const chunk = ids.slice(i, i + 100);
-          const batchRes = await fetch(`${HUBSPOT_API}/crm/v3/objects/${type}/batch/read`, {
-            method: "POST",
-            headers: headers(),
-            body: JSON.stringify({
-              inputs: chunk.map((id) => ({ id })),
-              properties: props,
-            }),
-          });
-          if (batchRes.ok) {
-            const batchData = await batchRes.json();
-            allResults.push(...(batchData.results || []));
-          }
+          chunks.push(ids.slice(i, i + 100));
         }
+        const chunkResults = await Promise.all(
+          chunks.map(async (chunk) => {
+            const batchRes = await fetchWithRetry(`${HUBSPOT_API}/crm/v3/objects/${type}/batch/read`, {
+              method: "POST",
+              headers: headers(),
+              body: JSON.stringify({
+                inputs: chunk.map((id) => ({ id })),
+                properties: props,
+              }),
+            });
+            if (!batchRes.ok) return [] as { properties: Record<string, string> }[];
+            const batchData = await batchRes.json();
+            return (batchData.results || []) as { properties: Record<string, string> }[];
+          })
+        );
+        const allResults: { properties: Record<string, string> }[] = chunkResults.flat();
 
         let engagements = allResults
           .filter((e: { properties: Record<string, string> }) => {

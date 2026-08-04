@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildMeetingPrepResponse } from "@/lib/meeting-prep";
 import { Cache } from "@/lib/cache";
+import { createSpans, logSpans, serverTimingHeader, withTiming } from "@/lib/perf";
 import type { MeetingPrepResponse } from "@/lib/types";
 
 // Edge runtime — primitives are all `fetch`-based (HubSpot v3/v4 + the
@@ -35,10 +36,19 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const response = await meetingPrepCache.getOrBuild(cacheKey, () =>
-      buildMeetingPrepResponse({ ownerIds })
+    const spans = createSpans();
+    const response = await withTiming(spans, "build", () =>
+      meetingPrepCache.getOrBuild(cacheKey, () =>
+        buildMeetingPrepResponse({ ownerIds, spans })
+      )
     );
-    return NextResponse.json(response, { headers: { "Cache-Control": cacheControl } });
+    logSpans("meeting-prep", spans);
+    return NextResponse.json(response, {
+      headers: {
+        "Cache-Control": cacheControl,
+        "Server-Timing": serverTimingHeader(spans),
+      },
+    });
   } catch {
     return NextResponse.json(
       { error: "Could not load meeting prep data" },

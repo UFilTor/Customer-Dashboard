@@ -1,7 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { Engagement, Recap, OwnerMap, StageMap } from "./types";
+import { HAIKU_MODEL } from "./llm";
+import { Engagement, Recap, OwnerMap, StageMap, SinceLastTouch, WatchOutSignal } from "./types";
 
 const client = new Anthropic();
+
+/**
+ * Structured account state fed into the recap prompt so the summary is
+ * grounded in what the dashboard already knows (signals, health, invoices,
+ * recent changes) instead of only the conversation history.
+ */
+export interface RecapAccountState {
+  signals: WatchOutSignal[];
+  sinceLastTouch: SinceLastTouch | null;
+}
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, "").trim();
@@ -26,7 +37,7 @@ export async function summarizeEngagements(engagements: Engagement[]): Promise<E
       try {
         const text = stripHtml(e.body);
         const response = await client.messages.create({
-          model: "claude-haiku-4-5-20251001",
+          model: HAIKU_MODEL,
           max_tokens: 300,
           messages: [
             {
@@ -54,23 +65,30 @@ export async function summarizeEngagements(engagements: Engagement[]): Promise<E
   }));
 }
 
-export async function generateRecap(
+/** Pure prompt assembly — exported for tests. */
+export function buildRecapPrompt(
   engagements: Engagement[],
   company: Record<string, string>,
   deal: Record<string, string> | null,
   owners: OwnerMap,
-  stages: StageMap
-): Promise<Recap | null> {
-  if (engagements.length === 0) return null;
-
+  stages: StageMap,
+  accountState?: RecapAccountState | null
+): string {
+  // Calendar-synced meetings can carry FUTURE timestamps (a booked meeting
+  // lands as an engagement before it happens). Tag those so the model doesn't
+  // describe them in past tense ("a meeting occurred on August 4th").
+  const now = Date.now();
+  const todayStr = new Date().toLocaleDateString("sv-SE");
   const activitySummary = engagements
     .slice(0, 10)
     .map((e) => {
       const date = new Date(e.timestamp);
       const dateStr = isNaN(date.getTime()) ? "Unknown date" : date.toLocaleDateString("sv-SE");
+      const isUpcoming = !isNaN(date.getTime()) && date.getTime() > now;
+      const tag = isUpcoming ? `UPCOMING ${e.type.toUpperCase()} (scheduled, has not happened yet)` : e.type.toUpperCase();
       const ownerName = e.owner ? (owners[e.owner] || e.owner) : "";
       const bodyText = stripHtml(e.body).slice(0, 500);
-      return `[${e.type.toUpperCase()}] ${dateStr} - ${e.title}${ownerName ? ` (${ownerName})` : ""}\n${bodyText}`;
+      return `[${tag}] ${dateStr} - ${e.title}${ownerName ? ` (${ownerName})` : ""}\n${bodyText}`;
     })
     .join("\n\n");
 
@@ -87,16 +105,33 @@ export async function generateRecap(
     (parseInt(deal?.understory_number_of_unpaid_invoices || "0", 10) || 0) > 0 ? "Invoice: Unpaid" : "",
   ].filter(Boolean).join("\n");
 
-  try {
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 500,
-      messages: [
-        {
-          role: "user",
-          content: `You are analyzing a customer's recent activity for a CS team dashboard. Based on the activity history and company context below, generate:
+  // ACCOUNT STATE block: watch-out signals + property changes since the last
+  // touch. Only rendered when there is something to say.
+  const stateLines: string[] = [];
+  if (accountState) {
+    for (const s of accountState.signals) {
+      stateLines.push(`- [${s.severity.toUpperCase()}] ${s.title}${s.detail ? `: ${s.detail}` : ""}`);
+    }
+    const slt = accountState.sinceLastTouch;
+    if (slt && slt.changes.length > 0) {
+      const days = slt.daysSinceTouch != null ? `${slt.daysSinceTouch} days ago` : "unknown date";
+      stateLines.push(`- Changes since last touch (${days}):`);
+      for (const c of slt.changes) {
+        stateLines.push(`  - ${c.label}: ${c.from != null ? `${c.from} -> ${c.to}` : `now ${c.to}`}`);
+      }
+    }
+  }
+  const stateBlock = stateLines.length > 0
+    ? `\n\nACCOUNT STATE (facts from the dashboard - ground your summary and suggestion in these, do not invent or contradict them):\n${stateLines.join("\n")}`
+    : "";
+
+  return `You are analyzing a customer's recent activity for a CS team dashboard. Today's date is ${todayStr}. Based on the activity history and company context below, generate:
 
 1. A summary (3-5 sentences): What was last discussed, any commitments or promises made, outstanding follow-ups, and how the relationship is trending.
+
+Writing rules:
+- Entries tagged UPCOMING are scheduled and have NOT happened yet. Refer to them in future tense ("a meeting is scheduled for ..."), never as something that occurred.
+- Always write times in 24-hour format (e.g. 11:00, 14:30). Never use AM/PM, even when the source notes do.
 2. A suggested next action: A specific, actionable recommendation. Include an action type: "note", "task", "meeting", or "call".
 3. A confidence level for the suggested action: "low", "medium", or "high".
    - high: clear signal in the activity history (a recent commitment, an explicit follow-up, an unresolved problem with a deadline).
@@ -110,7 +145,27 @@ COMPANY CONTEXT:
 ${context}
 
 RECENT ACTIVITY (newest first):
-${activitySummary}`,
+${activitySummary}${stateBlock}`;
+}
+
+export async function generateRecap(
+  engagements: Engagement[],
+  company: Record<string, string>,
+  deal: Record<string, string> | null,
+  owners: OwnerMap,
+  stages: StageMap,
+  accountState?: RecapAccountState | null
+): Promise<Recap | null> {
+  if (engagements.length === 0) return null;
+
+  try {
+    const response = await client.messages.create({
+      model: HAIKU_MODEL,
+      max_tokens: 500,
+      messages: [
+        {
+          role: "user",
+          content: buildRecapPrompt(engagements, company, deal, owners, stages, accountState),
         },
       ],
     });

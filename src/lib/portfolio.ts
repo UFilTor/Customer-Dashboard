@@ -1,9 +1,11 @@
 import { Cache } from "./cache";
-import { TO_EUR } from "./attention";
+import { TO_EUR } from "./fx";
+import { PORTFOLIO_EXPECTED_DAYS } from "@/config/thresholds";
 import { dealCurrency, hasUnpaidInvoice, unpaidAmountLocal, unpaidInvoiceCount } from "./invoice-fields";
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { searchObjectsPage } from "./hubspot-search";
-import { fetchOwnerNames } from "./onboarding";
+import { fetchAssociations, fetchOwnerNames } from "./onboarding";
+import { OWNERS } from "./owners";
 import {
   computeWatchOutSignals,
   STAGE_APPLICABILITY as SHARED_STAGE_APPLICABILITY,
@@ -293,7 +295,10 @@ interface BuildRowInput {
   };
 }
 
-const SIGNAL_KIND_TO_KEY: Record<WatchOutSignalKind, PortfolioSignalKey> = {
+// Partial: note-signal kinds (churn_risk_mentioned, ...) are LLM-extracted
+// per-company on the detail/meeting-prep surfaces and never flow through the
+// bulk portfolio payload, so they have no PortfolioSignalKey.
+const SIGNAL_KIND_TO_KEY: Partial<Record<WatchOutSignalKind, PortfolioSignalKey>> = {
   overdue_invoice: "overdue_invoices",
   wish_to_churn: "wish_to_churn",
   volume_declining: "volume_declining",
@@ -461,7 +466,7 @@ export function getCachedPortfolio(key: string): PortfolioResponse | null {
 
 export async function buildPortfolioPayload(
   ownerIdsCsv: string | null,
-  options: { refresh?: boolean } = {}
+  options: { refresh?: boolean; spans?: { label: string; ms: number }[] } = {}
 ): Promise<PortfolioResponse> {
   const cacheKey = `portfolio:${ownerIdsCsv ?? "all"}`;
   if (!options.refresh) {
@@ -469,7 +474,7 @@ export async function buildPortfolioPayload(
     if (cached) return cached;
   }
   return portfolioCache.getOrBuild(cacheKey, async () => {
-    const rows = await fetchPortfolioRows(ownerIdsCsv);
+    const rows = await fetchPortfolioRows(ownerIdsCsv, options.spans);
     return aggregatePayload(rows);
   });
 }
@@ -535,17 +540,6 @@ const PORTFOLIO_COMPANY_PROPS = [
   "createdate",
 ];
 
-// Lifecycle-pipeline expected step durations. Mirrors the live `EXPECTED_DAYS`
-// table in `./onboarding`; inlined here so we don't depend on the lifecycle-
-// step classifier (Portfolio uses customer_stage directly).
-const PORTFOLIO_EXPECTED_DAYS: Record<string, number> = {
-  Adopted: 14,
-  Started: 30,
-  Hibernation: 30,
-  "Product Hold": 14,
-  Onboarding: 14,
-};
-
 interface RawDeal {
   id: string;
   properties: Record<string, string>;
@@ -555,16 +549,28 @@ interface RawDeal {
 // in `pay-migration.ts`. Always passes a `sorts` clause (HubSpot search
 // pagination silently truncates without one) and delegates to
 // `searchObjectsPage` for the 429/5xx retry loop.
-async function fetchPortfolioDealsForPipeline(pipelineId: string): Promise<RawDeal[]> {
+async function fetchPortfolioDealsForPipeline(
+  pipelineId: string,
+  ownerIds: string[] | null
+): Promise<RawDeal[]> {
   const out: RawDeal[] = [];
   let after: string | undefined;
+  // Push as much filtering as possible into the search so we page through
+  // fewer results: owner scope (a person filter used to fetch the full ~700
+  // deal pool and filter in memory) and the always-applied churn/closed
+  // exclusions. The in-memory filters below stay as belt-and-braces.
+  const filters: unknown[] = [
+    { propertyName: "pipeline", operator: "EQ", value: pipelineId },
+    { propertyName: "customer_stage", operator: "NEQ", value: "Churned" },
+    { propertyName: "churn_date", operator: "NOT_HAS_PROPERTY" },
+    { propertyName: "hs_is_closed", operator: "NEQ", value: "true" },
+  ];
+  if (ownerIds && ownerIds.length > 0) {
+    filters.push({ propertyName: "hubspot_owner_id", operator: "IN", values: ownerIds });
+  }
   do {
     const body: Record<string, unknown> = {
-      filterGroups: [{
-        filters: [
-          { propertyName: "pipeline", operator: "EQ", value: pipelineId },
-        ],
-      }],
+      filterGroups: [{ filters }],
       properties: PORTFOLIO_DEAL_PROPS,
       sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
       limit: 100,
@@ -581,12 +587,32 @@ async function fetchPortfolioDealsForPipeline(pipelineId: string): Promise<RawDe
 // both pipelines, after applying the Churned-stage filter and the optional
 // owner filter. Mirrors `fetchNoFutureEvents` step-by-step but without the
 // upcoming-events filter, since Portfolio shows the whole universe.
-export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<PortfolioRow[]> {
+export async function fetchPortfolioRows(
+  ownerIdsCsv: string | null,
+  spans?: { label: string; ms: number }[]
+): Promise<PortfolioRow[]> {
+  const mark = (label: string, t0: number) => {
+    spans?.push({ label, ms: Math.round(performance.now() - t0) });
+  };
+  // Owner scope parsed up front so it can ride the HubSpot query (2a) as well
+  // as the in-memory filter (2d). `null` and "all" both mean unfiltered.
+  const ownerFilter = ownerIdsCsv && ownerIdsCsv !== "all"
+    ? new Set(ownerIdsCsv.split(",").map((s) => s.trim()).filter(Boolean))
+    : null;
+  const ownerIdList = ownerFilter ? Array.from(ownerFilter) : null;
+
+  // Owner directory kicked off at t=0 — it returns the full directory for
+  // any non-empty input (and [] short-circuits to {}), so seed it with the
+  // static CS owner ids; no data dependency on the deal pool.
+  const ownerNamesPromise = fetchOwnerNames(OWNERS.map((o) => o.id));
+
   // Step 2a: search both pipelines in parallel.
+  const tDeals = performance.now();
   const [lifecycleDeals, retentionDeals] = await Promise.all([
-    fetchPortfolioDealsForPipeline(LIFECYCLE_PIPELINE_ID),
-    fetchPortfolioDealsForPipeline(RETENTION_PIPELINE_ID),
+    fetchPortfolioDealsForPipeline(LIFECYCLE_PIPELINE_ID, ownerIdList),
+    fetchPortfolioDealsForPipeline(RETENTION_PIPELINE_ID, ownerIdList),
   ]);
+  mark("hubspot.deals", tDeals);
   // Drop deals that aren't actionable today:
   //   1. customer_stage === "Churned" (the canonical case)
   //   2. churn_date is set (HubSpot lets customer_stage freeze at pre-churn
@@ -607,39 +633,24 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
   });
   if (allDeals.length === 0) return [];
 
-  // Step 2b: deal -> company associations via v4 batch (parallel).
+  // Step 2b: deal -> company associations via the shared retry-aware helper.
+  // (The previous hand-rolled version had no retry, so a transient 429 under
+  // warm-cycle load silently dropped whole 100-deal slices from the payload.)
+  const tAssoc = performance.now();
   const dealToCompany = new Map<string, string>();
-  const assocBatches: Promise<void>[] = [];
-  for (let i = 0; i < allDeals.length; i += 100) {
-    const slice = allDeals.slice(i, i + 100);
-    assocBatches.push((async () => {
-      try {
-        const res = await fetch(
-          `${HUBSPOT_API}/crm/v4/associations/deals/companies/batch/read`,
-          {
-            method: "POST",
-            headers: hubspotHeaders(),
-            body: JSON.stringify({ inputs: slice.map((d) => ({ id: d.id })) }),
-          }
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        for (const result of data.results || []) {
-          const dealId = String(result.from?.id ?? "");
-          const firstCompany = result.to?.[0]?.toObjectId;
-          if (dealId && firstCompany && !dealToCompany.has(dealId)) {
-            dealToCompany.set(dealId, String(firstCompany));
-          }
-        }
-      } catch { /* skip this batch; individual rows just won't appear */ }
-    })());
+  const assocs = await fetchAssociations("deals", "companies", allDeals.map((d) => d.id));
+  for (const a of assocs) {
+    if (a.toIds[0] && !dealToCompany.has(a.fromId)) {
+      dealToCompany.set(a.fromId, a.toIds[0]);
+    }
   }
-  await Promise.all(assocBatches);
+  mark("hubspot.assoc", tAssoc);
   if (dealToCompany.size === 0) return [];
 
   const uniqueCompanyIds = Array.from(new Set(dealToCompany.values()));
 
   // Step 2c: company properties via v3 batch (parallel).
+  const tCompanies = performance.now();
   const companyProps = new Map<string, Record<string, string>>();
   const companyBatches: Promise<void>[] = [];
   for (let i = 0; i < uniqueCompanyIds.length; i += 100) {
@@ -666,21 +677,10 @@ export async function fetchPortfolioRows(ownerIdsCsv: string | null): Promise<Po
     })());
   }
   await Promise.all(companyBatches);
+  mark("hubspot.companies", tCompanies);
 
-  // Step 2d: owner filter. `null` and "all" both mean unfiltered.
-  const ownerFilter = ownerIdsCsv && ownerIdsCsv !== "all"
-    ? new Set(ownerIdsCsv.split(",").map((s) => s.trim()).filter(Boolean))
-    : null;
-
-  // Step 2e: owner directory (request-level cached). fetchOwnerNames returns
-  // the full directory regardless of input, so passing the deal-owner ids
-  // alongside company-owner ids is purely belt-and-braces.
-  const ownerNames = await fetchOwnerNames(
-    Array.from(new Set([
-      ...Array.from(companyProps.values()).map((p) => p.hubspot_owner_id),
-      ...allDeals.map((d) => d.properties.hubspot_owner_id),
-    ].filter((id): id is string => Boolean(id))))
-  );
+  // Step 2e: owner directory — kicked off at t=0 above, resolved here.
+  const ownerNames = await ownerNamesPromise;
 
   // Step 2f: assemble rows.
   const nowIso = new Date().toISOString();
@@ -836,7 +836,7 @@ function aggregatePayload(rows: PortfolioRow[]): PortfolioResponse {
       // is split correctly without extending WatchOutSignalKind.
       if (s.title === "Open invoice") {
         totalsBySignal.open_invoices += 1;
-      } else {
+      } else if (key) {
         totalsBySignal[key] += 1;
       }
     }

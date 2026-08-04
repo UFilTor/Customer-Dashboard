@@ -47,7 +47,13 @@ describe("formatValue", () => {
     expect(formatValue("Filip K.", "owner")).toBe("Filip K.");
   });
 
-  it("returns invoiceStatus as-is (styling handled in component)", () => {
-    expect(formatValue("Overdue", "invoiceStatus")).toBe("Overdue");
+  it("maps invoiceStatus from the unpaid-invoice count", () => {
+    expect(formatValue("0", "invoiceStatus")).toBe("Up to date");
+    expect(formatValue(null, "invoiceStatus")).toBe("Up to date");
+    expect(formatValue("", "invoiceStatus")).toBe("Up to date");
+    expect(formatValue("1", "invoiceStatus")).toBe("1 unpaid");
+    expect(formatValue("3", "invoiceStatus")).toBe("3 unpaid");
+    // Non-numeric input degrades to the zero state, not a crash.
+    expect(formatValue("Overdue", "invoiceStatus")).toBe("Up to date");
   });
 });

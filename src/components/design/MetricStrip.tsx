@@ -1,4 +1,5 @@
 import { fmtEurFull, fmtHealth } from "@/lib/format-design";
+import { TO_EUR } from "@/lib/fx";
 
 interface MetricStripProps {
   company: Record<string, string>;
@@ -71,10 +72,6 @@ function invoiceLabel(deal: Record<string, string> | null): { label: string; ton
   }
   return { label: `${open} open`, tone: "warn" };
 }
-
-const TO_EUR: Record<string, number> = {
-  EUR: 1, USD: 0.92, GBP: 1.16, SEK: 0.087, NOK: 0.086, DKK: 0.134,
-};
 
 function generatedRevenueEur(company: Record<string, string>, deal: Record<string, string> | null): number {
   const volume = parseFloat(company.understory_booking_volume_12m || "0") || 0;

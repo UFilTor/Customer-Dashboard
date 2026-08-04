@@ -41,17 +41,6 @@ export function prefetchPortfolio(ownerIdsCsv?: string | null): void {
   void import("@/components/design/views/PortfolioContainer");
 }
 
-// Triggers the bulk fetch AND warms the dynamic chunk so the click resolves
-// with both code and data already in flight.
-export function prefetchOnboarding(ownerIdsCsv?: string | null): void {
-  const url =
-    ownerIdsCsv && ownerIdsCsv !== "all"
-      ? `/api/onboarding?ownerIds=${ownerIdsCsv}`
-      : "/api/onboarding";
-  fire(url);
-  void import("@/components/design/views/OnboardingContainer");
-}
-
 export function prefetchPayMigration(): void {
   fire("/api/pay-migration");
   void import("@/components/design/views/PayMigrationContainer");

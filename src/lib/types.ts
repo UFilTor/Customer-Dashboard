@@ -41,6 +41,24 @@ export interface DashboardConfig {
   };
 }
 
+// "Since last touch" change feed — property changes since the last logged
+// touch, computed rule-based from HubSpot property history (src/lib/since-last-touch.ts).
+export interface SinceLastTouchChange {
+  field: "health_score" | "customer_stage" | "unpaid_invoices" | "pay_status";
+  label: string;
+  // null when HubSpot's retained history doesn't reach back to the touch —
+  // render as "changed to X" instead of "X -> Y".
+  from: string | null;
+  to: string;
+  timestamp: string;
+}
+
+export interface SinceLastTouch {
+  lastTouch: string | null;
+  daysSinceTouch: number | null;
+  changes: SinceLastTouchChange[];
+}
+
 export interface CompanySearchResult {
   id: string;
   name: string;
@@ -55,6 +73,9 @@ export interface CompanyDetail {
   engagements: Engagement[];
   tasks: TaskItem[];
   recap: Recap | null;
+  /** Property changes since the last logged meeting/call. Null when there is
+   *  no prior touch or history could not be fetched. */
+  sinceLastTouch: SinceLastTouch | null;
   /** Primary customer-side contact (name + clickable email/phone). Pulled
    *  from the deal's first associated contact, falling back to the company.
    *  Surfaced in the detail header so the CS owner has the call/email
@@ -157,6 +178,10 @@ export interface AttentionGroup {
 export interface AttentionResponse {
   groups: AttentionGroup[];
   updatedAt: string;
+  // Set when the payload is BUILT (not served from cache) so the client
+  // can show data age. Optional: payloads cached before this field shipped
+  // will not have it.
+  generatedAt?: string;
 }
 
 // Pay Migration Dashboard
@@ -236,6 +261,10 @@ export interface PayMigrationData {
   allDeals: PayDeal[];
   recentStageChanges: RecentStageChange[];
   updatedAt: string;
+  // Set when the payload is BUILT (not served from cache) so the client
+  // can show data age. Optional: payloads cached before this field shipped
+  // will not have it.
+  generatedAt?: string;
 }
 
 export interface RecentStageChange {
@@ -263,7 +292,14 @@ export type WatchOutSignalKind =
   | "no_future_events"
   | "gone_quiet"
   | "stuck_in_step"
-  | "not_on_pay";
+  | "not_on_pay"
+  // LLM-extracted from call/meeting note bodies (src/lib/notes-classifier.ts).
+  // NOT part of PORTFOLIO_SIGNAL_MAP / STAGE_APPLICABILITY in v1 — they only
+  // render where note signals are lazy-fetched (CompanyDetail, Meeting Prep).
+  | "churn_risk_mentioned"
+  | "pricing_complaint"
+  | "feature_blocker"
+  | "expansion_interest";
 
 export type WatchOutSignalSeverity = "warn" | "bad";
 
@@ -521,6 +557,9 @@ export interface MeetingPrepDeal {
   watchOuts: WatchOutSignal[];
   // Last-touch timestamp surfaced in the brief footer / watch-outs
   lastTouch: string | null;
+  // Property changes since lastTouch. Only populated for deals attached to a
+  // surfaced meeting (the bulk payload doesn't fetch history for the full pool).
+  sinceLastTouch: SinceLastTouch | null;
 }
 
 export interface MeetingPrepMeetingEntry {
@@ -537,6 +576,10 @@ export interface MeetingPrepResponse {
   lifecycleDealsTotal: number;
   retentionDealsTotal: number;
   updatedAt: string;
+  // Set when the payload is BUILT (not served from cache) so the client
+  // can show data age. Optional: payloads cached before this field shipped
+  // will not have it.
+  generatedAt?: string;
 }
 
 // Natural-language Search dashboard

@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const response = await withTiming(spans, "build", () =>
-      buildPortfolioPayload(ownerIdsCsv, { refresh })
+      buildPortfolioPayload(ownerIdsCsv, { refresh, spans })
     );
     logSpans("portfolio", spans);
     return NextResponse.json(response, {

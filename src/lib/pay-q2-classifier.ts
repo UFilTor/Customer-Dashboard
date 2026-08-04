@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { HAIKU_MODEL } from "./llm";
 import type { PayDeal } from "./types";
 
 const client = new Anthropic();
@@ -59,7 +60,7 @@ export async function classifyUnwillingForQ2(deals: PayDeal[]): Promise<Map<stri
 
   try {
     const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: HAIKU_MODEL,
       max_tokens: 500,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: JSON.stringify(payload) }],

@@ -1,9 +1,7 @@
+import { TO_EUR } from "./fx";
+
 const STORAGE_KEY = "recent-companies";
 const MAX_RECENTS = 5;
-
-const TO_EUR: Record<string, number> = {
-  EUR: 1, USD: 0.92, GBP: 1.16, SEK: 0.087, NOK: 0.086, DKK: 0.134,
-};
 
 export function computeRevenueFromDetail(
   company: Record<string, string>,

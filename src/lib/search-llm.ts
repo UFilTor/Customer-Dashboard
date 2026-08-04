@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { HAIKU_MODEL } from "./llm";
 import { OWNERS } from "./owners";
 import type {
   GlobalFilter,
@@ -315,7 +316,7 @@ export async function parseQuery(
   const prompt = buildPrompt(query, filter, priorSpec);
   try {
     const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: HAIKU_MODEL,
       max_tokens: MAX_TOKENS,
       messages: [{ role: "user", content: prompt }],
     });

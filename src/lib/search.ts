@@ -1,4 +1,4 @@
-import { TO_EUR } from "./attention";
+import { TO_EUR } from "./fx";
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { searchObjectsPage } from "./hubspot-search";
 import { parseQuery } from "./search-llm";

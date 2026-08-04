@@ -13,6 +13,7 @@ import { effectiveOwnerIds, type GlobalFilter, parseFilter, serializeFilter } fr
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { extractSortKey, getSortOptions, mapKindToKey } from "@/lib/portfolio";
 import { PORTFOLIO_SIGNAL_ORDER } from "@/lib/signals";
+import { reportFreshness } from "@/lib/freshness";
 import { PortfolioView } from "./PortfolioView";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -112,6 +113,11 @@ function saveDefaults(d: PortfolioDefaults): void {
 
 export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onSelectCompany }: Props) {
   const [data, setData] = useState<PortfolioResponse | null>(null);
+
+  // Report payload build time for the TopBar freshness label.
+  useEffect(() => {
+    reportFreshness("portfolio", data?.generatedAt);
+  }, [data]);
   const [isFirstLoading, setIsFirstLoading] = useState(true);
   const [, setIsRevalidating] = useState(false);
   const [error, setError] = useState<string | null>(null);

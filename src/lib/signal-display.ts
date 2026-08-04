@@ -75,6 +75,11 @@ export function pillText(signal: WatchOutSignal): string {
   if (kind === "health_dropped")   return title.replace("Health score ", "Health ");
   if (kind === "gone_quiet")       return title.replace("Last contact ", "Quiet ");
   if (kind === "not_on_pay")       return "Not on Pay";
+  // LLM note signals — compact labels for pill contexts.
+  if (kind === "churn_risk_mentioned") return "Risk mentioned";
+  if (kind === "pricing_complaint")    return "Pricing complaint";
+  if (kind === "feature_blocker")      return "Feature blocker";
+  if (kind === "expansion_interest")   return "Expansion interest";
   return title;
 }
 

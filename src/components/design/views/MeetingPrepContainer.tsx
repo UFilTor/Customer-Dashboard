@@ -9,6 +9,7 @@ import type {
 } from "@/lib/types";
 import { effectiveOwnerIds, type GlobalFilter } from "@/lib/owners";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
+import { reportFreshness } from "@/lib/freshness";
 import { MeetingPrepView } from "./MeetingPrepView";
 
 interface Props {
@@ -45,6 +46,11 @@ function nextNWorkDayKeys(start: Date, n: number): string[] {
 
 export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: Props) {
   const [data, setData] = useState<MeetingPrepResponse | null>(null);
+
+  // Report payload build time for the TopBar freshness label.
+  useEffect(() => {
+    reportFreshness("meeting_prep", data?.generatedAt);
+  }, [data]);
   const [dataVersion, setDataVersion] = useState(0);
   // Bumped only on explicit user-initiated refresh. The lazy history fetch
   // includes this in its deps and passes ?refresh=true while it lags
@@ -57,24 +63,24 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
 
   const key = filterKey(filter);
 
-  const defaultFetchedKeys = useMemo(() => {
-    const now = new Date();
-    return nextNWorkDayKeys(now, 5);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
   const [fetchedDays, setFetchedDays] = useState<Set<string>>(
-    () => new Set(defaultFetchedKeys)
+    () => new Set(nextNWorkDayKeys(new Date(), 5))
   );
   const [fetchingDays, setFetchingDays] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    setFetchedDays(new Set(defaultFetchedKeys));
+  // Adjust-state-during-render: reset per-day fetch tracking when the filter
+  // key changes (see AGENTS.md "Strict react-hooks lint").
+  const [prevKey, setPrevKey] = useState(key);
+  if (prevKey !== key) {
+    setPrevKey(key);
+    setFetchedDays(new Set(nextNWorkDayKeys(new Date(), 5)));
     setFetchingDays(new Set());
-  }, [key, defaultFetchedKeys]);
+  }
 
   const dataRef = useRef<MeetingPrepResponse | null>(null);
-  dataRef.current = data;
+  useEffect(() => {
+    dataRef.current = data;
+  });
 
   const inFlightRef = useRef(false);
   const fetchData = useCallback(
@@ -111,8 +117,7 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
 
   useEffect(() => {
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [fetchData]);
 
   useEffect(() => {
     function onRefresh() {

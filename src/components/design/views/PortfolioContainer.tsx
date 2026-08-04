@@ -12,8 +12,9 @@ import type {
 import { effectiveOwnerIds, type GlobalFilter, parseFilter, serializeFilter } from "@/lib/owners";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { extractSortKey, getSortOptions, mapKindToKey } from "@/lib/portfolio";
-import { PORTFOLIO_SIGNAL_ORDER } from "@/lib/signals";
+import { PORTFOLIO_SIGNAL_ORDER, PORTFOLIO_SIGNAL_MAP } from "@/lib/signals";
 import { reportFreshness } from "@/lib/freshness";
+import { announce } from "@/lib/live-announcer";
 import { PortfolioView } from "./PortfolioView";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -200,6 +201,16 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
     return () => window.removeEventListener("ud-refresh-dashboard", onRefresh);
   }, [fetchData]);
 
+  // Loading and error states were silent to screen readers. The result-count
+  // announce below covers "load finished successfully" implicitly (the new
+  // count itself is the confirmation); these two cover the states it can't.
+  useEffect(() => {
+    if (isFirstLoading) announce("Loading accounts…");
+  }, [isFirstLoading]);
+  useEffect(() => {
+    if (error) announce(`Couldn't refresh: ${error}`);
+  }, [error]);
+
   const filteredSortedRows = useMemo<PortfolioRow[]>(() => {
     // Defensive default — adversarial QA caught a dashboard-wide crash when
     // an upstream payload returned `rows: null` or omitted the field. Coerce
@@ -276,6 +287,20 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
       return ((av as number) - (bv as number)) * dir;
     });
   }, [data, selectedSignals, stackedSignals, shownStatuses, sortKey, sortDirection, refine]);
+
+  // Filter/refine/status changes silently swapped the whole result set with
+  // no announcement. This also doubles as the "load finished" signal — the
+  // count itself is the confirmation, so a separate "loaded" announce isn't
+  // needed. Skipped during the first load so a stale "0 accounts" doesn't
+  // fire before data arrives.
+  useEffect(() => {
+    if (isFirstLoading) return;
+    const count = filteredSortedRows.length;
+    const signalNote = selectedSignals.length > 0
+      ? `, filtered to ${selectedSignals.map((k) => PORTFOLIO_SIGNAL_MAP[k]?.label ?? k).join(", ")}`
+      : "";
+    announce(`${count} account${count === 1 ? "" : "s"}${signalNote}`);
+  }, [filteredSortedRows.length, selectedSignals, isFirstLoading]);
 
   // Reset to page 1 whenever filter/signal/sort context changes. Following
   // the prev-X "adjust state during render" pattern the strict react-hooks

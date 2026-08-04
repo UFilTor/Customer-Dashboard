@@ -49,6 +49,7 @@ next-env.d.ts
 
 # claude code workspace state
 .claude/
+.impeccable/
 .playwright/profiles/
 .playwright-cli/
 .playwright/profiles.json

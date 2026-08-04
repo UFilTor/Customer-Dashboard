@@ -10,7 +10,7 @@ import { SinceLastTouchBlock } from "./SinceLastTouch";
 import { HealthRings } from "./HealthRings";
 import { VolumeChart } from "./VolumeChart";
 import { OWNER_MAP } from "@/lib/owners";
-import { fmtMrr, relDays } from "@/lib/format-design";
+import { fmtMrr, relDays, toWebUrl } from "@/lib/format-design";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 import { isBookmarked, toggleBookmark } from "@/lib/bookmarks";
 import { computeWatchOutSignals } from "@/lib/signals";
@@ -22,6 +22,7 @@ interface Props {
   data: CompanyDetailData & { owners: OwnerMap; stages: StageMap };
   embedded?: boolean;
 }
+
 
 // Shared style for the row of header action buttons (Email / Copy / Open
 // in HubSpot). Keeps the cluster visually consistent without lifting the
@@ -285,12 +286,12 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
           >
             {company.domain && (
               <a
-                href={`https://${company.domain}`}
+                href={toWebUrl(company.domain)}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: "var(--moss)", textDecoration: "underline" }}
               >
-                https://{company.domain}
+                {toWebUrl(company.domain)}
               </a>
             )}
             <span style={{ opacity: 0.5 }}>·</span>
@@ -831,7 +832,7 @@ function CompanyInfoCard({ company, owners }: { company: Record<string, string>;
   const ownerLocal = OWNER_MAP[company.hubspot_owner_id || ""] || null;
   const region = ownerLocal?.region || "Unknown";
   const rows: { label: string; value: string; link?: boolean }[] = [];
-  if (company.domain) rows.push({ label: "Domain", value: `https://${company.domain}`, link: true });
+  if (company.domain) rows.push({ label: "Domain", value: toWebUrl(company.domain), link: true });
   rows.push({ label: "Owner", value: owners[company.hubspot_owner_id || ""] || "Unassigned" });
   rows.push({ label: "Region", value: region });
   if (company.understory_company_country) rows.push({ label: "Country", value: company.understory_company_country });

@@ -96,7 +96,9 @@ export function TopBar({
             padding: "7px 12px",
             borderRadius: 10,
             fontSize: 13,
-            minWidth: 360,
+            width: "100%",
+            minWidth: 0,
+            maxWidth: 360,
             cursor: "pointer",
             transition: "background 160ms ease",
           }}
@@ -139,7 +141,7 @@ export function TopBar({
             clearDefault={clearDefault}
           />
         )}
-        <span aria-hidden="true" style={{ width: 1, height: 20, background: "rgba(255,255,255,0.2)" }} />
+        <span aria-hidden="true" style={{ width: 1, height: 20, background: "var(--inverse-border)" }} />
         <DashboardPicker dashboard={dashboard} setDashboard={setDashboard} />
       </div>
     </nav>
@@ -183,10 +185,11 @@ function FreshnessLabel({ dashboard }: { dashboard: DashboardKey }) {
 
   return (
     <span
+      className="topbar-freshness"
       title={`Data fetched from HubSpot at ${new Date(iso).toLocaleTimeString()}`}
       style={{
         fontSize: 11,
-        color: "rgba(255,255,255,0.6)",
+        color: "var(--inverse-text)",
         whiteSpace: "nowrap",
         marginRight: 4,
       }}
@@ -203,8 +206,8 @@ function pillStyle(highlighted: boolean): React.CSSProperties {
     gap: 8,
     padding: "7px 14px",
     borderRadius: 10,
-    background: highlighted ? "rgba(241,249,126,0.12)" : "rgba(255,255,255,0.08)",
-    color: "rgba(255,255,255,0.9)",
+    background: highlighted ? "rgba(241,249,126,0.12)" : "var(--inverse-surface)",
+    color: "var(--inverse-text-strong)",
     fontSize: 13,
     fontFamily: "var(--font-display)",
     fontWeight: 600,
@@ -331,7 +334,7 @@ function FilterTypePill({ filter, setFilter, isDefault, setAsDefault, clearDefau
             fontWeight: 700,
             textTransform: "uppercase",
             letterSpacing: "0.08em",
-            color: "rgba(255,255,255,0.6)",
+            color: "var(--inverse-text)",
           }}
         >
           Filter

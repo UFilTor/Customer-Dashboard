@@ -57,6 +57,18 @@ export function CommandPalette({
     }
   }, [open]);
 
+  // aria-modal="true" tells assistive tech the page behind is inert; a
+  // sighted user could still scroll it while the palette floats on top.
+  // Lock body scroll for the duration the dialog is open.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   // Live company search (debounced) when typing. AbortController cancels any
   // in-flight request when the query changes, so a slow response for "stau"
   // can't overwrite the fresh response for "stauning".
@@ -145,6 +157,13 @@ export function CommandPalette({
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Tab") {
+      // Combobox pattern: the input is the only real focus target (arrow
+      // keys move the "active" row via `idx`, not DOM focus; result rows
+      // are tabIndex={-1}). Without this, Tab had nowhere to go but out of
+      // the dialog — aria-modal="true" claims the background is inert, but
+      // focus could still escape it after a few presses.
+      e.preventDefault();
     } else if (e.key === "Enter") {
       e.preventDefault();
       choose(pickable[idx]);
@@ -191,6 +210,11 @@ export function CommandPalette({
         <div style={{ position: "relative" }}>
           <input
             ref={inputRef}
+            role="combobox"
+            aria-expanded={pickable.length > 0}
+            aria-controls="palette-listbox"
+            aria-activedescendant={pickable.length > 0 ? `palette-option-${idx}` : undefined}
+            aria-autocomplete="list"
             aria-label="Search companies or run a command"
             placeholder="Search companies or run a command…"
             value={q}
@@ -224,7 +248,7 @@ export function CommandPalette({
           )}
         </div>
 
-        <div style={{ maxHeight: "60vh", overflowY: "auto", padding: "6px 0" }}>
+        <div id="palette-listbox" role="listbox" aria-label="Results" style={{ maxHeight: "60vh", overflowY: "auto", padding: "6px 0" }}>
           {items.length === 0 && (
             <div
               style={{
@@ -276,6 +300,10 @@ export function CommandPalette({
               return (
                 <button
                   key={`a-${i}`}
+                  id={`palette-option-${pIdx}`}
+                  role="option"
+                  aria-selected={active}
+                  tabIndex={-1}
                   style={baseStyle}
                   onMouseEnter={() => setIdx(pickable.findIndex((x) => x === it))}
                   onClick={() => choose(it)}
@@ -291,6 +319,10 @@ export function CommandPalette({
             return (
               <button
                 key={`c-${c.id}-${i}`}
+                id={`palette-option-${pIdx}`}
+                role="option"
+                aria-selected={active}
+                tabIndex={-1}
                 style={baseStyle}
                 onMouseEnter={() => setIdx(pickable.findIndex((x) => x === it))}
                 onClick={() => choose(it)}

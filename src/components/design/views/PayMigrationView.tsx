@@ -560,7 +560,12 @@ function PipelineBar({
               key={s.key}
               flex={s.bv}
               color={s.color}
-              label={p >= 4 ? `${s.short} ${p.toFixed(1)}%` : null}
+              // Full "{short} {pct}%" only once the segment is wide enough to
+              // hold it without clipping mid-word; narrower segments fall
+              // back to just the percentage, which is short enough to fit
+              // down to ~4%. The legend below already repeats the full
+              // breakdown with passing contrast, so nothing is lost.
+              label={p >= 8 ? `${s.short} ${p.toFixed(1)}%` : p >= 4 ? `${p.toFixed(1)}%` : null}
               title={`${s.key}: ${fmtEurShort(s.bv)} (${p.toFixed(1)}%)`}
               delay={120 + i * 70}
             />
@@ -631,8 +636,18 @@ function PipeSeg({
             fontSize: 10,
             fontWeight: 700,
             color: "var(--text-on-moss)",
+            // Several stage swatches (verified, onboarding, signed, none) sit
+            // at a mid luminance where white text fails AA against the raw
+            // fill (measured as low as 3.45:1). A moss scrim behind the label
+            // pulls every swatch's composite well past 4.5:1 regardless of
+            // the underlying hue, without changing the brand palette itself.
+            background: "rgba(2, 44, 18, 0.5)",
+            borderRadius: 3,
             whiteSpace: "nowrap",
-            padding: "0 4px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            maxWidth: "100%",
+            padding: "1px 5px",
             opacity: w > 0 ? 1 : 0,
             transition: "opacity 320ms ease 320ms",
           }}
@@ -870,10 +885,15 @@ function PathCard({
         </>
       )}
 
-      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+      {/* Fixed layout squeezed the flexible Customer column to ~39px at
+          1024-1152px viewport widths, clipping company names entirely. A
+          scroll container + a table min-width keeps every column readable;
+          the table scrolls horizontally instead of illegibly compressing. */}
+      <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", tableLayout: "fixed" }}>
         <colgroup>
           <col style={{ width: 28 }} />
-          <col />
+          <col style={{ minWidth: 160 }} />
           <col style={{ width: 150 }} />
           <col style={{ width: 110 }} />
           <col style={{ width: 56 }} />
@@ -941,7 +961,10 @@ function PathCard({
                     background: bg,
                     cursor: "pointer",
                   }}
-                  onClick={() => onDealClick(deal)}
+                  {...clickableRowProps(
+                    () => onDealClick(deal),
+                    `${deal.dealName}, ${deal.stage} stage`
+                  )}
                 >
                   <Td muted>{n}</Td>
                   <Td>
@@ -964,6 +987,7 @@ function PathCard({
           )}
         </tbody>
       </table>
+      </div>
       {hiddenCount > 0 && (
         <ShowAllButton
           expanded={expanded}
@@ -1073,7 +1097,8 @@ function UnwillingTable({
           </div>
         )}
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", minWidth: 480, borderCollapse: "collapse" }}>
         <thead>
           <tr>
             <Th>Customer</Th>
@@ -1100,7 +1125,11 @@ function UnwillingTable({
             </tr>
           ) : (
             visible.map((d) => (
-              <tr key={d.dealId} style={{ cursor: "pointer" }} onClick={() => onDealClick(d)}>
+              <tr
+                key={d.dealId}
+                style={{ cursor: "pointer" }}
+                {...clickableRowProps(() => onDealClick(d), `${d.dealName}, unwilling`)}
+              >
                 <Td>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                     <strong style={{ color: "var(--moss)" }}>{d.dealName}</strong>
@@ -1132,6 +1161,7 @@ function UnwillingTable({
           )}
         </tbody>
       </table>
+      </div>
       {hiddenCount > 0 && (
         <ShowAllButton
           expanded={expanded}
@@ -1183,7 +1213,8 @@ function NotEnrolledCard({
           ({deals.length} not enrolled · {fmtEurShort(totalBv)} · {pctOfElig.toFixed(1)}%)
         </span>
       </h3>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", minWidth: 480, borderCollapse: "collapse" }}>
         <thead>
           <tr>
             <Th>#</Th>
@@ -1223,7 +1254,11 @@ function NotEnrolledCard({
                 );
               }
               return (
-                <tr key={d.dealId} style={{ cursor: "pointer" }} onClick={() => onDealClick(d)}>
+                <tr
+                  key={d.dealId}
+                  style={{ cursor: "pointer" }}
+                  {...clickableRowProps(() => onDealClick(d), `${d.dealName}, not enrolled`)}
+                >
                   <Td muted>{i + 1}</Td>
                   <Td>
                     <strong style={{ color: "var(--moss)" }}>{d.dealName}</strong>
@@ -1237,6 +1272,7 @@ function NotEnrolledCard({
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -1278,7 +1314,8 @@ function RecentStageChanges({
         marginBottom: 32,
       }}
     >
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
         <thead>
           <tr>
             <Th>Customer</Th>
@@ -1311,7 +1348,10 @@ function RecentStageChanges({
                 <tr
                   key={`${c.dealId}-${c.timestamp}`}
                   style={{ cursor: deal ? "pointer" : "default" }}
-                  onClick={() => deal && onDealClick(deal)}
+                  {...clickableRowProps(
+                    deal ? () => onDealClick(deal) : undefined,
+                    `${c.dealName}, ${c.fromStage ?? "new"} to ${c.toStage}`
+                  )}
                 >
                   <Td>
                     <strong style={{ color: "var(--moss)" }}>{c.dealName}</strong>
@@ -1336,11 +1376,32 @@ function RecentStageChanges({
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
 
 /* ---------------- table primitives ---------------- */
+
+// Deal rows are `<tr>` elements — a `<button>` can't legally nest inside one,
+// so keyboard/AT access comes from role="button" + tabIndex + a manual
+// Enter/Space handler instead of Portfolio's real-<button> row pattern.
+// `[role="button"]:focus-visible` in globals.css gives it the same focus ring.
+function clickableRowProps(onActivate: (() => void) | undefined, label: string) {
+  if (!onActivate) return {};
+  return {
+    tabIndex: 0,
+    role: "button" as const,
+    "aria-label": label,
+    onClick: onActivate,
+    onKeyDown: (e: React.KeyboardEvent<HTMLTableRowElement>) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onActivate();
+      }
+    },
+  };
+}
 
 function Th({
   children,

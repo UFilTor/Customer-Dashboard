@@ -1,8 +1,7 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import type { PortfolioRefineState, PortfolioRow, PortfolioSignalKey, PortfolioSortKey } from "@/lib/types";
 import { PORTFOLIO_SIGNALS, PORTFOLIO_SIGNAL_MAP, PORTFOLIO_SIGNAL_ORDER } from "@/lib/signals";
 import { getSortOptions, mapKindToKey } from "@/lib/portfolio";
@@ -174,36 +173,26 @@ export function PortfolioView(props: Props) {
     return out;
   }, [rows, selectedSignals]);
 
-  // Virtualize the items (rows + section headers) so DOM stays bounded.
-  // estimateSize is per-index so headers (~36px) and rows (~50px) get the
-  // right initial layout before measureElement refines.
-  //
-  // The strict `react-hooks/refs` lint forbids reading `.current` during
-  // render, so we capture the list's page-offset via a callback ref into
-  // state instead of reading from a ref.
-  const [listOffsetTop, setListOffsetTop] = useState(0);
-  const measureList = useCallback((node: HTMLDivElement | null) => {
-    if (!node) return;
-    setListOffsetTop(node.getBoundingClientRect().top + window.scrollY);
-  }, []);
-  const virtualizer = useWindowVirtualizer({
-    count: items.length,
-    estimateSize: (i) => (items[i]?.kind === "section-header" ? 36 : 50),
-    overscan: 8,
-    scrollMargin: listOffsetTop,
-  });
+  // Pages are capped at 50 rows (PAGE_SIZE in PortfolioContainer) — cheap
+  // enough to render in full. This view used to virtualize with
+  // useWindowVirtualizer, but that traded a real maintenance cost (three
+  // documented footguns in AGENTS.md: scrollMargin offset math,
+  // measurementsCache being in absolute coords, estimate drift on sticky
+  // headers — all of which were live bugs) for no measurable gain at this
+  // row count. Plain flow layout below; DOM queries replace the two things
+  // the virtualizer used to provide off its internal measurement cache.
+  const rowsContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Keep the focused row in view when keyboard nav moves outside the viewport.
-  // focusedRowIndex is over `rows` (the page slice) — translate to items
-  // index so virtualizer.scrollToIndex lands on the correct virtual item.
+  // Keep the focused row in view when keyboard nav moves outside the
+  // viewport. Every row is a real DOM node now, so this is a direct
+  // scrollIntoView instead of virtualizer.scrollToIndex.
   useEffect(() => {
     if (focusedRowIndex == null) return;
-    const itemIndex = items.findIndex(
-      (it) => it.kind === "row" && it.index === focusedRowIndex
+    const el = rowsContainerRef.current?.querySelector<HTMLElement>(
+      `[data-row-index="${focusedRowIndex}"]`
     );
-    if (itemIndex < 0) return;
-    virtualizer.scrollToIndex(itemIndex, { align: "auto" });
-  }, [focusedRowIndex, items, virtualizer]);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [focusedRowIndex]);
 
   // Sticky section header. When sectioning is active, track which section
   // is currently visible and pin its header just below the column-headers
@@ -243,34 +232,28 @@ export function PortfolioView(props: Props) {
 
     function compute() {
       raf = 0;
-      // Cursor = absolute Y of the row position just below the sticky strip.
-      // measurementsCache[i].start is in absolute (document) coords because
-      // useWindowVirtualizer is configured with scrollMargin: listOffsetTop —
-      // so we compare against an absolute cursor too. Earlier versions of
-      // this code subtracted listOffsetTop from cursor, which made the
-      // comparison list-relative vs absolute and the loop never matched.
+      const container = rowsContainerRef.current;
+      if (!container) return;
+      // Every section header is a real, always-mounted DOM node now (no
+      // virtualizer measurement cache to consult) — read its actual
+      // viewport position directly. Cursor = viewport Y just below the
+      // sticky strip; a header at/above that line means its rows are
+      // currently under the strip.
       const stickyHeight = stickyRef.current?.offsetHeight ?? 200;
-      const cursor = window.scrollY + stickyHeight;
-
-      // Read MEASURED offsets from the virtualizer, not fixed estimates.
-      // Row heights vary (rows with vs. without secondary detail lines),
-      // so cumulative estimates drift further the deeper you scroll.
-      const measurements = virtualizer.measurementsCache;
+      const headers = container.querySelectorAll<HTMLElement>("[data-section-header]");
       // Find the section whose ROWS are currently under the sticky strip.
       // We track the most recent section-header at/above the cursor — so as
       // soon as a section's first row is in view (header may still be partly
-      // visible), the indicator already announces the section. Without this,
-      // the indicator only appeared after scrolling 36px past the inline
-      // header, leaving a dead zone where users saw rows with no label.
+      // visible), the indicator already announces the section. Headers are
+      // in document order, so once one is below the line, all later ones
+      // are too.
       let last: { sig: PortfolioSignalKey; count: number } | null = null;
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const m = measurements[i];
-        if (!m) break;
-        if (item.kind === "section-header" && m.start <= cursor) {
-          last = { sig: item.signal, count: item.count };
-        }
-        if (m.start > cursor) break;
+      for (const el of headers) {
+        if (el.getBoundingClientRect().top > stickyHeight) break;
+        last = {
+          sig: el.dataset.signal as PortfolioSignalKey,
+          count: Number(el.dataset.count),
+        };
       }
       setActiveSection((prev) => {
         // Only update when the section actually changed — avoids a re-render
@@ -291,11 +274,7 @@ export function PortfolioView(props: Props) {
       window.removeEventListener("scroll", onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [selectedSignals.length, items, listOffsetTop, virtualizer]);
-
-  const virtualItems = virtualizer.getVirtualItems();
-  const totalSize = virtualizer.getTotalSize();
-  const scrollOffset = virtualizer.options.scrollMargin;
+  }, [selectedSignals.length, items]);
 
   // Range labels for the results bar: "Showing 1-50 of 774 accounts".
   // First and last 1-based row positions on the current page.
@@ -317,6 +296,15 @@ export function PortfolioView(props: Props) {
       <div style={{ padding: "0 28px 60px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <div ref={sentinelRef} aria-hidden="true" style={{ height: 1, marginBottom: -1 }} />
+          {/* The ColumnHeaders/Row components already author role="columnheader"
+              and role="row" on the header, but had no role="table"/"grid"
+              ancestor — both roles are discarded by assistive tech without
+              one. This wrapper makes them valid. Data rows stay real
+              <button>s (not role="gridcell") rather than adopting the full
+              ARIA grid pattern, which expects per-cell focus and would
+              regress the Tab-per-row navigation this view already gets
+              right; see each row's aria-label for the accessible-name fix. */}
+          <div role="table" aria-label="Portfolio accounts">
           <div className={`pf-sticky${scrolled ? " scrolled" : ""}`} ref={stickyRef}>
             <Toolbar
               selectedSignals={props.selectedSignals}
@@ -355,7 +343,7 @@ export function PortfolioView(props: Props) {
           </div>
 
           <div
-            ref={measureList}
+            ref={rowsContainerRef}
             style={{
               background: "var(--card-bg)",
               border: "1px solid var(--hairline)",
@@ -372,45 +360,32 @@ export function PortfolioView(props: Props) {
                 caption="Try removing a filter or clearing your search."
               />
             ) : (
-              <div
-                style={{
-                  height: totalSize,
-                  width: "100%",
-                  position: "relative",
-                }}
-              >
-                {virtualItems.map((virtualRow) => {
-                  const item = items[virtualRow.index];
-                  if (!item) return null;
-                  return (
-                    <div
-                      key={virtualRow.key}
-                      data-index={virtualRow.index}
-                      ref={virtualizer.measureElement}
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        width: "100%",
-                        transform: `translateY(${virtualRow.start - scrollOffset}px)`,
-                      }}
-                    >
-                      {item.kind === "section-header" ? (
-                        <SectionHeader signal={item.signal} count={item.count} />
-                      ) : (
-                        <Row
-                          row={item.row}
-                          focused={focusedRowIndex === item.index}
-                          onSelect={onSelect}
-                          isLast={item.index === pageRowCount - 1}
-                          showAvatar={showAvatar}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+              // Plain flow layout — a page tops out at 50 rows, cheap to
+              // render in full. See the comment above rowsContainerRef.
+              items.map((item) =>
+                item.kind === "section-header" ? (
+                  <div
+                    key={item.key}
+                    data-section-header=""
+                    data-signal={item.signal}
+                    data-count={item.count}
+                  >
+                    <SectionHeader signal={item.signal} count={item.count} />
+                  </div>
+                ) : (
+                  <div key={item.key} data-row-index={item.index}>
+                    <Row
+                      row={item.row}
+                      focused={focusedRowIndex === item.index}
+                      onSelect={onSelect}
+                      isLast={item.index === pageRowCount - 1}
+                      showAvatar={showAvatar}
+                    />
+                  </div>
+                )
+              )
             )}
+          </div>
           </div>
 
           {/* Bottom page nav. Only shown when the result set spans multiple
@@ -1138,6 +1113,23 @@ const Row = memo(function Row({
         ? "var(--moss)"
         : "var(--green-100)";
 
+  // Without this, the button's accessible name defaults to its concatenated
+  // text content — every cell run together with no separators or column
+  // context ("Ramp UpFlygupplevelseInvoice overdue 3 days..."). Explicit
+  // sentences with periods give a screen reader real pause points.
+  const rowAriaLabel = [
+    row.name,
+    `${row.stage} stage`,
+    safeSignals.length > 0
+      ? safeSignals.map((s) => s.title).join(". ")
+      : "No signals flagged",
+    row.healthScore != null ? `Health ${Math.round(row.healthScore)}` : null,
+    row.revenue ? `${formatNum(row.revenue)} EUR ACV` : null,
+    row.daysSinceContact != null ? `Last contact ${row.daysSinceContact} days ago` : null,
+  ]
+    .filter(Boolean)
+    .join(". ");
+
   // Resolve to an OwnerLike for the shared Avatar. Falls back to a synthetic
   // { name } if the row carries an ownerName but no canonical map entry, so
   // the initial still renders.
@@ -1148,6 +1140,7 @@ const Row = memo(function Row({
     <button
       type="button"
       onClick={() => onSelect(row)}
+      aria-label={rowAriaLabel}
       className={`pf-row${focused ? " focused" : ""}`}
       style={{
         position: "relative",
@@ -1264,6 +1257,9 @@ const Row = memo(function Row({
             {safeSignals.length > 3 && (
               <span
                 title={safeSignals.slice(3).map((s) => s.title).join(" · ")}
+                aria-label={`${safeSignals.length - 3} more signal${
+                  safeSignals.length - 3 === 1 ? "" : "s"
+                }: ${safeSignals.slice(3).map((s) => s.title).join(", ")}`}
                 style={{
                   fontSize: 10,
                   color: "var(--green-100)",

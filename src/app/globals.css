@@ -102,6 +102,21 @@
   --stage-established-bg: #D5DFCA;
   --stage-established-fg: #022C12;
 
+  /* Signal category-identity dots (Signals filter dropdown swatch + Portfolio
+     section-header dot when 2+ signals are grouped). These identify WHICH
+     signal a row belongs to, not how severe it is — severity is the separate
+     --rust fill/border pair in signal-display.ts's signalStyle(). Promoted
+     from hand-hexed literals in src/lib/signals.ts, where --signal-health had
+     drifted into a one-digit near-duplicate of --status-good-fg (#2F5F3D vs
+     #2F5C3E) — the fingerprint of a copy-paste typo, not an intentional
+     second color. Naming them here stops that drift and documents the actual
+     4-hue set (most of the 9 signals share --signal-bad or --signal-warn;
+     gone_quiet and health_dropped alone get a distinct identity color). */
+  --signal-bad: #B84A2D;
+  --signal-warn: #B8761F;
+  --signal-health: #2F5C3E;
+  --signal-quiet: #3D4E5F;
+
   /* Easing — DESIGN.md §6 specifies the ease-out-quart family. Centralised
      so component code references the name, not the bezier. */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -157,8 +172,9 @@ button {
 ::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--green-muted); }
 
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-  outline: 2px solid var(--moss); outline-offset: 2px; border-radius: 6px;
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--focus-blue); outline-offset: 2px; border-radius: 6px;
 }
 
 /* Legacy focused-row classes used by existing keyboard nav */
@@ -450,12 +466,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .topbar-nav {
   background: var(--moss);
   color: var(--text-on-moss);
-  /* Logo on the left, pill cluster on the right. The search trigger is
-     absolutely positioned in the centre of the bar (see .topbar-search-wrap)
-     so it lands on the true viewport midline regardless of side widths. */
-  position: relative;
-  display: flex;
-  justify-content: space-between;
+  /* Logo on the left, pill cluster on the right, search in the middle column.
+     A real 3-column grid (not absolute-centering) means the columns can never
+     overlap: the search cell shrinks with the viewport instead of the side
+     clusters growing underneath it. Was absolute + flex space-between, which
+     collided with the right cluster at 1280px and below. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 16px;
   padding: 10px 20px;
@@ -463,13 +480,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 .topbar-search-wrap {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  /* Sits above the side clusters at narrow viewports where they could
-     otherwise overlap; clusters get padding-right/left so they don't crowd. */
-  z-index: 1;
+  justify-self: center;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* Below ~1200px the side clusters (filter pills + dashboard picker) are
+   already tight against the shrinking search column; drop the freshness
+   timestamp first since it's the least essential piece of chrome here. */
+@media (max-width: 1199px) {
+  .topbar-freshness {
+    display: none;
+  }
 }
 
 .dashboard-picker-btn {
@@ -482,7 +506,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
      selector reads as interactive on the dark TopBar instead of blending
      into the moss background. */
   background: rgba(241, 249, 126, 0.12);
-  color: #fff;
+  color: var(--inverse-text-strong);
   border: 1px solid var(--citrus);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.8, 0.24, 0.16, 1);

@@ -11,10 +11,15 @@ function fmtChangeDate(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+// Deliberately not "Since last touch" — that read as a duplicate of the
+// header's "Last contacted" (a different property: notes_last_contacted vs.
+// the most recent logged meeting/call, see hubspot.ts's lastTouchIso). Naming
+// the actual source stops the two numbers from looking like a contradiction
+// when they legitimately disagree.
 function touchLabel(days: number | null): string {
-  if (days == null) return "Since last touch";
-  if (days === 0) return "Since last touch · today";
-  return `Since last touch · ${days} day${days === 1 ? "" : "s"}`;
+  if (days == null) return "Since last meeting or call";
+  if (days === 0) return "Since last meeting or call · today";
+  return `Since last meeting or call · ${days} day${days === 1 ? "" : "s"}`;
 }
 
 export function SinceLastTouchBlock({ data }: { data: SinceLastTouchData | null }) {

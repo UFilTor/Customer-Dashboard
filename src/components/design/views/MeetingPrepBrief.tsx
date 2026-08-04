@@ -9,7 +9,7 @@ import type {
   WatchOutSignal,
 } from "@/lib/types";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
-import { fmtFutureEvents } from "@/lib/format-design";
+import { fmtFutureEvents, toWebUrl } from "@/lib/format-design";
 import { OWNER_MAP } from "@/lib/owners";
 import { VolumeChart } from "../VolumeChart";
 import { HealthRings } from "../HealthRings";
@@ -423,6 +423,40 @@ export function MeetingPrepBrief({
    Only the selected day's briefs render, which bounds the fetch count.
    ============================================================ */
 
+// A company can appear in more than one meeting on the same day (or React
+// Strict Mode's dev-only double-effect-invoke), so two `MeetingPrepBrief`
+// instances can mount for the same companyId at once. Without dedupe each
+// fires its own /recap + /note-signals fetch — measured as 8 requests for
+// 4 companies in one day's brief. Module-scope in-flight caches mean the
+// second caller reuses the first's pending promise instead of refetching.
+const recapInFlight = new Map<string, Promise<Recap | null>>();
+function fetchRecapOnce(companyId: string): Promise<Recap | null> {
+  let p = recapInFlight.get(companyId);
+  if (!p) {
+    p = fetch(`/api/companies/${companyId}/recap`)
+      .then((res) => (res.ok ? res.json() : { recap: null }))
+      .then((json: { recap: Recap | null }) => json.recap ?? null)
+      .catch(() => null)
+      .finally(() => recapInFlight.delete(companyId));
+    recapInFlight.set(companyId, p);
+  }
+  return p;
+}
+
+const noteSignalsInFlight = new Map<string, Promise<WatchOutSignal[]>>();
+function fetchNoteSignalsOnce(companyId: string): Promise<WatchOutSignal[]> {
+  let p = noteSignalsInFlight.get(companyId);
+  if (!p) {
+    p = fetch(`/api/companies/${companyId}/note-signals`)
+      .then((res) => (res.ok ? res.json() : { signals: [] }))
+      .then((json: { signals: WatchOutSignal[] }) => (Array.isArray(json.signals) ? json.signals : []))
+      .catch(() => [])
+      .finally(() => noteSignalsInFlight.delete(companyId));
+    noteSignalsInFlight.set(companyId, p);
+  }
+  return p;
+}
+
 function useCompanyExtras(companyId: string | null): {
   recap: Recap | null;
   recapLoading: boolean;
@@ -443,28 +477,16 @@ function useCompanyExtras(companyId: string | null): {
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/companies/${companyId}/recap`);
-        if (!res.ok) return;
-        const json: { recap: Recap | null } = await res.json();
-        if (!cancelled) setRecap(json.recap ?? null);
-      } catch {
-        /* silent — the brief works without a recap */
-      } finally {
+    fetchRecapOnce(companyId)
+      .then((recap) => {
+        if (!cancelled) setRecap(recap);
+      })
+      .finally(() => {
         if (!cancelled) setRecapLoading(false);
-      }
-    })();
-    (async () => {
-      try {
-        const res = await fetch(`/api/companies/${companyId}/note-signals`);
-        if (!res.ok) return;
-        const json: { signals: WatchOutSignal[] } = await res.json();
-        if (!cancelled && Array.isArray(json.signals)) setNoteSignals(json.signals);
-      } catch {
-        /* silent — rule-based signals still render */
-      }
-    })();
+      });
+    fetchNoteSignalsOnce(companyId).then((signals) => {
+      if (!cancelled) setNoteSignals(signals);
+    });
     return () => {
       cancelled = true;
     };
@@ -678,10 +700,6 @@ function ObNotesSection({ deal }: { deal: MeetingPrepDeal }) {
       </Row>
     </div>
   );
-}
-
-function toWebUrl(domain: string): string {
-  return /^https?:\/\//i.test(domain) ? domain : `https://${domain}`;
 }
 
 function CommercialSection({

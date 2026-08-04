@@ -63,3 +63,10 @@ export function relDays(iso: string | null | undefined): string {
   if (days < 365) return Math.floor(days / 30) + "mo ago";
   return d.toISOString().split("T")[0];
 }
+
+// HubSpot's `domain` property sometimes already carries a scheme. Prefixing
+// unconditionally produces "https://https://example.com" (a dead link) for
+// those records. Strip an existing scheme before adding ours.
+export function toWebUrl(domain: string): string {
+  return /^https?:\/\//i.test(domain) ? domain : `https://${domain}`;
+}

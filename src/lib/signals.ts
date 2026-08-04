@@ -60,10 +60,10 @@ export interface SignalMeta {
 }
 
 export const SIGNALS: SignalMeta[] = [
-  { key: "overdue_invoices", label: "Overdue invoices", short: "Overdue inv.", color: "#B84A2D", urgent: true },
-  { key: "open_invoices", label: "Open invoices", short: "Open inv.", color: "#B8761F", urgent: false },
-  { key: "no_future_events", label: "No future events", short: "No events", color: "#B84A2D", urgent: true },
-  { key: "health_score", label: "Health decline", short: "Health drop", color: "#2F5C3E", urgent: false },
+  { key: "overdue_invoices", label: "Overdue invoices", short: "Overdue inv.", color: "var(--signal-bad)", urgent: true },
+  { key: "open_invoices", label: "Open invoices", short: "Open inv.", color: "var(--signal-warn)", urgent: false },
+  { key: "no_future_events", label: "No future events", short: "No events", color: "var(--signal-bad)", urgent: true },
+  { key: "health_score", label: "Health decline", short: "Health drop", color: "var(--signal-health)", urgent: false },
 ];
 
 export const SIGNAL_MAP: Record<AttentionSignal, SignalMeta> = Object.fromEntries(
@@ -319,15 +319,15 @@ export interface PortfolioSignalMeta {
 // label — keyboard 1-9 maps to this order, and the section grouping in the
 // row list (when 2+ signals are selected) renders sections in this order.
 export const PORTFOLIO_SIGNALS: PortfolioSignalMeta[] = [
-  { key: "gone_quiet",         label: "Gone quiet",         short: "Quiet",       color: "#3D4E5F", severity: "warn" },
-  { key: "health_dropped",     label: "Health drop",        short: "Health",      color: "#2F5C3E", severity: "warn" },
-  { key: "no_future_events",   label: "No future events",   short: "No events",   color: "#B84A2D", severity: "bad"  },
-  { key: "not_on_pay",         label: "Not on Pay",         short: "Not on Pay",  color: "#B8761F", severity: "warn" },
-  { key: "open_invoices",      label: "Open invoices",      short: "Open inv.",   color: "#B8761F", severity: "warn" },
-  { key: "overdue_invoices",   label: "Overdue invoices",   short: "Overdue",     color: "#B84A2D", severity: "bad"  },
-  { key: "stuck_in_step",      label: "Stuck in step",      short: "Stuck",       color: "#B8761F", severity: "warn" },
-  { key: "volume_declining",   label: "Volume declining",   short: "Vol. drop",   color: "#B84A2D", severity: "bad"  },
-  { key: "wish_to_churn",      label: "Wish to churn",      short: "Wish churn",  color: "#B84A2D", severity: "bad"  },
+  { key: "gone_quiet",         label: "Gone quiet",         short: "Quiet",       color: "var(--signal-quiet)",  severity: "warn" },
+  { key: "health_dropped",     label: "Health drop",        short: "Health",      color: "var(--signal-health)", severity: "warn" },
+  { key: "no_future_events",   label: "No future events",   short: "No events",   color: "var(--signal-bad)",    severity: "bad"  },
+  { key: "not_on_pay",         label: "Not on Pay",         short: "Not on Pay",  color: "var(--signal-warn)",   severity: "warn" },
+  { key: "open_invoices",      label: "Open invoices",      short: "Open inv.",   color: "var(--signal-warn)",   severity: "warn" },
+  { key: "overdue_invoices",   label: "Overdue invoices",   short: "Overdue",     color: "var(--signal-bad)",    severity: "bad"  },
+  { key: "stuck_in_step",      label: "Stuck in step",      short: "Stuck",       color: "var(--signal-warn)",   severity: "warn" },
+  { key: "volume_declining",   label: "Volume declining",   short: "Vol. drop",   color: "var(--signal-bad)",    severity: "bad"  },
+  { key: "wish_to_churn",      label: "Wish to churn",      short: "Wish churn",  color: "var(--signal-bad)",    severity: "bad"  },
 ];
 
 export const PORTFOLIO_SIGNAL_MAP: Record<PortfolioSignalKey, PortfolioSignalMeta> =

@@ -72,8 +72,15 @@ export function pillText(signal: WatchOutSignal): string {
   if (kind === "volume_declining") return "Volume declining";
   if (kind === "no_future_events") return "No future events";
   if (kind === "stuck_in_step")    return title;
-  if (kind === "health_dropped")   return title.replace("Health score ", "Health ");
-  if (kind === "gone_quiet")       return title.replace("Last contact ", "Quiet ");
+  // No day count / no number here: the Portfolio table's HEALTH and LAST
+  // columns already show the exact value on the same row (see PortfolioView
+  // Row's healthColor / daysSinceContact comment). Restating "Health 56" or
+  // "Quiet 97 days ago" next to a column that already reads "56" / "97d" is
+  // pure duplication — the pill's job is the category + severity, not the
+  // number. Meeting Prep's WatchOutFor cards use cardCopy() (full title +
+  // detail), not pillText(), so they keep the exact wording unaffected.
+  if (kind === "health_dropped")   return "Health drop";
+  if (kind === "gone_quiet")       return "Quiet";
   if (kind === "not_on_pay")       return "Not on Pay";
   // LLM note signals — compact labels for pill contexts.
   if (kind === "churn_risk_mentioned") return "Risk mentioned";

@@ -115,14 +115,33 @@ export function buildRecapPrompt(
     const slt = accountState.sinceLastTouch;
     if (slt && slt.changes.length > 0) {
       const days = slt.daysSinceTouch != null ? `${slt.daysSinceTouch} days ago` : "unknown date";
-      stateLines.push(`- Changes since last touch (${days}):`);
+      stateLines.push(`- Changes since last meeting or call (${days}):`);
       for (const c of slt.changes) {
-        stateLines.push(`  - ${c.label}: ${c.from != null ? `${c.from} -> ${c.to}` : `now ${c.to}`}`);
+        if (c.from == null) {
+          stateLines.push(`  - ${c.label}: now ${c.to}`);
+          continue;
+        }
+        // Health score direction isn't self-evident from two bare numbers,
+        // and the model has been observed inferring the wrong one (e.g.
+        // reading 41 -> 49 as "dropping to 49") and contradicting the exact
+        // figures it was just given. Say the direction outright.
+        if (c.field === "health_score") {
+          const from = parseFloat(c.from);
+          const to = parseFloat(c.to);
+          const direction = Number.isFinite(from) && Number.isFinite(to)
+            ? to > from ? `IMPROVED by ${to - from}` : to < from ? `DECLINED by ${from - to}` : "unchanged"
+            : null;
+          stateLines.push(
+            `  - ${c.label}: ${c.from} -> ${c.to}${direction ? ` (${direction})` : ""}`
+          );
+          continue;
+        }
+        stateLines.push(`  - ${c.label}: ${c.from} -> ${c.to}`);
       }
     }
   }
   const stateBlock = stateLines.length > 0
-    ? `\n\nACCOUNT STATE (facts from the dashboard - ground your summary and suggestion in these, do not invent or contradict them):\n${stateLines.join("\n")}`
+    ? `\n\nACCOUNT STATE (facts from the dashboard - ground your summary and suggestion in these, do not invent or contradict them. Where a score change is marked IMPROVED/DECLINED/unchanged, use that exact direction - never state or imply the opposite):\n${stateLines.join("\n")}`
     : "";
 
   return `You are analyzing a customer's recent activity for a CS team dashboard. Today's date is ${todayStr}. Based on the activity history and company context below, generate:

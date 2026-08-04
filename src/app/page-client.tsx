@@ -45,6 +45,7 @@ const SearchContainer = dynamic(
   { ssr: false }
 );
 import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
+import { LiveRegion } from "@/components/LiveRegion";
 import { EditorialEmpty } from "@/components/design/EditorialEmpty";
 import { flattenGroups, SECTION_ORDER, sortBySignal, type FlatCompany } from "@/lib/signals";
 import {
@@ -277,9 +278,17 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       try { return localStorage.getItem(k); } catch { return null; }
     };
 
-    if (fromUrl.dashboard && fromUrl.dashboard !== dashboard) {
-      setSkipNextDashboardWipe(true);
-      setDashboard(fromUrl.dashboard);
+    // Bug: this used to branch on `fromUrl.dashboard !== dashboard`, so a
+    // URL that explicitly requested the same value as the initial default
+    // ("portfolio") looked identical to "no dashboard in the URL" and fell
+    // through to the localStorage override below — the one dashboard whose
+    // deep link could never work. An explicit URL param must always win over
+    // localStorage; only fall back to localStorage when the URL has none.
+    if (fromUrl.dashboard) {
+      if (fromUrl.dashboard !== dashboard) {
+        setSkipNextDashboardWipe(true);
+        setDashboard(fromUrl.dashboard);
+      }
     } else {
       const d = ls("ud-v2-dashboard");
       if (
@@ -1150,6 +1159,8 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         variant={variant}
         hasSelectedCompany={!!selectedCompanyId}
       />
+
+      <LiveRegion />
 
       {toast && (
         <div

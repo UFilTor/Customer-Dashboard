@@ -123,7 +123,7 @@ export function TopBar({
         </button>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
         <FreshnessLabel dashboard={dashboard} />
         <FilterTypePill
           filter={filter}

@@ -15,13 +15,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this app does
 
-Customer-success dashboard for Understory's CS team. Pulls live data from HubSpot CRM and surfaces three dashboards:
+Customer-success dashboard for Understory's CS team. Pulls live data from HubSpot CRM and surfaces:
 
-- **Status** — accounts that need attention today (overdue invoices, open invoices, no upcoming events, health drops). Three variants: Daily Brief, Split, By signal (Kanban).
-- **Onboarding** — meeting prep for the next 5 working days + accounts stuck past their expected step duration.
+- **Portfolio** — the primary dashboard: every account, every signal. Replaced the old Status dashboard as the default view. Status still exists (`?d=status`) but is hidden from the dashboard picker — legacy fallback only, not part of day-to-day use.
+- **Meeting prep** (`?d=meeting_prep`, sometimes called "Onboarding") — meeting prep for the next 5 working days + accounts stuck past their expected step duration.
 - **Pay Migration** — progress moving deals onto Understory Pay, broken down by CS owner.
+- **Lookup** (`?d=search`) — natural-language search over HubSpot data.
 
-Filtering is global (left pill = kind: All / Region / Person, right pill = value), except Pay Migration which uses its own Default/All toggle.
+Filtering is global (left pill = kind: All / Region / Person, right pill = value), except Pay Migration which uses its own Default/All toggle. `DASHBOARDS` in `VariantPicker.tsx` is the source of truth for what's live vs. hidden vs. not-yet-available (Bloom).
 
 ## Architecture
 
@@ -112,3 +113,5 @@ Available profiles:
 Config: `.playwright/profiles.json`
 To load a profile, use `playwright-cli -s={session} state-load .playwright/profiles/<role>.json` to restore cookies and localStorage.
 Run `/setup-profiles` to refresh profiles. Note: prod requires real HubSpot OAuth — `.env.local` would need `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` for the OAuth flow to work.
+
+**chrome-devtools MCP vs playwright-cli.** The chrome-devtools MCP tool holds a single browser-profile lock (`~/.cache/chrome-devtools-mcp/chrome-profile`) — if another agent or session already has it open, `new_page`/`list_pages` fail with "browser is already running... Use --isolated". This recurs any time two agents in the same session both want browser automation. Don't retry chrome-devtools — fall back to `playwright-cli -s=<unique-name> open <url>` immediately, and give each concurrent agent its own `-s=` session name so they don't collide with each other either.

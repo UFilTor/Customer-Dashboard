@@ -56,10 +56,20 @@ These are non-obvious conventions and footguns we've run into while working on t
 
 ## Virtualization (`@tanstack/react-virtual`)
 
+**`PortfolioView.tsx` no longer virtualizes.** Pages are capped at 50 rows (`PAGE_SIZE` in `PortfolioContainer.tsx`) — cheap enough to render in full flow layout. The footguns below cost three separate live bugs for no measurable perf gain at that row count, so the virtualizer was removed; sticky-section tracking and keyboard scroll-into-view now read real DOM (`getBoundingClientRect()` / `scrollIntoView()`) instead of a measurement cache. Keep this section for the next time a list actually needs windowing (hundreds+ rows, no pagination):
+
 - Page-scroll virtualization uses `useWindowVirtualizer`. `scrollMargin` must equal the list's offset from page top (measure via the callback-ref pattern above). Without it, the visible window is wrong by exactly the toolbar height.
 - Don't re-derive cumulative offsets from `estimateSize` for sibling logic like sticky section headers or scroll-to-row. The estimate drifts the moment any row deviates from the average. Real positions live in `virtualizer.measurementsCache[i].start`; use those.
-- **`measurementsCache[i].start` is in ABSOLUTE (document) coords when `scrollMargin` is set.** Not list-relative. So a "cursor" you compare against must also be absolute (`window.scrollY + stickyHeight`), not list-relative (`window.scrollY + stickyHeight - listOffsetTop`). This caused the Portfolio sticky-section indicator to never fire — the comparison was list-relative vs absolute, never crossing. Fix is in `PortfolioView.tsx`'s `compute()` for the activeSection tracker.
-- Reference: `PortfolioView.tsx` virtualizer setup and sticky-header tracking.
+- **`measurementsCache[i].start` is in ABSOLUTE (document) coords when `scrollMargin` is set.** Not list-relative. So a "cursor" you compare against must also be absolute (`window.scrollY + stickyHeight`), not list-relative (`window.scrollY + stickyHeight - listOffsetTop`). This is what caused the old Portfolio sticky-section indicator to never fire — the comparison was list-relative vs absolute, never crossing.
+
+## Custom interactive-row keyboard access
+
+Clickable list rows get keyboard/AT access one of two ways depending on the markup:
+
+- **Row is a styled `<div>`/grid, not real table markup** (e.g. `PortfolioView.tsx`): make the row itself a real `<button>`. Real button semantics, zero extra ARIA.
+- **Row is a real `<table><tr>`** (e.g. `PayMigrationView.tsx`): a `<button>` can't legally nest inside a `<tr>`. Use `role="button"` + `tabIndex={0}` + a manual Enter/Space `onKeyDown` handler instead — see `clickableRowProps()` in `PayMigrationView.tsx`. Skip it (return `{}`) when the row has no click handler (e.g. a stage-change row with no matching deal), so non-actionable rows don't become dead tab stops.
+
+Either way, the focus ring is already covered: `globals.css`'s `:focus-visible` rule includes `[role="button"]` alongside `button, a, input, select`, so a `role="button"` row gets the same visible ring for free.
 
 ## Sticky scroll-shadow pattern
 
@@ -121,6 +131,10 @@ Fires the exact frame the strip pins, no scroll listener, no rAF. Pattern lives 
 ## LLM classifier caches
 
 - LLM-tagging helpers (e.g. `src/lib/pay-q2-classifier.ts`) cache classifications per-process keyed on the input text. Editing the system prompt does **not** invalidate cached entries — restart the dev server (or redeploy) to re-classify. If a prompt change isn't taking effect, check process age before chasing other causes. Same applies to any future LLM tagging helper that follows this pattern.
+
+## LLM prompt clarity for numeric deltas
+
+When a prompt hands the model a bare before/after pair (e.g. a health-score change `41 -> 49`), don't assume it infers the right direction — it was observed reading an *increase* as "dropping" and contradicting the exact numbers it was just given. Compute and spell out the direction yourself (`IMPROVED by 8` / `DECLINED by 13`) rather than relying on the model to compare two numbers correctly. Pattern lives in `buildRecapPrompt`'s ACCOUNT STATE block in `src/lib/summarize.ts`.
 
 ## Third-party CSP origins
 

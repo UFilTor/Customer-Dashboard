@@ -101,6 +101,8 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
         { label: "Toggle signal filter (in popover or list)", keys: "1-8" },
         { label: "Clear all signal filters", keys: "0" },
         { label: "Open Sort menu", keys: "Shift + S" },
+        { label: "Open Status filter", keys: "Shift + T" },
+        { label: "Open saved Views", keys: "Shift + V" },
         { label: "Cycle sort", keys: "S" },
         { label: "Save current as default", keys: `${modLabel} + S` },
         { label: "Previous / next page", keys: "[ / ]" },

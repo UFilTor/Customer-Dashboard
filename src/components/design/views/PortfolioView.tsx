@@ -1,11 +1,21 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { PortfolioRefineState, PortfolioRow, PortfolioSignalKey, PortfolioSortKey } from "@/lib/types";
 import { PORTFOLIO_SIGNALS, PORTFOLIO_SIGNAL_MAP, PORTFOLIO_SIGNAL_ORDER } from "@/lib/signals";
 import { getSortOptions, mapKindToKey } from "@/lib/portfolio";
 import { signalStyle, pillText, calmCopy } from "@/lib/signal-display";
+import {
+  deleteView,
+  getSavedViewsServerSnapshot,
+  getSavedViewsSnapshot,
+  saveView,
+  subscribeSavedViews,
+  type PortfolioShownStatuses,
+  type PortfolioViewState,
+} from "@/lib/portfolio-views";
+import { fmtEur } from "@/lib/format-design";
 import { OWNER_MAP } from "@/lib/owners";
 import { Avatar } from "../Avatar";
 import { DashboardBanner } from "../DashboardBanner";
@@ -44,8 +54,23 @@ interface Props {
   toggleStackedSignals: () => void;
   refine: PortfolioRefineState;
   setRefine: (next: PortfolioRefineState | ((prev: PortfolioRefineState) => PortfolioRefineState)) => void;
-  shownStatuses: { paused: boolean; product_hold: boolean; hibernation: boolean };
-  toggleStatus: (s: "paused" | "product_hold" | "hibernation") => void;
+  shownStatuses: PortfolioShownStatuses;
+  toggleStatus: (s: keyof PortfolioShownStatuses) => void;
+
+  // Snooze — hidden-by-default rows the user parked. Count feeds the Status
+  // pill label; the until-map drives the row tag when snoozed rows are shown.
+  snoozedCount: number;
+  snoozeUntilById: Map<string, number>;
+  onSnoozeCompany: (companyId: string, until: number) => void;
+  onUnsnoozeCompany: (companyId: string) => void;
+
+  // Saved views (ViewsPill). currentViewState is what "Save current view"
+  // captures; onApplyView restores a saved snapshot in one go.
+  currentViewState: PortfolioViewState;
+  onApplyView: (state: PortfolioViewState) => void;
+
+  // Accumulated ACV (EUR) of the current filtered set, for the banner.
+  portfolioValueEur: number;
 
   sortKey: PortfolioSortKey;
   // Current sort direction; column-header arrows + sort-dropdown active marker
@@ -287,6 +312,7 @@ export function PortfolioView(props: Props) {
     <div style={{ background: "var(--page-bg)", minHeight: "calc(100vh - 120px)" }}>
       <Banner
         totalRows={props.totalRowCount}
+        totalValueEur={props.portfolioValueEur}
         totalsBySignal={props.totalsBySignal}
         filterLabel={props.filterLabel ?? null}
         selectedSignals={props.selectedSignals}
@@ -316,6 +342,7 @@ export function PortfolioView(props: Props) {
               setRefine={props.setRefine}
               shownStatuses={props.shownStatuses}
               toggleStatus={props.toggleStatus}
+              snoozedCount={props.snoozedCount}
               globalTotalsBySignal={props.globalTotalsBySignal}
               sortKey={props.sortKey}
               sortDirection={props.sortDirection}
@@ -324,6 +351,8 @@ export function PortfolioView(props: Props) {
               hasSavedDefault={props.hasSavedDefault}
               defaultsAreCurrent={props.defaultsAreCurrent}
               onResetDefaults={props.onResetDefaults}
+              currentViewState={props.currentViewState}
+              onApplyView={props.onApplyView}
             />
             <ColumnHeaders
               sortKey={props.sortKey}
@@ -380,6 +409,9 @@ export function PortfolioView(props: Props) {
                       onSelect={onSelect}
                       isLast={item.index === pageRowCount - 1}
                       showAvatar={showAvatar}
+                      snoozedUntil={props.snoozeUntilById.get(item.row.id) ?? null}
+                      onSnooze={props.onSnoozeCompany}
+                      onUnsnooze={props.onUnsnoozeCompany}
                     />
                   </div>
                 )
@@ -438,12 +470,14 @@ export function PortfolioView(props: Props) {
 
 function Banner({
   totalRows,
+  totalValueEur,
   totalsBySignal,
   filterLabel,
   selectedSignals,
   toggleSignal,
 }: {
   totalRows: number;
+  totalValueEur: number;
   totalsBySignal: Record<PortfolioSignalKey, number>;
   filterLabel: string | null;
   selectedSignals: PortfolioSignalKey[];
@@ -495,7 +529,12 @@ function Banner({
       maxWidth={1200}
       headline={
         <>
-          {totalRows} {totalRows === 1 ? "customer" : "customers"} across your book.
+          {totalRows} {totalRows === 1 ? "customer" : "customers"}
+          {/* Portfolio value: accumulated ACV of the current filtered set.
+              Lives in the headline (not the detail row) because the detail
+              fragments are clickable filters and a static value there would
+              break that affordance. fmtEur renders 0 as "—", so skip it. */}
+          {totalValueEur > 0 && <> · {fmtEur(totalValueEur)} ACV</>} across your book.
         </>
       }
       detail={
@@ -540,8 +579,8 @@ interface ToolbarProps {
   toggleStackedSignals: () => void;
   refine: PortfolioRefineState;
   setRefine: (next: PortfolioRefineState | ((prev: PortfolioRefineState) => PortfolioRefineState)) => void;
-  shownStatuses: { paused: boolean; product_hold: boolean; hibernation: boolean };
-  toggleStatus: (s: "paused" | "product_hold" | "hibernation") => void;
+  shownStatuses: PortfolioShownStatuses;
+  toggleStatus: (s: keyof PortfolioShownStatuses) => void;
   // Toolbar feeds the FilterDropdown with book-wide totals so signal
   // counts stay stable as the user toggles filters. The current-scope
   // totals (used by the banner) live one level up in PortfolioView.
@@ -553,6 +592,9 @@ interface ToolbarProps {
   hasSavedDefault: boolean;
   defaultsAreCurrent: boolean;
   onResetDefaults: () => void;
+  snoozedCount: number;
+  currentViewState: PortfolioViewState;
+  onApplyView: (state: PortfolioViewState) => void;
 }
 
 function Toolbar({
@@ -573,6 +615,9 @@ function Toolbar({
   hasSavedDefault,
   defaultsAreCurrent,
   onResetDefaults,
+  snoozedCount,
+  currentViewState,
+  onApplyView,
 }: ToolbarProps) {
   const isFiltered = selectedSignals.length > 0;
   const [filterOpen, setFilterOpen] = useState(false);
@@ -682,7 +727,11 @@ function Toolbar({
         toggleStackedSignals={toggleStackedSignals}
       />
 
-      <StatusFilterPill shownStatuses={shownStatuses} toggleStatus={toggleStatus} />
+      <StatusFilterPill
+        shownStatuses={shownStatuses}
+        toggleStatus={toggleStatus}
+        snoozedCount={snoozedCount}
+      />
 
       <span style={{ flex: 1 }} />
 
@@ -696,6 +745,8 @@ function Toolbar({
           Reset to default
         </button>
       )}
+
+      <ViewsPill currentViewState={currentViewState} onApplyView={onApplyView} />
 
       <div ref={sortRef} style={{ position: "relative" }}>
         <button
@@ -1075,12 +1126,18 @@ const Row = memo(function Row({
   onSelect,
   isLast,
   showAvatar,
+  snoozedUntil,
+  onSnooze,
+  onUnsnooze,
 }: {
   row: PortfolioRow;
   focused: boolean;
   onSelect: (row: PortfolioRow) => void;
   isLast: boolean;
   showAvatar: boolean;
+  snoozedUntil: number | null;
+  onSnooze: (companyId: string, until: number) => void;
+  onUnsnooze: (companyId: string) => void;
 }) {
   const stage = STAGE_BADGE[row.stage];
   // Defensive default — adversarial QA caught a crash when an upstream
@@ -1137,6 +1194,10 @@ const Row = memo(function Row({
   const ownerForAvatar = owner ?? (row.ownerName ? { name: row.ownerName } : null);
 
   return (
+    // Wrapper div, not part of the row button: a <button> can't nest inside a
+    // <button>, so the snooze control overlays as a sibling (revealed on
+    // hover / focus-within via .pf-row-wrap in globals.css).
+    <div className="pf-row-wrap" style={{ position: "relative" }}>
     <button
       type="button"
       onClick={() => onSelect(row)}
@@ -1184,6 +1245,7 @@ const Row = memo(function Row({
           {row.stage}
         </span>
         {row.dealStatus && <DealStatusTag status={row.dealStatus} />}
+        {snoozedUntil != null && <SnoozedTag until={snoozedUntil} />}
       </div>
 
       <div style={{ minWidth: 0 }}>
@@ -1318,8 +1380,230 @@ const Row = memo(function Row({
         </span>
       )}
     </button>
+    <SnoozeControl
+      row={row}
+      snoozedUntil={snoozedUntil}
+      onSnooze={onSnooze}
+      onUnsnooze={onUnsnooze}
+    />
+    </div>
   );
 });
+
+// ---------- Row snooze control ----------
+
+const SNOOZE_PRESETS: Array<{ label: string; days: number }> = [
+  { label: "1 week", days: 7 },
+  { label: "2 weeks", days: 14 },
+  { label: "1 month", days: 30 },
+];
+
+function fmtSnoozeDate(until: number): string {
+  const d = new Date(until);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// Module scope (not inside the component) — the React Compiler purity rule
+// flags Date.now() in render-scoped functions, but these only ever run from
+// event handlers.
+function untilFromDays(days: number): number {
+  return Date.now() + days * 24 * 60 * 60 * 1000;
+}
+
+// "Snooze until <date>" = hidden through the day before, back in the
+// portfolio on the chosen day. Null when the date is invalid or in the past.
+function untilFromDate(value: string): number | null {
+  const until = new Date(`${value}T00:00:00`).getTime();
+  return Number.isFinite(until) && until > Date.now() ? until : null;
+}
+
+// Hover/focus-revealed control overlaying the row's right edge. Snoozing
+// hides the company from Portfolio until the chosen date (the Status pill can
+// toggle snoozed rows back in). The menu portals to <body> because the rows
+// container clips overflow.
+function SnoozeControl({
+  row,
+  snoozedUntil,
+  onSnooze,
+  onUnsnooze,
+}: {
+  row: PortfolioRow;
+  snoozedUntil: number | null;
+  onSnooze: (companyId: string, until: number) => void;
+  onUnsnooze: (companyId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [customDate, setCustomDate] = useState<string | undefined>(undefined);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  // Place the portal'd menu under the trigger; track scroll/resize while open.
+  useEffect(() => {
+    if (!open) return;
+    function place() {
+      const t = triggerRef.current;
+      if (!t) return;
+      const r = t.getBoundingClientRect();
+      setPos({ top: r.bottom + 6, left: Math.max(8, r.right - 224) });
+    }
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open]);
+
+  // Outside-close has to check both the trigger and the portal'd menu
+  // (useOutsideClose only watches one subtree — same caveat as
+  // StageMultiSelect). Escape closes too.
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // Yield the page-level row-nav shortcuts while the menu is open.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("ud-portfolio-popup-state", { detail: open })
+    );
+  }, [open]);
+
+  function snoozeDays(days: number) {
+    onSnooze(row.id, untilFromDays(days));
+    setOpen(false);
+  }
+
+  function snoozeUntilDate(value: string | undefined) {
+    setCustomDate(value);
+    if (!value) return;
+    const until = untilFromDate(value);
+    if (until == null) return;
+    onSnooze(row.id, until);
+    setOpen(false);
+    setCustomDate(undefined);
+  }
+
+  if (snoozedUntil != null) {
+    return (
+      <button
+        type="button"
+        className="pf-row-snooze"
+        onClick={() => onUnsnooze(row.id)}
+        title={`Snoozed until ${fmtSnoozeDate(snoozedUntil)} — click to unsnooze`}
+        aria-label={`Unsnooze ${row.name} (snoozed until ${fmtSnoozeDate(snoozedUntil)})`}
+      >
+        Unsnooze
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="pf-row-snooze"
+        onClick={() => setOpen((v) => !v)}
+        title={`Snooze ${row.name}`}
+        aria-label={`Snooze ${row.name}`}
+        aria-expanded={open}
+      >
+        Snooze
+      </button>
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label={`Snooze ${row.name}`}
+            className="pf-pop"
+            style={{ position: "fixed", top: pos.top, left: pos.left, width: 216, zIndex: 200 }}
+          >
+            <div
+              style={{
+                padding: "10px 14px 8px 20px",
+                borderBottom: "1px solid var(--hairline)",
+              }}
+            >
+              <div style={eyebrowStyle}>Snooze for</div>
+            </div>
+            <div style={{ padding: 6 }}>
+              {SNOOZE_PRESETS.map((p) => (
+                <button
+                  key={p.days}
+                  className="pf-pop-row"
+                  onClick={() => snoozeDays(p.days)}
+                >
+                  <span style={{ flex: 1, textAlign: "left" }}>{p.label}</span>
+                </button>
+              ))}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 14px 6px",
+                }}
+              >
+                <span style={{ fontSize: 12, color: "var(--green-100)", whiteSpace: "nowrap" }}>
+                  Until date
+                </span>
+                <DatePopover
+                  value={customDate}
+                  onChange={snoozeUntilDate}
+                  ariaLabel={`Snooze ${row.name} until date`}
+                  placeholder="Pick a date"
+                />
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
+// Mirrors DealStatusTag's chip treatment — only visible when snoozed rows are
+// toggled back in via the Status pill.
+function SnoozedTag({ until }: { until: number }) {
+  return (
+    <span
+      style={{
+        padding: "3px 8px",
+        borderRadius: 6,
+        background: "var(--beige)",
+        color: "var(--green-100)",
+        fontSize: 9,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        lineHeight: 1.2,
+        whiteSpace: "nowrap",
+      }}
+    >
+      Zzz {fmtSnoozeDate(until)}
+    </span>
+  );
+}
 
 // ---------- Stage-dependent calm glyph ----------
 
@@ -1372,9 +1656,11 @@ function DealStatusTag({ status }: { status: NonNullable<PortfolioRow["dealStatu
 function StatusFilterPill({
   shownStatuses,
   toggleStatus,
+  snoozedCount,
 }: {
-  shownStatuses: { paused: boolean; product_hold: boolean; hibernation: boolean };
-  toggleStatus: (s: "paused" | "product_hold" | "hibernation") => void;
+  shownStatuses: PortfolioShownStatuses;
+  toggleStatus: (s: keyof PortfolioShownStatuses) => void;
+  snoozedCount: number;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1409,13 +1695,15 @@ function StatusFilterPill({
   const activeCount =
     (shownStatuses.paused ? 1 : 0) +
     (shownStatuses.product_hold ? 1 : 0) +
-    (shownStatuses.hibernation ? 1 : 0);
+    (shownStatuses.hibernation ? 1 : 0) +
+    (shownStatuses.snoozed ? 1 : 0);
   const label = activeCount === 0 ? "Active only" : `+${activeCount} included`;
 
-  const items: Array<{ key: "paused" | "product_hold" | "hibernation"; label: string }> = [
+  const items: Array<{ key: keyof PortfolioShownStatuses; label: string }> = [
     { key: "paused", label: "Paused" },
     { key: "product_hold", label: "Product hold" },
     { key: "hibernation", label: "Hibernation" },
+    { key: "snoozed", label: snoozedCount > 0 ? `Snoozed (${snoozedCount})` : "Snoozed" },
   ];
 
   return (
@@ -1465,6 +1753,211 @@ function StatusFilterPill({
                 </button>
               );
             })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Views pill (saved filter combos) ----------
+
+function ViewsPill({
+  currentViewState,
+  onApplyView,
+}: {
+  currentViewState: PortfolioViewState;
+  onApplyView: (state: PortfolioViewState) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState("");
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useOutsideClose(wrapRef, open, () => setOpen(false));
+
+  // Views live in localStorage (per device, see portfolio-views.ts).
+  // useSyncExternalStore keeps this lint-clean (no setState-in-effect) and
+  // SSR-safe (server snapshot is a stable empty list).
+  const views = useSyncExternalStore(
+    subscribeSavedViews,
+    getSavedViewsSnapshot,
+    getSavedViewsServerSnapshot
+  );
+
+  // Reset the name form whenever the popup closes (adjust-during-render).
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
+    setNaming(false);
+    setName("");
+  }
+
+  // ⇧V mirrors ⇧F / ⇧S / ⇧T; Escape dismisses. Bails on meta/ctrl only —
+  // altKey stays allowed for Nordic layouts.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      const inInput =
+        target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (inInput) return;
+      if (e.metaKey || e.ctrlKey) return;
+      if (!e.shiftKey) return;
+      if (e.key === "V" || e.key === "v") {
+        setOpen((v) => !v);
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Mirror open-state to page-client so list-nav yields while open.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("ud-portfolio-popup-state", { detail: open })
+    );
+  }, [open]);
+
+  function handleSave() {
+    const saved = saveView(name, currentViewState);
+    if (saved) {
+      setNaming(false);
+      setName("");
+    }
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <button onClick={() => setOpen((v) => !v)} style={pillTriggerStyle(false)}>
+        <span style={eyebrowStyle}>Views</span>
+        <span style={{ whiteSpace: "nowrap", fontWeight: 600 }}>
+          {views.length > 0 ? `${views.length} saved` : "Save…"}
+        </span>
+        <span className="kbd">⇧V</span>
+        <Caret open={open} />
+      </button>
+      {open && (
+        <div className="pf-pop" style={{ right: 0, width: 280 }}>
+          <div
+            style={{
+              padding: "10px 14px 8px 20px",
+              borderBottom: "1px solid var(--hairline)",
+            }}
+          >
+            <div style={eyebrowStyle}>Saved views</div>
+          </div>
+          <div style={{ padding: 6 }}>
+            {views.length === 0 && !naming && (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  fontSize: 12,
+                  color: "var(--green-100)",
+                  fontStyle: "italic",
+                  fontFamily: "var(--font-editorial)",
+                  lineHeight: 1.5,
+                }}
+              >
+                No saved views yet. Set up your filters and sort, then save
+                them here to come back with one click.
+              </div>
+            )}
+            {views.map((v) => (
+              <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                <button
+                  className="pf-pop-row"
+                  style={{ flex: 1, minWidth: 0 }}
+                  onClick={() => {
+                    onApplyView(v.state);
+                    setOpen(false);
+                  }}
+                >
+                  <span
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      textAlign: "left",
+                    }}
+                  >
+                    {v.name}
+                  </span>
+                </button>
+                <button
+                  aria-label={`Delete view ${v.name}`}
+                  title={`Delete view ${v.name}`}
+                  onClick={() => deleteView(v.id)}
+                  style={{
+                    flexShrink: 0,
+                    width: 24,
+                    height: 24,
+                    borderRadius: 6,
+                    background: "transparent",
+                    color: "var(--green-100)",
+                    fontSize: 12,
+                    lineHeight: 1,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+          <div style={{ borderTop: "1px solid var(--hairline)", padding: 6 }}>
+            {naming ? (
+              <div style={{ display: "flex", gap: 6, padding: "4px 6px" }}>
+                <input
+                  autoFocus
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSave();
+                  }}
+                  placeholder="View name"
+                  aria-label="View name"
+                  maxLength={40}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 12.5,
+                    padding: "6px 8px",
+                    border: "1px solid var(--hairline)",
+                    borderRadius: 6,
+                    background: "var(--card-bg)",
+                    color: "var(--moss)",
+                  }}
+                />
+                <button
+                  onClick={handleSave}
+                  disabled={!name.trim()}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    background: name.trim() ? "var(--moss)" : "var(--hairline)",
+                    color: name.trim() ? "var(--text-on-moss)" : "var(--green-100)",
+                    cursor: name.trim() ? "pointer" : "default",
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+            ) : (
+              <button className="pf-pop-row" onClick={() => setNaming(true)}>
+                <span style={{ flex: 1, textAlign: "left" }}>+ Save current view…</span>
+              </button>
+            )}
           </div>
         </div>
       )}

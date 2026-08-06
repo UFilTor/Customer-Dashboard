@@ -1,8 +1,23 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { HAIKU_MODEL } from "./llm";
-import { Engagement, Recap, OwnerMap, StageMap, SinceLastTouch, WatchOutSignal } from "./types";
+import {
+  Engagement,
+  OnboardingHistoryEntry,
+  Recap,
+  OwnerMap,
+  StageMap,
+  SinceLastTouch,
+  WatchOutSignal,
+} from "./types";
 
-const client = new Anthropic();
+// Lazy so importing this module never throws — the SDK constructor requires
+// ANTHROPIC_API_KEY, which isn't present in test environments that import
+// onboarding.ts (which imports this module) without ever calling the LLM.
+let _client: Anthropic | null = null;
+function client(): Anthropic {
+  if (!_client) _client = new Anthropic();
+  return _client;
+}
 
 /**
  * Structured account state fed into the recap prompt so the summary is
@@ -36,7 +51,7 @@ export async function summarizeEngagements(engagements: Engagement[]): Promise<E
       batch.map(async (e) => {
       try {
         const text = stripHtml(e.body);
-        const response = await client.messages.create({
+        const response = await client().messages.create({
           model: HAIKU_MODEL,
           max_tokens: 300,
           messages: [
@@ -63,6 +78,65 @@ export async function summarizeEngagements(engagements: Engagement[]): Promise<E
     ...e,
     summary: summaryMap.get(e) || "",
   }));
+}
+
+// Per-process summary cache keyed by note id. Note bodies are effectively
+// immutable, and the history route re-fetches every 15 minutes — without this
+// the same notes would be re-summarized on every cache refresh. Cleared
+// wholesale at 500 entries; a coarse bound beats unbounded growth.
+const noteSummaryCache = new Map<string, string>();
+
+/**
+ * Fill `entry.summary` (in place) for note history entries. Best-effort:
+ * a failed LLM call leaves the entry unsummarized and the UI falls back to
+ * a raw excerpt. Entries shorter than 200 chars of visible text are skipped —
+ * the raw note IS the summary at that length, and asking the model to
+ * summarize a one-liner produced meta-commentary ("I don't see a detailed
+ * note...") instead of a summary when tested live.
+ */
+export async function summarizeNoteEntries(entries: OnboardingHistoryEntry[]): Promise<void> {
+  const pending = entries
+    .filter((e) => {
+      if (e.kind !== "note" || e.summary != null) return false;
+      const cached = noteSummaryCache.get(e.id);
+      if (cached !== undefined) {
+        e.summary = cached;
+        return false;
+      }
+      return stripHtml(e.body ?? "").length > 200;
+    })
+    .slice(0, 30); // Hard cap per request to bound LLM cost/latency.
+
+  // Batches of 3, same rate-limit posture as summarizeEngagements.
+  for (let i = 0; i < pending.length; i += 3) {
+    const batch = pending.slice(i, i + 3);
+    await Promise.all(
+      batch.map(async (e) => {
+        try {
+          const text = stripHtml(e.body ?? "");
+          const response = await client().messages.create({
+            model: HAIKU_MODEL,
+            max_tokens: 300,
+            messages: [
+              {
+                role: "user",
+                content: `Summarize this CRM note in 1-3 sentences. Focus on key takeaways, decisions made, and action items. Be specific and direct. Output ONLY the summary itself — never comment on the note's length, format, or completeness.\n\nNote:\n${text.slice(0, 2000)}`,
+              },
+            ],
+          });
+          const block = response.content[0];
+          const summary = block.type === "text" ? block.text.trim() : "";
+          if (summary) {
+            e.summary = summary;
+            if (noteSummaryCache.size >= 500) noteSummaryCache.clear();
+            noteSummaryCache.set(e.id, summary);
+          }
+        } catch {
+          // Leave unsummarized — UI shows the raw excerpt instead.
+        }
+      })
+    );
+  }
 }
 
 /** Pure prompt assembly — exported for tests. */
@@ -178,7 +252,7 @@ export async function generateRecap(
   if (engagements.length === 0) return null;
 
   try {
-    const response = await client.messages.create({
+    const response = await client().messages.create({
       model: HAIKU_MODEL,
       max_tokens: 500,
       messages: [

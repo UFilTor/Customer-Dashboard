@@ -3,6 +3,7 @@ import {
   COUNTRY_CODES,
   KNOWN_VALUES,
   closestMatch,
+  countryName,
   humaniseValue,
 } from "@/lib/hubspot-enums";
 
@@ -64,6 +65,23 @@ describe("closestMatch", () => {
 
   it("handles empty candidates without throwing", () => {
     expect(closestMatch("anything", [])).toEqual([]);
+  });
+});
+
+describe("countryName", () => {
+  it("expands known codes to the full name", () => {
+    expect(countryName("DK")).toBe("Denmark");
+    expect(countryName("no")).toBe("Norway");
+  });
+
+  it("falls back to the raw code for unknown countries", () => {
+    expect(countryName("ZZ")).toBe("ZZ");
+  });
+
+  it("returns null for missing input", () => {
+    expect(countryName(null)).toBeNull();
+    expect(countryName(undefined)).toBeNull();
+    expect(countryName("")).toBeNull();
   });
 });
 

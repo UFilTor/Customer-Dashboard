@@ -13,6 +13,12 @@ import { effectiveOwnerIds, type GlobalFilter, parseFilter, serializeFilter } fr
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { extractSortKey, getSortOptions, mapKindToKey } from "@/lib/portfolio";
 import { PORTFOLIO_SIGNAL_ORDER, PORTFOLIO_SIGNAL_MAP } from "@/lib/signals";
+import { getSnoozed, snoozeCompany, unsnoozeCompany, type SnoozedCompany } from "@/lib/snoozed";
+import {
+  VALID_SORT_KEYS,
+  type PortfolioShownStatuses,
+  type PortfolioViewState,
+} from "@/lib/portfolio-views";
 import { reportFreshness } from "@/lib/freshness";
 import { announce } from "@/lib/live-announcer";
 import { PortfolioView } from "./PortfolioView";
@@ -36,37 +42,8 @@ interface Props {
 
 const DEFAULTS_KEY = "ud-v2-portfolio-default";
 
-// Universal sort keys plus signal-specific ones. Mirrors PortfolioSortKey
-// in src/lib/types.ts; used to allowlist persisted localStorage values so a
-// poisoned blob can't drop the UI into an unknown sort state.
-const VALID_SORT_KEYS: ReadonlySet<PortfolioSortKey> = new Set<PortfolioSortKey>([
-  // Universal
-  "urgency",
-  "name",
-  "stage",
-  "revenue",
-  "health",
-  "last_contact",
-  "days_in_stage",
-  // Signal-specific
-  "oldest_outstanding",
-  "value_overdue",
-  "count_overdue",
-  "due_soonest",
-  "value_open",
-  "count_open",
-  "longest_silence_events",
-  "revenue_no_events",
-  "biggest_drop",
-  "current_score_asc",
-  "longest_stuck",
-  "days_past_expected",
-  "biggest_pct_drop",
-  "prior_3m_volume",
-  "wish_flagged_recent",
-  "longest_silence_quiet",
-]);
-
+// Sort-key allowlist lives in portfolio-views.ts (shared with saved views)
+// so a poisoned localStorage blob can't drop the UI into an unknown sort state.
 const VALID_SIGNAL_KEYS: ReadonlySet<string> = new Set(PORTFOLIO_SIGNAL_ORDER);
 
 function filterKey(filter: GlobalFilter): string {
@@ -127,16 +104,38 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
   const [stackedSignals, setStackedSignals] = useState(false);
   const [refine, setRefine] = useState<PortfolioRefineState>({});
   // Each entry is shown only when toggled on. Default = none → paused /
-  // product hold / hibernation rows are hidden from Portfolio.
-  const [shownStatuses, setShownStatuses] = useState<{
-    paused: boolean;
-    product_hold: boolean;
-    hibernation: boolean;
-  }>({ paused: false, product_hold: false, hibernation: false });
+  // product hold / hibernation / snoozed rows are hidden from Portfolio.
+  const [shownStatuses, setShownStatuses] = useState<PortfolioShownStatuses>({
+    paused: false,
+    product_hold: false,
+    hibernation: false,
+    snoozed: false,
+  });
   const [sortKey, setSortKey] = useState<PortfolioSortKey>("urgency");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+
+  // Snoozed companies live in localStorage (per device, see snoozed.ts).
+  // Mount-only read + change-event subscription, same pattern as the saved
+  // defaults below.
+  const [snoozedList, setSnoozedList] = useState<SnoozedCompany[]>([]);
+  useEffect(() => {
+    setSnoozedList(getSnoozed());
+    function onChange() {
+      setSnoozedList(getSnoozed());
+    }
+    window.addEventListener("ud-snoozed-changed", onChange);
+    return () => window.removeEventListener("ud-snoozed-changed", onChange);
+  }, []);
+  const snoozedIds = useMemo(
+    () => new Set(snoozedList.map((e) => e.companyId)),
+    [snoozedList]
+  );
+  const snoozeUntilById = useMemo(
+    () => new Map(snoozedList.map((e) => [e.companyId, e.until])),
+    [snoozedList]
+  );
 
   // Click handler for sort selection. Re-clicking the active sort key flips
   // direction (asc↔desc); clicking a different key resets direction to that
@@ -219,9 +218,11 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
     const rawRows = Array.isArray(data?.rows) ? data!.rows : [];
 
     // Status visibility — by default we hide paused / product hold /
-    // hibernation rows. Each toggle adds one back in. Active rows
-    // (dealStatus === null) always pass.
+    // hibernation / snoozed rows. Each toggle adds one back in. Active rows
+    // (dealStatus === null) always pass. Snooze is a parallel predicate, not
+    // a dealStatus value — a company can be snoozed AND paused.
     const statusFiltered = rawRows.filter((r) => {
+      if (snoozedIds.has(r.id) && shownStatuses.snoozed !== true) return false;
       if (!r.dealStatus) return true;
       return shownStatuses[r.dealStatus] === true;
     });
@@ -286,7 +287,23 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
       if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
       return ((av as number) - (bv as number)) * dir;
     });
-  }, [data, selectedSignals, stackedSignals, shownStatuses, sortKey, sortDirection, refine]);
+  }, [data, selectedSignals, stackedSignals, shownStatuses, snoozedIds, sortKey, sortDirection, refine]);
+
+  // Accumulated ACV (EUR) of everything currently in view — the hero's
+  // "portfolio value". row.revenue is amount_in_home_currency, already EUR.
+  const portfolioValueEur = useMemo(
+    () => filteredSortedRows.reduce((sum, r) => sum + (r.revenue || 0), 0),
+    [filteredSortedRows]
+  );
+
+  // Snoozed count within the current scope — shown in the Status filter pill
+  // so "Snoozed (3)" reflects this book, not the whole localStorage list.
+  const snoozedCount = useMemo(() => {
+    const rawRows = Array.isArray(data?.rows) ? data!.rows : [];
+    let n = 0;
+    for (const r of rawRows) if (snoozedIds.has(r.id)) n += 1;
+    return n;
+  }, [data, snoozedIds]);
 
   // Filter/refine/status changes silently swapped the whole result set with
   // no announcement. This also doubles as the "load finished" signal — the
@@ -520,6 +537,38 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
     []
   );
   const clearSignals = useCallback(() => setSelectedSignals([]), []);
+
+  // Saved views: apply restores the full toolbar state in one go; the
+  // current snapshot is what "Save current view" persists.
+  const applyView = useCallback((state: PortfolioViewState) => {
+    setSelectedSignals(state.signals);
+    setStackedSignals(state.stackedSignals);
+    setRefine(state.refine);
+    setShownStatuses(state.shownStatuses);
+    setSortKey(state.sortKey);
+    setSortDirection(state.sortDirection);
+  }, []);
+  const currentViewState = useMemo<PortfolioViewState>(
+    () => ({
+      signals: selectedSignals,
+      stackedSignals,
+      refine,
+      shownStatuses,
+      sortKey,
+      sortDirection,
+    }),
+    [selectedSignals, stackedSignals, refine, shownStatuses, sortKey, sortDirection]
+  );
+
+  // Snooze actions — stable callbacks so the memoized Row stays cheap. The
+  // ud-snoozed-changed listener above pulls the new list back into state.
+  const onSnoozeCompany = useCallback((companyId: string, until: number) => {
+    snoozeCompany(companyId, until);
+  }, []);
+  const onUnsnoozeCompany = useCallback((companyId: string) => {
+    unsnoozeCompany(companyId);
+  }, []);
+
   const onResetDefaults = useCallback(() => {
     const d = loadDefaults();
     if (!d) return;
@@ -593,6 +642,13 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
         toggleStatus={(s) =>
           setShownStatuses((prev) => ({ ...prev, [s]: !prev[s] }))
         }
+        snoozedCount={snoozedCount}
+        snoozeUntilById={snoozeUntilById}
+        onSnoozeCompany={onSnoozeCompany}
+        onUnsnoozeCompany={onUnsnoozeCompany}
+        currentViewState={currentViewState}
+        onApplyView={applyView}
+        portfolioValueEur={portfolioValueEur}
         sortKey={sortKey}
         sortDirection={sortDirection}
         setSortKey={setSort}

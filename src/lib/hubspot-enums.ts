@@ -15,6 +15,14 @@ export const COUNTRY_CODES = {
 
 export type CountryCode = keyof typeof COUNTRY_CODES;
 
+// Full country name for display ("DK" -> "Denmark"). Falls back to the raw
+// code so unmapped countries still render something meaningful.
+export function countryName(code: string | null | undefined): string | null {
+  if (!code) return null;
+  const upper = code.toUpperCase();
+  return (COUNTRY_CODES as Record<string, string>)[upper] ?? code;
+}
+
 // Properties whose stored values are a fixed set. The prompt builder injects
 // these so the LLM emits the exact stored string; the diagnostics module uses
 // them so a 0-result EQ filter can suggest the nearest valid value.

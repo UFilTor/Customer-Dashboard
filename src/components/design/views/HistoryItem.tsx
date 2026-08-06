@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import type { OnboardingHistoryEntry } from "@/lib/types";
+import { hubspotEngagementUrl } from "@/lib/hubspot-links";
 
 function Eyebrow({ children }: { children: ReactNode }) {
   return (
@@ -351,12 +352,14 @@ function parseGong(body: string): ParsedGong | null {
 function kindLabel(kind: OnboardingHistoryEntry["kind"]): string {
   if (kind === "meeting") return "Meeting";
   if (kind === "call") return "Call";
+  if (kind === "note") return "Note";
   return "Email";
 }
 
 function kindStyles(kind: OnboardingHistoryEntry["kind"]): { bg: string; fg: string } {
   if (kind === "meeting") return { bg: "var(--event-meeting-bg)", fg: "var(--event-meeting-fg)" };
   if (kind === "call") return { bg: "var(--event-call-bg)", fg: "var(--event-call-fg)" };
+  if (kind === "note") return { bg: "var(--event-note-bg)", fg: "var(--event-note-fg)" };
   return { bg: "var(--lichen)", fg: "var(--moss)" };
 }
 
@@ -376,9 +379,12 @@ export function HistoryItem({
     ? ""
     : date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const isEmailThread = entry.kind === "email" && entry.thread && entry.thread.length > 0;
+  const isNote = entry.kind === "note";
   const body = stripMeetingBody(entry.body);
-  const gong = !isEmailThread ? parseGong(body) : null;
+  const gong = !isEmailThread && !isNote ? parseGong(body) : null;
   const kStyles = kindStyles(entry.kind);
+  const noteUrl = isNote ? hubspotEngagementUrl("note", entry.id) : null;
+  const noteSummary = isNote ? (entry.summary ?? "").trim() : "";
 
   // Default-collapsed teaser pulls Gong's "Next steps" because they're the most
   // actionable thing for prepping the next conversation.
@@ -386,18 +392,29 @@ export function HistoryItem({
   const remainingSteps = gong ? Math.max(0, gong.steps.length - teaserSteps.length) : 0;
 
   // Fallback excerpt for non-Gong meetings (or Gong with no Next steps section).
+  // Notes prefer their AI summary; the raw body is behind "Read more".
   const fallback = (() => {
+    if (noteSummary) return noteSummary;
     if (gong?.brief) return gong.brief;
     if (body) return body;
     return "";
   })();
-  const fallbackExcerpt = fallback.length > 220 ? fallback.slice(0, 220).trim() + "…" : fallback;
+  // Never truncate an AI note summary — it's already compressed.
+  const fallbackExcerpt =
+    isNote && noteSummary
+      ? noteSummary
+      : fallback.length > 220
+        ? fallback.slice(0, 220).trim() + "…"
+        : fallback;
 
   const threadMessages = entry.thread ?? [];
   const hasExpandable =
     isEmailThread
       ? threadMessages.length > 1 || (threadMessages[0]?.body?.length ?? 0) > 200
-      : gong != null && (gong.points.length > 0 || (gong.brief && gong.brief.length > 0) || gong.steps.length > teaserSteps.length);
+      : isNote
+        ? // Full note behind "Read more" whenever the teaser doesn't already show it all.
+          (noteSummary.length > 0 && body.length > 0) || body.length > 220
+        : gong != null && (gong.points.length > 0 || (gong.brief && gong.brief.length > 0) || gong.steps.length > teaserSteps.length);
 
   return (
     <div
@@ -471,6 +488,30 @@ export function HistoryItem({
             </span>
           )}
         </span>
+        {noteUrl && (
+          <a
+            href={noteUrl}
+            target="_blank"
+            rel="noreferrer"
+            title="Open note in HubSpot"
+            style={{
+              fontFamily: "var(--font-display)",
+              textTransform: "uppercase",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              color: "var(--moss)",
+              padding: "3px 8px",
+              borderRadius: 6,
+              background: "var(--beige-new)",
+              border: "1px solid var(--beige-gray)",
+              textDecorationLine: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            HubSpot ↗
+          </a>
+        )}
         {hasExpandable && (
           <button
             onClick={onToggleExpand}
@@ -588,6 +629,29 @@ export function HistoryItem({
           }}
         >
           <EmailThreadCard thread={threadMessages} />
+        </div>
+      )}
+
+      {isNote && expanded && body && (
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: "1px dashed var(--hairline)",
+          }}
+        >
+          <Eyebrow>Full note</Eyebrow>
+          <p
+            style={{
+              margin: "4px 0 0",
+              fontSize: 12.5,
+              color: "var(--dark-moss)",
+              lineHeight: 1.55,
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {body}
+          </p>
         </div>
       )}
 

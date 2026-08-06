@@ -367,8 +367,8 @@ export interface OnboardingMeeting {
   ownerName: string | null;
 }
 
-/** Unified historical engagement (meeting / call / email-thread) shown in the meeting brief. */
-export type OnboardingHistoryKind = "meeting" | "call" | "email";
+/** Unified historical engagement (meeting / call / email-thread / note) shown in the meeting brief. */
+export type OnboardingHistoryKind = "meeting" | "call" | "email" | "note";
 
 /** A single email message within an email thread. */
 export interface OnboardingEmailMessage {
@@ -392,6 +392,8 @@ export interface OnboardingHistoryEntry {
   outcome: string | null;    // meetings/calls
   /** For emails: every message in the thread, sorted ASC by occurredAt. */
   thread?: OnboardingEmailMessage[];
+  /** AI-generated summary — currently only filled for notes. */
+  summary?: string | null;
 }
 
 export interface OnboardingDeal {

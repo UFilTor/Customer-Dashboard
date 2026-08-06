@@ -41,6 +41,8 @@
   --event-meeting-fg: #581C87;
   --event-call-bg: var(--sky-blue);
   --event-call-fg: #1E40AF;
+  --event-note-bg: var(--beige);
+  --event-note-fg: var(--moss);
 
   /* Foreground for primary moss buttons. Centralised so we can tune cream-on-moss in one place. */
   --text-on-moss: #FFFFFF;
@@ -290,6 +292,34 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    feel consistent across Portfolio, Briefing, Onboarding, and Pay views. */
 .pf-row:hover { background: var(--light-grey); }
 .pf-row.focused { background: var(--beige-new); box-shadow: inset 3px 0 0 var(--moss); }
+
+/* Row snooze control: hidden until the row is hovered or anything inside the
+   wrapper has focus (so keyboard users reach it by tabbing). Solid card
+   background because it overlays the row's numeric cluster. */
+.pf-row-snooze {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--hairline-strong);
+  color: var(--moss);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity 120ms var(--ease-out);
+}
+.pf-row-wrap:hover .pf-row-snooze,
+.pf-row-wrap:focus-within .pf-row-snooze {
+  opacity: 1;
+  pointer-events: auto;
+}
+.pf-row-snooze:hover { background: var(--beige-new); }
 
 .pf-sticky { position: sticky; top: 0; z-index: 30; background: var(--page-bg); transition: box-shadow 160ms var(--ease-out); }
 /* Once the page scrolls, the sticky strip otherwise butts flush against the

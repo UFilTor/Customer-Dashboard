@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 import type { MeetingPrepMeetingEntry } from "@/lib/types";
 import { DashboardBanner } from "../DashboardBanner";
 import { EditorialEmpty } from "../EditorialEmpty";
@@ -100,8 +100,38 @@ function MeetingsPanel({
 
   const selectedDay = weekdays[selectedIdx] ?? today;
   const selectedKey = dayKey(selectedDay);
-  const dayMeetings = meetingsByDay.get(selectedKey) || [];
   const meetingsTodayCount = (meetingsByDay.get(dayKey(today)) || []).length;
+  const isToday = selectedKey === dayKey(today);
+
+  // Today's list shows upcoming meetings first (an in-progress meeting counts
+  // as upcoming until it ends), then a divider, then the ones that already
+  // happened — so the next meeting is always on top. Other days keep plain
+  // chronological order: there is no "now" boundary to split on. The minute
+  // tick moves meetings below the divider as time passes.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  // Plain render-scope computation (no manual useMemo) — the React Compiler
+  // auto-memoizes this, and a hand-written useMemo here tripped its
+  // preserve-manual-memoization check. A day holds at most a handful of
+  // meetings, so the partition is trivially cheap either way.
+  const dayMeetings = meetingsByDay.get(selectedKey) || [];
+  let displayMeetings: MeetingPrepMeetingEntry[] = dayMeetings;
+  let pastStartIdx: number | null = null;
+  if (isToday) {
+    const upcoming: MeetingPrepMeetingEntry[] = [];
+    const past: MeetingPrepMeetingEntry[] = [];
+    for (const e of dayMeetings) {
+      const end = new Date(e.meeting.endsAt || e.meeting.startsAt);
+      if (isNaN(end.getTime()) || end.getTime() >= nowTick) upcoming.push(e);
+      else past.push(e);
+    }
+    displayMeetings = [...upcoming, ...past];
+    // Divider only makes sense when both groups exist.
+    pastStartIdx = upcoming.length > 0 && past.length > 0 ? upcoming.length : null;
+  }
 
   const [focusedMeetingIdx, setFocusedMeetingIdx] = useState<number | null>(null);
   const [historyFocusedIdx, setHistoryFocusedIdx] = useState<number | null>(null);
@@ -132,11 +162,13 @@ function MeetingsPanel({
   }, [historyFocusedIdx]);
 
   const meetingsContainerRef = useRef<HTMLDivElement | null>(null);
-  const dayMeetingsRef = useRef(dayMeetings);
+  // Keyboard nav walks positional indices over the VISUAL order, so the ref
+  // mirrors displayMeetings (upcoming-first on today), not the raw day list.
+  const dayMeetingsRef = useRef(displayMeetings);
   const focusedIdxRef = useRef(focusedMeetingIdx);
   const historyFocusedRef = useRef(historyFocusedIdx);
   useEffect(() => {
-    dayMeetingsRef.current = dayMeetings;
+    dayMeetingsRef.current = displayMeetings;
     focusedIdxRef.current = focusedMeetingIdx;
     historyFocusedRef.current = historyFocusedIdx;
   });
@@ -216,8 +248,6 @@ function MeetingsPanel({
       (target as HTMLElement).scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }, [focusedMeetingIdx]);
-
-  const isToday = dayKey(selectedDay) === dayKey(today);
 
   // Sticky day-selector shadow. Mirrors the Portfolio pattern (a 1px sentinel
   // above the sticky wrapper observed via IntersectionObserver) so the shadow
@@ -350,7 +380,7 @@ function MeetingsPanel({
               loading={!!fetchingDays?.has(selectedKey)}
               onFetch={() => onFetchDay?.(selectedKey)}
             />
-          ) : dayMeetings.length === 0 ? (
+          ) : displayMeetings.length === 0 ? (
             <EditorialEmpty
               headline={isToday ? "No meetings today. Enjoy the focus time." : "No meetings on this day."}
             />
@@ -359,28 +389,31 @@ function MeetingsPanel({
               ref={meetingsContainerRef}
               style={{ display: "grid", gridTemplateColumns: "1fr", gap: 20, paddingTop: 6 }}
             >
-              {dayMeetings.map((entry, i) => {
+              {displayMeetings.map((entry, i) => {
                 const isFocused = i === focusedMeetingIdx;
                 return (
-                  <div
-                    key={`${entry.deal.dealId}:${entry.meeting.id}`}
-                    data-meeting-idx={i}
-                    style={{
-                      animation: `staggerIn 360ms var(--ease-out) ${100 + Math.min(i, 8) * 60}ms both`,
-                      borderRadius: 16,
-                      outline: isFocused ? "2px solid var(--moss)" : "2px solid transparent",
-                      outlineOffset: 2,
-                      transition: "outline-color 120ms ease",
-                    }}
-                  >
-                    <MeetingPrepBrief
-                      entry={entry}
-                      isFocused={isFocused}
-                      historyFocusedIdx={isFocused ? historyFocusedIdx : null}
-                      historyLoading={!!historyLoading}
-                      onSelectCompany={onSelectCompany}
-                    />
-                  </div>
+                  <Fragment key={`${entry.deal.dealId}:${entry.meeting.id}`}>
+                    {pastStartIdx !== null && i === pastStartIdx && <EarlierTodayDivider />}
+                    <div
+                      data-meeting-idx={i}
+                      style={{
+                        animation: `staggerIn 360ms var(--ease-out) ${100 + Math.min(i, 8) * 60}ms both`,
+                        borderRadius: 16,
+                        outline: isFocused ? "2px solid var(--moss)" : "2px solid transparent",
+                        outlineOffset: 2,
+                        transition: "outline-color 120ms ease",
+                        opacity: pastStartIdx !== null && i >= pastStartIdx ? 0.72 : 1,
+                      }}
+                    >
+                      <MeetingPrepBrief
+                        entry={entry}
+                        isFocused={isFocused}
+                        historyFocusedIdx={isFocused ? historyFocusedIdx : null}
+                        historyLoading={!!historyLoading}
+                        onSelectCompany={onSelectCompany}
+                      />
+                    </div>
+                  </Fragment>
                 );
               })}
             </div>
@@ -388,6 +421,33 @@ function MeetingsPanel({
         </Section>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Hairline between today's upcoming meetings and the ones that already
+// happened. Purely visual — carries no data-meeting-idx, so keyboard nav
+// indices stay contiguous across it.
+function EarlierTodayDivider() {
+  return (
+    <div
+      aria-hidden="true"
+      style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 2px" }}
+    >
+      <span
+        style={{
+          fontFamily: "var(--font-display)",
+          textTransform: "uppercase",
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.12em",
+          color: "var(--green-100)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        Earlier today
+      </span>
+      <span style={{ flex: 1, height: 1, background: "var(--hairline)" }} />
     </div>
   );
 }

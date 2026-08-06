@@ -9,6 +9,7 @@ import type {
   WatchOutSignal,
 } from "@/lib/types";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
+import { countryName } from "@/lib/hubspot-enums";
 import { fmtFutureEvents, toWebUrl } from "@/lib/format-design";
 import { OWNER_MAP } from "@/lib/owners";
 import { VolumeChart } from "../VolumeChart";
@@ -29,12 +30,6 @@ interface Props {
 function fmtTime24(d: Date): string {
   if (isNaN(d.getTime())) return "";
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-function fmtDateLabel(d: Date): string {
-  return d
-    .toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
-    .toUpperCase();
 }
 
 function fmtTenure(daysLive: number | null): string {
@@ -202,18 +197,6 @@ export function MeetingPrepBrief({
           >
             {fmtTime24(start)}
           </div>
-          <div
-            style={{
-              fontFamily: "var(--font-display)",
-              textTransform: "uppercase",
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: "0.12em",
-              color: "var(--green-100)",
-            }}
-          >
-            {fmtDateLabel(start)}
-          </div>
         </div>
 
         <div>
@@ -287,7 +270,7 @@ export function MeetingPrepBrief({
             <Avatar owner={ownerLocal} size={22} />
             <span>{deal.ownerName || "Unassigned"}</span>
             <Dot />
-            <span>{deal.country || "—"}</span>
+            <span>{countryName(deal.country) || "—"}</span>
             <Dot />
             {/* Stage chip mirrors Portfolio's STAGE_BADGE so both dashboards
                 read as one system. Customer-stage substring (the HubSpot raw

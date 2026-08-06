@@ -1517,7 +1517,7 @@ function ActivityPanel({ engagements, owners }: { engagements: Engagement[]; own
   const colors: Record<ActivityViewItem["type"], { bg: string; fg: string }> = {
     call: { bg: "var(--event-call-bg)", fg: "var(--event-call-fg)" },
     meeting: { bg: "var(--event-meeting-bg)", fg: "var(--event-meeting-fg)" },
-    note: { bg: "var(--beige)", fg: "var(--moss)" },
+    note: { bg: "var(--event-note-bg)", fg: "var(--event-note-fg)" },
     email: { bg: "var(--lichen)", fg: "var(--moss)" },
   };
 

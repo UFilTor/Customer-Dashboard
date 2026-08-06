@@ -7,6 +7,7 @@ import {
   unpaidInvoiceCount,
 } from "./invoice-fields";
 import { computeWatchOutSignals } from "./signals";
+import { summarizeNoteEntries } from "./summarize";
 import { TO_EUR } from "./fx";
 import {
   DEFAULT_EXPECTED_DAYS,
@@ -277,6 +278,12 @@ const CALL_PROPS = [
   "hs_call_body",
   "hs_call_status",
   "hs_call_disposition",
+  "hs_timestamp",
+  "hubspot_owner_id",
+];
+
+const NOTE_PROPS = [
+  "hs_note_body",
   "hs_timestamp",
   "hubspot_owner_id",
 ];
@@ -773,6 +780,53 @@ async function fetchCallsForDeals(
         ownerName: ownerId ? (ownerNames[ownerId] ?? null) : null,
         direction: null,
         outcome: nullable(p.hs_call_disposition) ?? nullable(p.hs_call_status),
+      });
+    }
+    if (entries.length > 0) result.set(dealId, entries);
+  }
+  return result;
+}
+
+async function fetchNotesForDeals(
+  dealIds: string[]
+): Promise<Map<string, OnboardingHistoryEntry[]>> {
+  const result = new Map<string, OnboardingHistoryEntry[]>();
+  if (dealIds.length === 0) return result;
+  const assocs = await fetchAssociations("deals", "notes", dealIds);
+  const dealToIds = new Map<string, string[]>();
+  for (const a of assocs) dealToIds.set(a.fromId, a.toIds);
+  const allIds = Array.from(new Set(Array.from(dealToIds.values()).flat()));
+  if (allIds.length === 0) return result;
+
+  const props = await fetchObjectsBatch("notes", allIds, NOTE_PROPS);
+  const ownerIds = new Set<string>();
+  for (const p of props.values()) if (p.hubspot_owner_id) ownerIds.add(p.hubspot_owner_id);
+  const ownerNames = await fetchOwnerNames(Array.from(ownerIds));
+
+  for (const [dealId, ids] of dealToIds) {
+    const entries: OnboardingHistoryEntry[] = [];
+    for (const id of ids) {
+      const p = props.get(id);
+      if (!p) continue;
+      const occurredAt = nullable(p.hs_timestamp);
+      if (!occurredAt) continue;
+      const body = nullable(p.hs_note_body);
+      if (!body) continue;
+      // Notes have no subject in HubSpot — synthesise a title from the first
+      // words of the body so the collapsed row still says something useful.
+      const text = body.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      if (!text) continue;
+      const ownerId = p.hubspot_owner_id || "";
+      entries.push({
+        id,
+        kind: "note",
+        title: text.length > 80 ? `${text.slice(0, 80).trimEnd()}…` : text,
+        occurredAt,
+        body,
+        ownerId,
+        ownerName: ownerId ? (ownerNames[ownerId] ?? null) : null,
+        direction: null,
+        outcome: null,
       });
     }
     if (entries.length > 0) result.set(dealId, entries);
@@ -1538,13 +1592,16 @@ export async function fetchHistoryForDeals(
   if (dealIds.length === 0) return result;
 
   // Calls + emails are the load-bearing channels — if either fails we want
-  // to know. Meetings are best-effort: a transient HubSpot error there
-  // shouldn't blank the entire Previous Activity panel.
-  const [callsByDeal, emailsByDeal, meetingsByDeal] = await Promise.all([
+  // to know. Meetings and notes are best-effort: a transient HubSpot error
+  // there shouldn't blank the entire Previous Activity panel.
+  const [callsByDeal, emailsByDeal, meetingsByDeal, notesByDeal] = await Promise.all([
     fetchCallsForDeals(dealIds),
     fetchEmailsForDeals(dealIds),
     fetchMeetingsForDeals(dealIds).catch(
       () => new Map<string, OnboardingMeeting[]>(),
+    ),
+    fetchNotesForDeals(dealIds).catch(
+      () => new Map<string, OnboardingHistoryEntry[]>(),
     ),
   ]);
 
@@ -1589,10 +1646,29 @@ export async function fetchHistoryForDeals(
       });
     }
 
-    const merged = [...meetingHistory, ...callHistory, ...threadedEmails].sort(
+    const noteHistory: OnboardingHistoryEntry[] = [];
+    for (const n of notesByDeal.get(dealId) ?? []) {
+      const t = new Date(n.occurredAt).getTime();
+      if (isNaN(t) || t >= today.getTime()) continue;
+      noteHistory.push(n);
+    }
+
+    const merged = [...meetingHistory, ...callHistory, ...threadedEmails, ...noteHistory].sort(
       (a, b) => b.occurredAt.localeCompare(a.occurredAt)
     );
     if (merged.length > 0) result.set(dealId, merged);
+  }
+
+  // AI-summarize the freshest notes per deal (best-effort — a failed summary
+  // just falls back to the raw excerpt in the UI). Capped per deal because the
+  // panel only shows the top 4 history items anyway.
+  try {
+    const noteEntries = Array.from(result.values()).flatMap((entries) =>
+      entries.filter((e) => e.kind === "note").slice(0, 3)
+    );
+    await summarizeNoteEntries(noteEntries);
+  } catch {
+    // Leave notes unsummarized.
   }
   return result;
 }

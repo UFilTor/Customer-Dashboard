@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { getSavedViews, saveView, deleteView, type PortfolioViewState } from "@/lib/portfolio-views";
+import {
+  deleteView,
+  getDefaultSavedView,
+  getDefaultViewId,
+  getSavedViews,
+  saveView,
+  setDefaultView,
+  type PortfolioViewState,
+} from "@/lib/portfolio-views";
 
 const KEY = "ud-v2-portfolio-views";
 
@@ -82,5 +90,40 @@ describe("portfolio-views", () => {
   it("returns [] for a corrupt blob", () => {
     localStorage.setItem(KEY, "{{{");
     expect(getSavedViews()).toEqual([]);
+  });
+});
+
+describe("default view", () => {
+  it("sets, reads, and clears the default", () => {
+    const v = saveView("Morning triage", baseState)!;
+    expect(getDefaultViewId()).toBeNull();
+    setDefaultView(v.id);
+    expect(getDefaultViewId()).toBe(v.id);
+    expect(getDefaultSavedView()?.name).toBe("Morning triage");
+    setDefaultView(null);
+    expect(getDefaultViewId()).toBeNull();
+  });
+
+  it("deleting the default view clears the marker", () => {
+    const v = saveView("Temp", baseState)!;
+    setDefaultView(v.id);
+    deleteView(v.id);
+    expect(getDefaultViewId()).toBeNull();
+    expect(getDefaultSavedView()).toBeNull();
+  });
+
+  it("re-saving over the default view keeps it the default", () => {
+    const v1 = saveView("My view", baseState)!;
+    setDefaultView(v1.id);
+    const v2 = saveView("my view", { ...baseState, sortKey: "name" })!;
+    expect(v2.id).not.toBe(v1.id);
+    expect(getDefaultViewId()).toBe(v2.id);
+    expect(getDefaultSavedView()?.state.sortKey).toBe("name");
+  });
+
+  it("ignores a default id that no longer exists", () => {
+    localStorage.setItem("ud-v2-portfolio-views-default", "v-gone");
+    expect(getDefaultViewId()).toBeNull();
+    expect(getDefaultSavedView()).toBeNull();
   });
 });

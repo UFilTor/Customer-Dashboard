@@ -8,9 +8,12 @@ import { getSortOptions, mapKindToKey } from "@/lib/portfolio";
 import { signalStyle, pillText, calmCopy } from "@/lib/signal-display";
 import {
   deleteView,
+  getDefaultViewIdServerSnapshot,
+  getDefaultViewIdSnapshot,
   getSavedViewsServerSnapshot,
   getSavedViewsSnapshot,
   saveView,
+  setDefaultView,
   subscribeSavedViews,
   type PortfolioShownStatuses,
   type PortfolioViewState,
@@ -1393,6 +1396,8 @@ const Row = memo(function Row({
 // ---------- Row snooze control ----------
 
 const SNOOZE_PRESETS: Array<{ label: string; days: number }> = [
+  { label: "1 day", days: 1 },
+  { label: "2 days", days: 2 },
   { label: "1 week", days: 7 },
   { label: "2 weeks", days: 14 },
   { label: "1 month", days: 30 },
@@ -1783,6 +1788,11 @@ function ViewsPill({
     getSavedViewsSnapshot,
     getSavedViewsServerSnapshot
   );
+  const defaultViewId = useSyncExternalStore(
+    subscribeSavedViews,
+    getDefaultViewIdSnapshot,
+    getDefaultViewIdServerSnapshot
+  );
 
   // Reset the name form whenever the popup closes (adjust-during-render).
   const [prevOpen, setPrevOpen] = useState(open);
@@ -1841,7 +1851,7 @@ function ViewsPill({
         <Caret open={open} />
       </button>
       {open && (
-        <div className="pf-pop" style={{ right: 0, width: 280 }}>
+        <div className="pf-pop" style={{ right: 0, width: 300 }}>
           <div
             style={{
               padding: "10px 14px 8px 20px",
@@ -1866,52 +1876,98 @@ function ViewsPill({
                 them here to come back with one click.
               </div>
             )}
-            {views.map((v) => (
-              <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <button
-                  className="pf-pop-row"
-                  style={{ flex: 1, minWidth: 0 }}
-                  onClick={() => {
-                    onApplyView(v.state);
-                    setOpen(false);
-                  }}
-                >
-                  <span
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      textAlign: "left",
+            {views.map((v) => {
+              const isDefault = v.id === defaultViewId;
+              return (
+                <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <button
+                    className="pf-pop-row"
+                    style={{ flex: 1, minWidth: 0 }}
+                    onClick={() => {
+                      onApplyView(v.state);
+                      setOpen(false);
                     }}
                   >
-                    {v.name}
-                  </span>
-                </button>
-                <button
-                  aria-label={`Delete view ${v.name}`}
-                  title={`Delete view ${v.name}`}
-                  onClick={() => deleteView(v.id)}
-                  style={{
-                    flexShrink: 0,
-                    width: 24,
-                    height: 24,
-                    borderRadius: 6,
-                    background: "transparent",
-                    color: "var(--green-100)",
-                    fontSize: 12,
-                    lineHeight: 1,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+                    <span
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        textAlign: "left",
+                      }}
+                    >
+                      {v.name}
+                    </span>
+                    {isDefault && (
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          fontSize: 9,
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          color: "var(--green-100)",
+                          background: "var(--beige)",
+                          padding: "2px 6px",
+                          borderRadius: 5,
+                        }}
+                      >
+                        Default
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    aria-label={
+                      isDefault
+                        ? `Stop applying ${v.name} as the default view`
+                        : `Apply ${v.name} as the default view on load`
+                    }
+                    title={isDefault ? "Default view — click to clear" : "Set as default view"}
+                    aria-pressed={isDefault}
+                    onClick={() => setDefaultView(isDefault ? null : v.id)}
+                    style={{
+                      flexShrink: 0,
+                      width: 24,
+                      height: 24,
+                      borderRadius: 6,
+                      background: "transparent",
+                      color: isDefault ? "var(--moss)" : "var(--green-100)",
+                      fontSize: 13,
+                      lineHeight: 1,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {isDefault ? "★" : "☆"}
+                  </button>
+                  <button
+                    aria-label={`Delete view ${v.name}`}
+                    title={`Delete view ${v.name}`}
+                    onClick={() => deleteView(v.id)}
+                    style={{
+                      flexShrink: 0,
+                      width: 24,
+                      height: 24,
+                      borderRadius: 6,
+                      background: "transparent",
+                      color: "var(--green-100)",
+                      fontSize: 12,
+                      lineHeight: 1,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
           </div>
           <div style={{ borderTop: "1px solid var(--hairline)", padding: 6 }}>
             {naming ? (

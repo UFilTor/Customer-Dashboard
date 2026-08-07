@@ -16,6 +16,7 @@ import { PORTFOLIO_SIGNAL_ORDER, PORTFOLIO_SIGNAL_MAP } from "@/lib/signals";
 import { getSnoozed, snoozeCompany, unsnoozeCompany, type SnoozedCompany } from "@/lib/snoozed";
 import {
   VALID_SORT_KEYS,
+  getDefaultSavedView,
   type PortfolioShownStatuses,
   type PortfolioViewState,
 } from "@/lib/portfolio-views";
@@ -429,6 +430,19 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
 
   const [hasSavedDefault, setHasSavedDefault] = useState(false);
   useEffect(() => {
+    // A default saved view (starred in the Views pill) supersedes the legacy
+    // Cmd+S signals+sort default — it restores the full toolbar state.
+    const defView = getDefaultSavedView();
+    if (defView) {
+      setSelectedSignals(defView.state.signals);
+      setStackedSignals(defView.state.stackedSignals);
+      setRefine(defView.state.refine);
+      setShownStatuses(defView.state.shownStatuses);
+      setSortKey(defView.state.sortKey);
+      setSortDirection(defView.state.sortDirection);
+      setHasSavedDefault(loadDefaults() != null);
+      return;
+    }
     const d = loadDefaults();
     if (d) {
       setSelectedSignals(d.signals);

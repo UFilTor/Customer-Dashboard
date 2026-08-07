@@ -13,6 +13,7 @@ import type {
 import { PORTFOLIO_SIGNAL_ORDER } from "./signals";
 
 const STORAGE_KEY = "ud-v2-portfolio-views";
+const DEFAULT_KEY = "ud-v2-portfolio-views-default";
 const MAX_VIEWS = 20;
 const MAX_NAME_LENGTH = 40;
 
@@ -186,10 +187,15 @@ function write(list: SavedPortfolioView[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, MAX_VIEWS)));
   } catch {/* ignore quota errors */}
-  viewsSnapshot = null;
+  invalidateSnapshots();
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("ud-views-changed"));
   }
+}
+
+function invalidateSnapshots(): void {
+  viewsSnapshot = null;
+  defaultIdSnapshot = undefined;
 }
 
 // useSyncExternalStore adapter. getSavedViews() builds a fresh array every
@@ -198,10 +204,11 @@ function write(list: SavedPortfolioView[]): void {
 // doesn't exist during SSR); React swaps in the client snapshot post-hydration.
 const EMPTY_VIEWS: SavedPortfolioView[] = [];
 let viewsSnapshot: SavedPortfolioView[] | null = null;
+let defaultIdSnapshot: string | null | undefined = undefined;
 
 export function subscribeSavedViews(onChange: () => void): () => void {
   const handler = () => {
-    viewsSnapshot = null;
+    invalidateSnapshots();
     onChange();
   };
   window.addEventListener("ud-views-changed", handler);
@@ -217,6 +224,50 @@ export function getSavedViewsServerSnapshot(): SavedPortfolioView[] {
   return EMPTY_VIEWS;
 }
 
+export function getDefaultViewIdSnapshot(): string | null {
+  if (defaultIdSnapshot === undefined) defaultIdSnapshot = getDefaultViewId();
+  return defaultIdSnapshot;
+}
+
+export function getDefaultViewIdServerSnapshot(): string | null {
+  return null;
+}
+
+// ---------- Default view ----------
+// One saved view can be marked as the default: it's applied automatically
+// when Portfolio loads (superseding the legacy Cmd+S signals+sort default).
+
+/** The default view's id, or null. Ignores ids that no longer exist. */
+export function getDefaultViewId(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const id = localStorage.getItem(DEFAULT_KEY);
+    if (!id) return null;
+    return read().some((v) => v.id === id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getDefaultSavedView(): SavedPortfolioView | null {
+  const id = getDefaultViewId();
+  if (!id) return null;
+  return read().find((v) => v.id === id) ?? null;
+}
+
+/** Mark a view as default (null clears). */
+export function setDefaultView(id: string | null): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    if (id) localStorage.setItem(DEFAULT_KEY, id);
+    else localStorage.removeItem(DEFAULT_KEY);
+  } catch {/* ignore quota errors */}
+  invalidateSnapshots();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("ud-views-changed"));
+  }
+}
+
 export function getSavedViews(): SavedPortfolioView[] {
   // Newest first.
   return read().slice().sort((a, b) => b.createdAt - a.createdAt);
@@ -226,7 +277,10 @@ export function getSavedViews(): SavedPortfolioView[] {
 export function saveView(name: string, state: PortfolioViewState): SavedPortfolioView | null {
   const clean = name.trim().slice(0, MAX_NAME_LENGTH);
   if (!clean) return null;
-  const list = read().filter((v) => v.name.toLowerCase() !== clean.toLowerCase());
+  const existing = read();
+  const replaced = existing.find((v) => v.name.toLowerCase() === clean.toLowerCase());
+  const replacedWasDefault = replaced != null && getDefaultViewId() === replaced.id;
+  const list = existing.filter((v) => v.name.toLowerCase() !== clean.toLowerCase());
   const view: SavedPortfolioView = {
     id: `v-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     name: clean,
@@ -244,9 +298,13 @@ export function saveView(name: string, state: PortfolioViewState): SavedPortfoli
   };
   list.unshift(view);
   write(list);
+  // Re-saving over the default view keeps it the default (new id).
+  if (replacedWasDefault) setDefaultView(view.id);
   return view;
 }
 
 export function deleteView(id: string): void {
+  // Clear the marker first so a deleted default doesn't linger in storage.
+  if (getDefaultViewId() === id) setDefaultView(null);
   write(read().filter((v) => v.id !== id));
 }

@@ -182,7 +182,8 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
     const stage = classifyPortfolioStage(
       deal?.customer_stage || "",
       deal?.pipeline || "",
-      deal?.customer_substage || null
+      deal?.customer_substage || null,
+      deal?.dealstage || null
     );
     const num = (v: string | undefined) => {
       if (!v) return 0;

@@ -45,10 +45,41 @@ const RETENTION_PIPELINE_ID = "1072518362";
 // preserved in `customer_substage`; we look there first, then fall back to
 // the pipeline's entry stage (Onboarding / Adopted) so the row never
 // misclassifies as Established just because a deal is on hold.
+// Retention-pipeline board columns that map directly to a Portfolio stage.
+// Stage IDs are portal-specific, same as RETENTION_PIPELINE_ID above.
+// ("Churned" deliberately absent — churned deals are skipped client-side.)
+const RETENTION_STAGE_BY_DEALSTAGE_ID: Record<string, PortfolioStage> = {
+  "3460322544": "Ramp Up",
+  "1486762226": "Established",
+};
+
 export function classifyPortfolioStage(
   customerStage: string,
   pipelineId: string,
-  customerSubstage: string | null = null
+  customerSubstage: string | null = null,
+  dealstageId: string | null = null
+): PortfolioStage {
+  const fromProperty = classifyFromCustomerStage(customerStage, pipelineId, customerSubstage);
+
+  // The customer_stage property can lag behind the pipeline column: a 2026-08
+  // sweep found 22 retention deals sitting in the "Ramp Up" column with
+  // customer_stage still "Live" (= Started). CS treats the board column as
+  // truth, so for retention deals the column acts as a floor — it can only
+  // promote the stage, never demote it (customer_stage stays the finer-
+  // grained source when it's further along).
+  if (pipelineId === RETENTION_PIPELINE_ID && dealstageId) {
+    const fromColumn = RETENTION_STAGE_BY_DEALSTAGE_ID[dealstageId];
+    if (fromColumn && STAGE_ORDER[fromColumn] > STAGE_ORDER[fromProperty]) {
+      return fromColumn;
+    }
+  }
+  return fromProperty;
+}
+
+function classifyFromCustomerStage(
+  customerStage: string,
+  pipelineId: string,
+  customerSubstage: string | null
 ): PortfolioStage {
   // customer_stage is the canonical taxonomy. When it's set to a known
   // stage, trust it regardless of pipeline — a Lifecycle-pipeline deal with
@@ -271,6 +302,8 @@ interface BuildRowInput {
     customerStage: string;
     customerSubstage: string | null;
     pipelineId: string;
+    /** HubSpot pipeline-stage id — lets the retention board column floor the stage. */
+    dealstageId?: string | null;
     enteredStageDate: string | null;
     customerLiveDate: string | null;
     unpaidInvoice: boolean;
@@ -364,7 +397,8 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
   const stage = classifyPortfolioStage(
     input.deal.customerStage,
     input.deal.pipelineId,
-    input.deal.customerSubstage
+    input.deal.customerSubstage,
+    input.deal.dealstageId ?? null
   );
   const daysSilent = daysBetween(input.nowIso, input.company.notesLastContacted);
 
@@ -788,6 +822,7 @@ export async function fetchPortfolioRows(
       deal: {
         customerStage: dealProps.customer_stage || "",
         customerSubstage: dealProps.customer_substage || null,
+        dealstageId: dealProps.dealstage || null,
         pipelineId: dealProps.pipeline || "",
         enteredStageDate: dealProps.hs_v2_date_entered_current_stage || null,
         customerLiveDate: dealProps.customer_live_date || null,

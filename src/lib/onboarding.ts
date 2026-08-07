@@ -769,13 +769,19 @@ async function fetchCallsForDeals(
       if (!occurredAt) continue;
       const title = nullable(p.hs_call_title) ?? "(Logged call)";
       if (isNoisySubject(title)) continue;
+      // Bare logged calls (no body/notes) carry nothing to prep from — a row
+      // saying "(Logged call) · Mar 3" wastes one of the panel's 4 slots.
+      // Only surface calls that have an actual summary behind them.
+      const body = nullable(p.hs_call_body);
+      const bodyText = (body ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      if (!bodyText) continue;
       const ownerId = p.hubspot_owner_id || "";
       entries.push({
         id,
         kind: "call",
         title,
         occurredAt,
-        body: nullable(p.hs_call_body),
+        body,
         ownerId,
         ownerName: ownerId ? (ownerNames[ownerId] ?? null) : null,
         direction: null,

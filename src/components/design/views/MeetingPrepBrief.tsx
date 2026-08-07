@@ -128,7 +128,14 @@ export function MeetingPrepBrief({
   const { deal, meeting } = entry;
   const { recap, recapLoading, noteSignals } = useCompanyExtras(deal.companyId);
   const start = new Date(meeting.startsAt);
-  const ownerLocal = OWNER_MAP[deal.ownerId] || null;
+  // The header names whoever is actually holding THIS meeting (the HubSpot
+  // meeting owner), not the account owner — a colleague can run a revision
+  // meeting on someone else's account. Falls back to the account owner when
+  // the meeting record carries no owner.
+  const headerOwnerId = meeting.ownerId || deal.ownerId;
+  const headerOwnerName = (meeting.ownerId ? meeting.ownerName : null) ?? deal.ownerName;
+  const ownerLocal =
+    OWNER_MAP[headerOwnerId] ?? (headerOwnerName ? { name: headerOwnerName } : null);
   const companyHref = hubspotCompanyUrl(deal.companyId);
   // Stub deals from "external-…" IDs don't resolve; fall back to company URL.
   const isStub = deal.dealId.startsWith("external-");
@@ -268,7 +275,7 @@ export function MeetingPrepBrief({
             }}
           >
             <Avatar owner={ownerLocal} size={22} />
-            <span>{deal.ownerName || "Unassigned"}</span>
+            <span>{headerOwnerName || "Unassigned"}</span>
             <Dot />
             <span>{countryName(deal.country) || "—"}</span>
             <Dot />

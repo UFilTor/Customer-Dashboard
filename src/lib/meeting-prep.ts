@@ -307,7 +307,17 @@ export async function buildMeetingPrepPayload(
   const inScope = (props: Record<string, string> | undefined): boolean => {
     if (!props) return false;
     const scopeProps = { pipeline: props.pipeline, customer_stage: props.customer_stage };
-    return isLifecycleScope(scopeProps) || isRetentionScope(scopeProps);
+    if (isLifecycleScope(scopeProps) || isRetentionScope(scopeProps)) return true;
+    // Include lifecycle deals in hibernation or product hold (they still need prep).
+    if (props.pipeline === LIFECYCLE_PIPELINE) {
+      const substage = props.customer_substage || "";
+      if (substage.toLowerCase().includes("hibernation") ||
+          substage.toLowerCase().includes("product") ||
+          substage.toLowerCase().includes("hold")) {
+        return true;
+      }
+    }
+    return false;
   };
   // Optional owner restriction also applies to the deal (mirrors the old
   // owner-filtered pipeline search).

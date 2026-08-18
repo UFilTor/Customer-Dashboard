@@ -41,9 +41,20 @@ export const VolumeChart = memo(function VolumeChartImpl({ company }: VolumeChar
     All: allTime || v12,
   };
 
-  // Recent change %: compare last 3-month run rate to prior 3-month run rate.
-  const prior3 = Math.max(0, v6 - v3);
-  const recentChange = prior3 > 0 ? Math.round(((v3 - prior3) / prior3) * 100) : 0;
+  // Recent change %: compare the selected period's run rate to the prior
+  // period of the same length. Only 3M/6M have a prior window we can derive
+  // from the snapshot fields (12M would need a 24m snapshot we don't have).
+  const priorByRange: Partial<Record<Range, number>> = {
+    "3M": Math.max(0, v6 - v3),
+    "6M": Math.max(0, v12 - v6),
+  };
+  const currentByRange: Partial<Record<Range, number>> = { "3M": v3, "6M": v6 };
+  const priorPeriod = priorByRange[range];
+  const currentPeriod = currentByRange[range];
+  const recentChange =
+    priorPeriod && priorPeriod > 0 && currentPeriod !== undefined
+      ? Math.round(((currentPeriod - priorPeriod) / priorPeriod) * 100)
+      : 0;
 
   const data = seriesByRange[range];
 
@@ -91,7 +102,7 @@ export const VolumeChart = memo(function VolumeChartImpl({ company }: VolumeChar
             >
               {fmtEur(totalByRange[range])}
             </span>
-            {range === "12M" && recentChange !== 0 && (
+            {recentChange !== 0 && (
               <span
                 style={{
                   fontSize: 13,

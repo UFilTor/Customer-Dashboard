@@ -502,22 +502,26 @@ export interface RetentionResponse {
 
 // Meeting prep (unified)
 //
-// Combines meetings on Lifecycle pipeline (166333631) and Customer Retention
-// pipeline (1072518362) deals. The deal carries both shapes' fields so the
-// brief can render onboarding-flavored OR retention-flavored content based on
-// `pipeline`. Pipeline membership is the discriminator — same stage names
-// appear in both pipelines, so discriminating by stage would cross-fire.
+// Combines meetings on Lifecycle pipeline (166333631), Customer Retention
+// pipeline (1072518362), and Expansion pipeline (3687958771) deals. The deal
+// carries all shapes' fields so the brief can render onboarding-flavored,
+// retention-flavored, or expansion-flavored content based on `pipeline`.
+// Pipeline membership is the discriminator — same stage names appear in
+// multiple pipelines, so discriminating by stage would cross-fire.
 
-export type MeetingPrepPipeline = "lifecycle" | "retention";
+export type MeetingPrepPipeline = "lifecycle" | "retention" | "expansion";
 
 export interface MeetingPrepDeal {
   // Discriminator. "lifecycle" → onboarding-flavored brief blocks (OB Notes
   // + step + days-in-step). "retention" → retention-flavored brief blocks
-  // (volume / health / tenure).
+  // (volume / health / tenure). "expansion" → lightweight card (deal name +
+  // raw HubSpot stage only — expansion deals don't carry customer_stage,
+  // live dates, or invoice data).
   pipeline: MeetingPrepPipeline;
 
   // Shared identity + ownership
   dealId: string;
+  dealName: string;
   companyId: string | null;
   companyName: string;
   ownerId: string;
@@ -525,6 +529,9 @@ export interface MeetingPrepDeal {
   country: string | null;
   customerStage: string;
   customerSubstage: string | null;
+  // Expansion-only: human-readable HubSpot dealstage label (e.g. "In
+  // Conversation"). Null on lifecycle/retention deals.
+  expansionStageLabel: string | null;
 
   // Customer block — both pipelines surface contact + website + storefront.
   contactName: string | null;
@@ -577,6 +584,7 @@ export interface MeetingPrepResponse {
   dealsTotal: number;
   lifecycleDealsTotal: number;
   retentionDealsTotal: number;
+  expansionDealsTotal: number;
   updatedAt: string;
   // Set when the payload is BUILT (not served from cache) so the client
   // can show data age. Optional: payloads cached before this field shipped

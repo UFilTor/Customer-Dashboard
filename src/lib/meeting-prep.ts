@@ -54,9 +54,31 @@ import type {
 // it's the scope for churn-risk signals). Keep them in sync.
 export const RETENTION_PIPELINE = "1072518362";
 
+// Expansion pipeline (HubSpot label: "Expansion Pipeline") — upsell deals
+// (e.g. add-on products, Understory Pay) on existing customers. These carry
+// plain `dealstage` values, not `customer_stage` — no onboarding/retention
+// taxonomy applies, so expansion decks get their own lightweight brief.
+export const EXPANSION_PIPELINE = "3687958771";
+
 // customer_stage values to EXCLUDE from the retention pipeline. Churned
 // customers are out of scope: nothing to prep, nothing to retain.
 const EXCLUDED_RETENTION_STAGES = new Set(["Churned"]);
+
+// dealstage IDs to EXCLUDE from the expansion pipeline. Closed Lost deals
+// are out of scope: nothing to prep for a dead upsell.
+const EXCLUDED_EXPANSION_STAGES = new Set(["5112925395"]); // Closed Lost
+
+// Expansion pipeline dealstage ID -> human-readable label, for the
+// lightweight expansion brief card. Values from HubSpot's `dealstage`
+// enumeration, filtered to those observed on Expansion Pipeline deals.
+const EXPANSION_STAGE_LABELS: Record<string, string> = {
+  "5866022117": "Upsell Potential",
+  "5112925389": "Interest Identified",
+  "5112925390": "In Conversation",
+  "5112925393": "Contract Sent",
+  "5112925394": "Closed Won",
+  "5112925395": "Closed Lost",
+};
 
 /** Extract the deal's invoice state for the brief's Commercial section. */
 export function extractInvoiceState(
@@ -95,9 +117,13 @@ export function daysSinceIso(nowIso: string, iso: string | null): number | null 
   return Math.floor((now - t) / (24 * 60 * 60 * 1000));
 }
 
-/** True when the lifecycle/retention pipeline ID is one we surface in the unified meeting prep. */
+/** True when the lifecycle/retention/expansion pipeline ID is one we surface in the unified meeting prep. */
 export function isMeetingPrepPipeline(pipeline: string | undefined): boolean {
-  return pipeline === LIFECYCLE_PIPELINE || pipeline === RETENTION_PIPELINE;
+  return (
+    pipeline === LIFECYCLE_PIPELINE ||
+    pipeline === RETENTION_PIPELINE ||
+    pipeline === EXPANSION_PIPELINE
+  );
 }
 
 /** Filter rule for retention deals — pipeline match plus not Churned. */
@@ -116,6 +142,15 @@ export function isLifecycleScope(props: {
 }): boolean {
   if (props.pipeline !== LIFECYCLE_PIPELINE) return false;
   return ONBOARDING_STAGES.includes(props.customer_stage || "");
+}
+
+/** Filter rule for expansion deals — pipeline match plus not Closed Lost. */
+export function isExpansionScope(props: {
+  pipeline?: string;
+  dealstage?: string;
+}): boolean {
+  if (props.pipeline !== EXPANSION_PIPELINE) return false;
+  return !EXCLUDED_EXPANSION_STAGES.has(props.dealstage || "");
 }
 
 const LIFECYCLE_DEAL_PROPS = [
@@ -231,6 +266,7 @@ interface PayloadOnly {
   meetings: MeetingPrepMeetingEntry[];
   lifecycleDealsTotal: number;
   retentionDealsTotal: number;
+  expansionDealsTotal: number;
 }
 
 // `understory_health_score_upcoming_events` is a 0-1 score, not a count.
@@ -241,9 +277,9 @@ function parseUpcomingEventsScore(raw: string | undefined): number | null {
 }
 
 /**
- * Build the unified meeting prep payload: every meeting on a deal in either
- * the lifecycle or retention pipeline that the given owners (or all owners)
- * have on their calendar in the requested window.
+ * Build the unified meeting prep payload: every meeting on a deal in the
+ * lifecycle, retention, or expansion pipeline that the given owners (or all
+ * owners) have on their calendar in the requested window.
  */
 export async function buildMeetingPrepPayload(
   opts: BuildOptions = {}
@@ -283,6 +319,7 @@ export async function buildMeetingPrepPayload(
   const countsPromise = Promise.all([
     countDealsInScope("lifecycle", ownerIds),
     countDealsInScope("retention", ownerIds),
+    countDealsInScope("expansion", ownerIds),
   ]);
   const ownerNamesPromise = fetchOwnerNames(OWNERS.map((o) => o.id));
 
@@ -291,7 +328,8 @@ export async function buildMeetingPrepPayload(
 
   // 3. meetings -> deals association, then batch-read only those deals and
   // keep the ones in scope (lifecycle onboarding stages / retention
-  // non-churned). A meeting maps to its first in-scope deal.
+  // non-churned / expansion non-closed-lost). A meeting maps to its first
+  // in-scope deal.
   const tDeals = performance.now();
   const meetingIds = ownerMeetings.map((m) => m.id);
   const meetingAssocs = meetingIds.length > 0
@@ -307,7 +345,13 @@ export async function buildMeetingPrepPayload(
   const inScope = (props: Record<string, string> | undefined): boolean => {
     if (!props) return false;
     const scopeProps = { pipeline: props.pipeline, customer_stage: props.customer_stage };
-    if (isLifecycleScope(scopeProps) || isRetentionScope(scopeProps)) return true;
+    if (
+      isLifecycleScope(scopeProps) ||
+      isRetentionScope(scopeProps) ||
+      isExpansionScope({ pipeline: props.pipeline, dealstage: props.dealstage })
+    ) {
+      return true;
+    }
     // Include lifecycle deals in hibernation or product hold (they still need prep).
     if (props.pipeline === LIFECYCLE_PIPELINE) {
       const substage = props.customer_substage || "";
@@ -337,6 +381,108 @@ export async function buildMeetingPrepPayload(
       surfacedDealIds.add(match);
     }
   }
+
+  // 3b. Company fallback for meetings with no in-scope deal association —
+  // either no deal link at all, or only deals in an out-of-scope
+  // pipeline/stage. Walk meeting -> company (direct, or via contact when the
+  // meeting has no direct company link) -> company's other deals, same
+  // pattern as the older onboarding.ts orphan-meeting flow, scoped to just
+  // the meetings that still need it.
+  const unresolvedMeetingIds = meetingIds.filter((id) => !meetingToDeal.has(id));
+  if (unresolvedMeetingIds.length > 0) {
+    const [meetingCompanyAssocs, meetingContactAssocs] = await Promise.all([
+      fetchAssociations("meetings", "companies", unresolvedMeetingIds),
+      fetchAssociations("meetings", "contacts", unresolvedMeetingIds),
+    ]);
+    const meetingToCompany = new Map<string, string>();
+    for (const a of meetingCompanyAssocs) {
+      if (a.toIds[0]) meetingToCompany.set(a.fromId, a.toIds[0]);
+    }
+    // Contact -> company fallback for meetings still missing a company link
+    // (common for Gong-imported / calendar-only meetings).
+    const meetingToContacts = new Map<string, string[]>();
+    const allContactIds = new Set<string>();
+    for (const a of meetingContactAssocs) {
+      if (meetingToCompany.has(a.fromId)) continue;
+      meetingToContacts.set(a.fromId, a.toIds);
+      for (const cid of a.toIds) allContactIds.add(cid);
+    }
+    if (allContactIds.size > 0) {
+      const contactCompanyAssocs = await fetchAssociations(
+        "contacts",
+        "companies",
+        Array.from(allContactIds)
+      );
+      const contactToCompany = new Map<string, string>();
+      for (const a of contactCompanyAssocs) {
+        if (a.toIds[0]) contactToCompany.set(a.fromId, a.toIds[0]);
+      }
+      for (const [meetingId, contactIds] of meetingToContacts) {
+        for (const cid of contactIds) {
+          const companyId = contactToCompany.get(cid);
+          if (companyId) {
+            meetingToCompany.set(meetingId, companyId);
+            break;
+          }
+        }
+      }
+    }
+
+    const fallbackCompanyIds = Array.from(new Set(meetingToCompany.values()));
+    if (fallbackCompanyIds.length > 0) {
+      const companyDealAssocs = await fetchAssociations(
+        "companies",
+        "deals",
+        fallbackCompanyIds
+      );
+      const companyToDealIds = new Map<string, string[]>();
+      const newDealIds = new Set<string>();
+      for (const a of companyDealAssocs) {
+        companyToDealIds.set(a.fromId, a.toIds);
+        for (const id of a.toIds) {
+          if (!candidateProps.has(id)) newDealIds.add(id);
+        }
+      }
+      if (newDealIds.size > 0) {
+        const newProps = await fetchObjectsBatch(
+          "deals",
+          Array.from(newDealIds),
+          ALL_MEETING_PREP_DEAL_PROPS
+        );
+        for (const [id, props] of newProps) candidateProps.set(id, props);
+      }
+      // Pick each company's best in-scope deal: lifecycle wins over retention
+      // wins over expansion (mirrors onboarding.ts's orphan-flow ranking),
+      // tie-broken by most-recently created.
+      const pipelineRank = (p: string | undefined) =>
+        p === LIFECYCLE_PIPELINE ? 0 : p === RETENTION_PIPELINE ? 1 : 2;
+      const fallbackDealByCompany = new Map<string, string>();
+      for (const [companyId, companyDealIds] of companyToDealIds) {
+        const candidates = companyDealIds
+          .map((id) => ({ id, props: candidateProps.get(id) }))
+          .filter(
+            (c): c is { id: string; props: Record<string, string> } =>
+              c.props != null && dealAllowed(c.props)
+          );
+        if (candidates.length === 0) continue;
+        candidates.sort((a, b) => {
+          const r = pipelineRank(a.props.pipeline) - pipelineRank(b.props.pipeline);
+          if (r !== 0) return r;
+          return (b.props.createdate || "").localeCompare(a.props.createdate || "");
+        });
+        fallbackDealByCompany.set(companyId, candidates[0].id);
+      }
+      for (const meetingId of unresolvedMeetingIds) {
+        const companyId = meetingToCompany.get(meetingId);
+        const dealId = companyId ? fallbackDealByCompany.get(companyId) : undefined;
+        if (dealId) {
+          meetingToDeal.set(meetingId, dealId);
+          surfacedDealIds.add(dealId);
+        }
+      }
+    }
+  }
+
   const allRawDeals = Array.from(surfacedDealIds).map((id) => ({
     id,
     properties: candidateProps.get(id) || {},
@@ -481,13 +627,15 @@ export async function buildMeetingPrepPayload(
     );
   }
 
-  const [lifecycleDealsTotal, retentionDealsTotal] = await countsPromise;
+  const [lifecycleDealsTotal, retentionDealsTotal, expansionDealsTotal] =
+    await countsPromise;
 
   return {
     deals: meetingPrepDeals,
     meetings: meetingEntries,
     lifecycleDealsTotal,
     retentionDealsTotal,
+    expansionDealsTotal,
   };
 }
 
@@ -504,7 +652,7 @@ const ALL_MEETING_PREP_DEAL_PROPS = Array.from(
  * unchanged.
  */
 async function countDealsInScope(
-  scope: "lifecycle" | "retention",
+  scope: "lifecycle" | "retention" | "expansion",
   ownerIds: string[] | undefined
 ): Promise<number> {
   const filters: unknown[] =
@@ -513,12 +661,21 @@ async function countDealsInScope(
           { propertyName: "pipeline", operator: "EQ", value: LIFECYCLE_PIPELINE },
           { propertyName: "customer_stage", operator: "IN", values: ONBOARDING_STAGES },
         ]
-      : [
+      : scope === "retention"
+      ? [
           { propertyName: "pipeline", operator: "EQ", value: RETENTION_PIPELINE },
           {
             propertyName: "customer_stage",
             operator: "NOT_IN",
             values: [...EXCLUDED_RETENTION_STAGES],
+          },
+        ]
+      : [
+          { propertyName: "pipeline", operator: "EQ", value: EXPANSION_PIPELINE },
+          {
+            propertyName: "dealstage",
+            operator: "NOT_IN",
+            values: [...EXCLUDED_EXPANSION_STAGES],
           },
         ];
   if (ownerIds && ownerIds.length > 0) {
@@ -565,7 +722,15 @@ function buildMeetingPrepDeal(
   const cp = companyMap.get(rawDeal.id) || {};
   const companyId = dealIdToCompanyId.get(rawDeal.id) ?? null;
   const isLifecycle = dp.pipeline === LIFECYCLE_PIPELINE;
-  const pipeline: MeetingPrepDeal["pipeline"] = isLifecycle ? "lifecycle" : "retention";
+  const isExpansion = dp.pipeline === EXPANSION_PIPELINE;
+  const pipeline: MeetingPrepDeal["pipeline"] = isLifecycle
+    ? "lifecycle"
+    : isExpansion
+    ? "expansion"
+    : "retention";
+  const expansionStageLabel = isExpansion
+    ? EXPANSION_STAGE_LABELS[dp.dealstage || ""] ?? dp.dealstage ?? null
+    : null;
 
   // Sales owner: pulled from the priced sales fallback (or any sales deal as
   // 2nd fallback). Mirrors onboarding/retention; falls back to "missing".
@@ -607,11 +772,16 @@ function buildMeetingPrepDeal(
 
   // Pipeline + customer-stage → 5-stage Portfolio taxonomy. Used both to
   // gate signals via STAGE_APPLICABILITY and to drive the brief's stage chip.
-  const portfolioStage = classifyPortfolioStage(
-    dp.customer_stage || "",
-    dp.pipeline || "",
-    dp.customer_substage || null
-  );
+  // Expansion deals don't fit this taxonomy at all (no customer_stage,
+  // pipeline unrecognized) — skip it rather than let classifyPortfolioStage's
+  // unrecognized-pipeline fallback silently mislabel them as "Adopted".
+  const portfolioStage = isExpansion
+    ? null
+    : classifyPortfolioStage(
+        dp.customer_stage || "",
+        dp.pipeline || "",
+        dp.customer_substage || null
+      );
 
   // Stuck-in-step inputs. Lifecycle deals always populate daysInStep via the
   // OnboardingStep classifier below; retention deals get it computed here so
@@ -658,7 +828,7 @@ function buildMeetingPrepDeal(
       storefrontLink: nullable(dp.storefront),
       payStatus: nullable(dp.understory_pay_status__customer),
     };
-  } else if (portfolioStage === "Adopted" || portfolioStage === "Started") {
+  } else if (!isExpansion && (portfolioStage === "Adopted" || portfolioStage === "Started")) {
     // Retention deal in a stuck-applicable stage: derive daysInStep from
     // hs_v2_date_entered_current_stage so stuck_in_step can fire for these
     // stages too (Portfolio already does this; Meeting Prep was missing it).
@@ -669,27 +839,34 @@ function buildMeetingPrepDeal(
     }
   }
 
-  const watchOuts: WatchOutSignal[] = computeWatchOutSignals({
-    nowIso,
-    unpaidInvoice: hasUnpaidInvoice(dp),
-    invoiceDueDate: dp.understory_earliest_unpaid_invoice_due_date || null,
-    outstandingEur: invoices.outstandingEur,
-    overdueDays: invoices.overdueDays,
-    wishToChurn: dp.wish_to_churn === "true",
-    churnReason: dp.churn_reason || null,
-    volume3m: parseFloat(cp.understory_booking_volume_3m || "0") || 0,
-    volume6m: parseFloat(cp.understory_booking_volume_6m || "0") || 0,
-    healthScore: parseFloat(cp.health_score || "") || null,
-    upcomingEvents: futureEvents,
-    notesLastContacted: cp.notes_last_contacted || dp.notes_last_contacted || null,
-    // daysInStep / expectedDaysInStep are populated for lifecycle deals AND
-    // for retention deals in stages where stuck_in_step is applicable
-    // (Adopted, Started). STAGE_APPLICABILITY in computeWatchOutSignals does
-    // the final gate, so passing the values here is safe for any stage.
-    daysInStep,
-    expectedDaysInStep,
-    stage: portfolioStage,
-  });
+  // Expansion deals skip watch-out signals entirely — lightweight card for
+  // now (deal name + raw stage only). None of the signal inputs below
+  // (churn, health, stuck-in-step) map to an expansion-pipeline deal.
+  const watchOuts: WatchOutSignal[] = isExpansion
+    ? []
+    : computeWatchOutSignals({
+        nowIso,
+        unpaidInvoice: hasUnpaidInvoice(dp),
+        invoiceDueDate: dp.understory_earliest_unpaid_invoice_due_date || null,
+        outstandingEur: invoices.outstandingEur,
+        overdueDays: invoices.overdueDays,
+        wishToChurn: dp.wish_to_churn === "true",
+        churnReason: dp.churn_reason || null,
+        volume3m: parseFloat(cp.understory_booking_volume_3m || "0") || 0,
+        volume6m: parseFloat(cp.understory_booking_volume_6m || "0") || 0,
+        healthScore: parseFloat(cp.health_score || "") || null,
+        upcomingEvents: futureEvents,
+        notesLastContacted: cp.notes_last_contacted || dp.notes_last_contacted || null,
+        // daysInStep / expectedDaysInStep are populated for lifecycle deals AND
+        // for retention deals in stages where stuck_in_step is applicable
+        // (Adopted, Started). STAGE_APPLICABILITY in computeWatchOutSignals does
+        // the final gate, so passing the values here is safe for any stage.
+        daysInStep,
+        expectedDaysInStep,
+        // Non-null: this branch only runs when !isExpansion, and portfolioStage
+        // is only ever null when isExpansion is true.
+        stage: portfolioStage!,
+      });
 
   const ownerId = dp.hubspot_owner_id || "";
   const ownerName = ownerId ? ownerNameMap[ownerId] || "" : "";
@@ -704,6 +881,7 @@ function buildMeetingPrepDeal(
   return {
     pipeline,
     dealId: rawDeal.id,
+    dealName: dp.dealname || "",
     companyId,
     companyName: cp.name || dp.dealname || "(unknown)",
     ownerId,
@@ -711,6 +889,7 @@ function buildMeetingPrepDeal(
     country: cp.understory_company_country || null,
     customerStage: dp.customer_stage || "",
     customerSubstage: dp.customer_substage || null,
+    expansionStageLabel,
     contactName,
     contactEmail: contact?.email ?? null,
     contactPhone: contact?.phone ?? null,
@@ -747,9 +926,13 @@ export async function buildMeetingPrepResponse(
   const payload = await buildMeetingPrepPayload(opts);
   return {
     meetings: payload.meetings,
-    dealsTotal: payload.lifecycleDealsTotal + payload.retentionDealsTotal,
+    dealsTotal:
+      payload.lifecycleDealsTotal +
+      payload.retentionDealsTotal +
+      payload.expansionDealsTotal,
     lifecycleDealsTotal: payload.lifecycleDealsTotal,
     retentionDealsTotal: payload.retentionDealsTotal,
+    expansionDealsTotal: payload.expansionDealsTotal,
     updatedAt: new Date().toISOString(),
     generatedAt: new Date().toISOString(),
   };

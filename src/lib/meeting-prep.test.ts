@@ -2,15 +2,17 @@ import { describe, it, expect } from "vitest";
 import {
   daysSinceIso,
   extractInvoiceState,
+  isExpansionScope,
   isLifecycleScope,
   isMeetingPrepPipeline,
   isRetentionScope,
 } from "./meeting-prep";
 
 describe("isMeetingPrepPipeline", () => {
-  it("matches both lifecycle and retention pipelines", () => {
+  it("matches lifecycle, retention, and expansion pipelines", () => {
     expect(isMeetingPrepPipeline("166333631")).toBe(true);
     expect(isMeetingPrepPipeline("1072518362")).toBe(true);
+    expect(isMeetingPrepPipeline("3687958771")).toBe(true);
   });
   it("rejects unrelated pipelines", () => {
     expect(isMeetingPrepPipeline("81267902")).toBe(false);
@@ -53,6 +55,26 @@ describe("isRetentionScope", () => {
 
   it("rejects Churned even on the retention pipeline", () => {
     expect(isRetentionScope({ pipeline: "1072518362", customer_stage: "Churned" })).toBe(false);
+  });
+});
+
+describe("isExpansionScope", () => {
+  it("matches expansion-pipeline deals across all non-closed-lost stages", () => {
+    expect(isExpansionScope({ pipeline: "3687958771" })).toBe(true);
+    expect(isExpansionScope({ pipeline: "3687958771", dealstage: "5112925390" })).toBe(true); // In Conversation
+    expect(isExpansionScope({ pipeline: "3687958771", dealstage: "5112925394" })).toBe(true); // Closed Won
+  });
+
+  it("rejects deals on other pipelines", () => {
+    expect(isExpansionScope({ pipeline: "166333631" })).toBe(false);
+    expect(isExpansionScope({ pipeline: "1072518362" })).toBe(false);
+    expect(isExpansionScope({})).toBe(false);
+  });
+
+  it("rejects Closed Lost even on the expansion pipeline", () => {
+    expect(
+      isExpansionScope({ pipeline: "3687958771", dealstage: "5112925395" })
+    ).toBe(false);
   });
 });
 

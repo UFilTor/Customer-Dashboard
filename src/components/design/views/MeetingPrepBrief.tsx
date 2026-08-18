@@ -57,10 +57,13 @@ function stepLabel(step: string | null): string {
 // in src/lib/portfolio.ts:mapToPortfolioStage but operates on the runtime
 // shape we already have here (no pipeline-id lookup needed).
 function briefPortfolioStage(
-  pipeline: "lifecycle" | "retention",
+  pipeline: "lifecycle" | "retention" | "expansion",
   customerStage: string
 ): "Onboarding" | "Started" | "Adopted" | "Ramp Up" | "Established" {
   if (pipeline === "lifecycle") return "Onboarding";
+  // Expansion deals don't fit this taxonomy; callers gate the stage chip and
+  // watch-out block off entirely for expansion, so this value never renders.
+  if (pipeline === "expansion") return "Adopted";
   switch (customerStage) {
     case "Adopted":     return "Adopted";
     case "Started":     return "Started";
@@ -278,12 +281,17 @@ export function MeetingPrepBrief({
             <span>{headerOwnerName || "Unassigned"}</span>
             <Dot />
             <span>{countryName(deal.country) || "—"}</span>
-            <Dot />
-            {/* Stage chip mirrors Portfolio's STAGE_BADGE so both dashboards
-                read as one system. Customer-stage substring (the HubSpot raw
-                value) drops here in favour of the 5-stage Portfolio taxonomy
-                because that's the system both views now share. */}
-            <StageChip stage={briefPortfolioStage(deal.pipeline, deal.customerStage)} />
+            {deal.pipeline !== "expansion" && (
+              <>
+                <Dot />
+                {/* Stage chip mirrors Portfolio's STAGE_BADGE so both dashboards
+                    read as one system. Customer-stage substring (the HubSpot raw
+                    value) drops here in favour of the 5-stage Portfolio taxonomy
+                    because that's the system both views now share. Not shown for
+                    expansion deals — they don't fit this taxonomy. */}
+                <StageChip stage={briefPortfolioStage(deal.pipeline, deal.customerStage)} />
+              </>
+            )}
             {(() => {
               const raw = deal.companyProps?.health_score;
               const num = raw != null && raw !== "" ? Number(raw) : null;
@@ -308,6 +316,11 @@ export function MeetingPrepBrief({
                     (expected {deal.expectedDaysInStep}d)
                   </span>
                 )}
+              </span>
+            ) : deal.pipeline === "expansion" ? (
+              <span>
+                {deal.dealName}
+                {deal.expansionStageLabel && ` · ${deal.expansionStageLabel}`}
               </span>
             ) : (
               <span>{fmtTenure(deal.daysLive)}</span>
@@ -371,6 +384,8 @@ export function MeetingPrepBrief({
           <RecapLine recap={recap} loading={recapLoading} />
           {deal.pipeline === "lifecycle" ? (
             <LifecycleBriefBlocks deal={deal} />
+          ) : deal.pipeline === "expansion" ? (
+            <ExpansionBriefBlocks deal={deal} />
           ) : (
             <RetentionBriefBlocks deal={deal} />
           )}
@@ -393,14 +408,16 @@ export function MeetingPrepBrief({
             onToggleExpand={toggleExpanded}
           />
           <SinceLastTouchBlock data={deal.sinceLastTouch} />
-          <div>
-            <SectionHeader>Watch out for</SectionHeader>
-            <WatchOutFor
-              signals={[...deal.watchOuts, ...noteSignals]}
-              stage={briefPortfolioStage(deal.pipeline, deal.customerStage)}
-              taskHref={dealHref ? `${dealHref}&interaction=task` : null}
-            />
-          </div>
+          {deal.pipeline !== "expansion" && (
+            <div>
+              <SectionHeader>Watch out for</SectionHeader>
+              <WatchOutFor
+                signals={[...deal.watchOuts, ...noteSignals]}
+                stage={briefPortfolioStage(deal.pipeline, deal.customerStage)}
+                taskHref={dealHref ? `${dealHref}&interaction=task` : null}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -534,6 +551,24 @@ function RetentionBriefBlocks({ deal }: { deal: MeetingPrepDeal }) {
       <CustomerSection deal={deal} />
       <CommercialSection deal={deal} showFirstBilling={false} />
     </>
+  );
+}
+
+/* ============================================================
+   Expansion brief blocks — lightweight for now (deal name + raw
+   HubSpot stage only). Expansion deals don't carry customer_stage,
+   live dates, or invoice data, so no stage chip / commercial /
+   watch-out sections apply. To be fleshed out later.
+   ============================================================ */
+
+function ExpansionBriefBlocks({ deal }: { deal: MeetingPrepDeal }) {
+  return (
+    <div>
+      <SectionHeader>Expansion deal</SectionHeader>
+      <Row label="Deal">{deal.dealName || "—"}</Row>
+      <Row label="Stage">{deal.expansionStageLabel || "—"}</Row>
+      <CustomerSection deal={deal} />
+    </div>
   );
 }
 

@@ -86,7 +86,7 @@ export function ViewsPill({
       <button onClick={() => setOpen((v) => !v)} style={pillTriggerStyle(false)}>
         <span style={eyebrowStyle}>Views</span>
         <span style={{ whiteSpace: "nowrap", fontWeight: 600 }}>
-          {views.length > 0 ? `${views.length} saved` : "Save…"}
+          {views.length > 0 ? `${views.length} saved` : "None"}
         </span>
         <span className="kbd">⇧V</span>
         <Caret open={open} />

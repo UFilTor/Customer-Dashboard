@@ -259,6 +259,7 @@ export const MEETING_PROPS = [
   "hs_meeting_outcome",
   "hs_activity_type",
   "hubspot_owner_id",
+  "hs_attendee_owner_ids",
 ];
 
 /** hs_activity_type values that mean "this meeting kicks off onboarding". */
@@ -707,9 +708,12 @@ async function fetchMeetingsForDeals(
 }
 
 /**
- * Pulls every meeting owned by the given CS owners that starts in [fromIso, toIso),
- * regardless of which pipeline the associated deal sits in. Lets us catch meetings
- * on sales-pipeline deals (or unassociated meetings) that the deal-first fetch misses.
+ * Pulls every meeting starting in [fromIso, toIso) where a given CS owner is
+ * either the meeting's own engagement owner OR listed as an attendee (e.g. a
+ * Sales/Product/CEO-organized customer meeting that a CS person was invited
+ * to). Regardless of which pipeline the associated deal sits in. Lets us
+ * catch meetings on sales-pipeline deals (or unassociated meetings) that the
+ * deal-first fetch misses.
  */
 export async function fetchUpcomingMeetingsByOwners(
   ownerIds: string[],
@@ -717,31 +721,57 @@ export async function fetchUpcomingMeetingsByOwners(
   toIso: string
 ): Promise<RawObject[]> {
   if (ownerIds.length === 0) return [];
-  const out: RawObject[] = [];
-  let after: string | undefined;
-  do {
-    const body: Record<string, unknown> = {
-      filterGroups: [
-        {
-          filters: [
-            { propertyName: "hubspot_owner_id", operator: "IN", values: ownerIds },
-            { propertyName: "hs_meeting_start_time", operator: "GTE", value: fromIso },
-            { propertyName: "hs_meeting_start_time", operator: "LT", value: toIso },
-          ],
-        },
-      ],
-      properties: MEETING_PROPS,
-      sorts: [{ propertyName: "hs_meeting_start_time", direction: "ASCENDING" }],
-      limit: 200,
-    };
-    if (after) body.after = after;
-    // searchObjectsPage retries 429/5xx and throws on terminal failure so a
-    // transient error can't silently truncate the meeting list into the cache.
-    const page = await searchObjectsPage<RawObject>("meetings", body);
-    out.push(...page.results);
-    after = page.nextAfter;
-  } while (after);
-  return out;
+
+  const timeFilters = [
+    { propertyName: "hs_meeting_start_time", operator: "GTE", value: fromIso },
+    { propertyName: "hs_meeting_start_time", operator: "LT", value: toIso },
+  ];
+
+  const fetchAllPages = async (
+    filters: Record<string, unknown>[]
+  ): Promise<RawObject[]> => {
+    const out: RawObject[] = [];
+    let after: string | undefined;
+    do {
+      const body: Record<string, unknown> = {
+        filterGroups: [{ filters }],
+        properties: MEETING_PROPS,
+        sorts: [{ propertyName: "hs_meeting_start_time", direction: "ASCENDING" }],
+        limit: 200,
+      };
+      if (after) body.after = after;
+      // searchObjectsPage retries 429/5xx and throws on terminal failure so a
+      // transient error can't silently truncate the meeting list into the cache.
+      const page = await searchObjectsPage<RawObject>("meetings", body);
+      out.push(...page.results);
+      after = page.nextAfter;
+    } while (after);
+    return out;
+  };
+
+  // hs_attendee_owner_ids is a multi-checkbox property stored as a
+  // semicolon-delimited string; CONTAINS_TOKEN is HubSpot's documented way to
+  // match a single value inside it. IN doesn't work here (it's an exact-match
+  // operator), so we run one attendee search per owner and merge.
+  const [ownerResults, ...attendeeResultsList] = await Promise.all([
+    fetchAllPages([
+      { propertyName: "hubspot_owner_id", operator: "IN", values: ownerIds },
+      ...timeFilters,
+    ]),
+    ...ownerIds.map((id) =>
+      fetchAllPages([
+        { propertyName: "hs_attendee_owner_ids", operator: "CONTAINS_TOKEN", value: id },
+        ...timeFilters,
+      ])
+    ),
+  ]);
+
+  const byId = new Map<string, RawObject>();
+  for (const m of ownerResults) byId.set(m.id, m);
+  for (const list of attendeeResultsList) {
+    for (const m of list) if (!byId.has(m.id)) byId.set(m.id, m);
+  }
+  return Array.from(byId.values());
 }
 
 async function fetchCallsForDeals(

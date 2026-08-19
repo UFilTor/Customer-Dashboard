@@ -363,14 +363,13 @@ export async function buildMeetingPrepPayload(
     }
     return false;
   };
-  // Optional owner restriction also applies to the deal (mirrors the old
-  // owner-filtered pipeline search).
-  const ownerSet = ownerIds && ownerIds.length > 0 ? new Set(ownerIds) : null;
-  const dealAllowed = (props: Record<string, string> | undefined): boolean => {
-    if (!inScope(props)) return false;
-    if (ownerSet && !ownerSet.has(props?.hubspot_owner_id || "")) return false;
-    return true;
-  };
+  // No deal-owner restriction here: the meeting is already scoped to the
+  // filtered CS person(s) by fetchUpcomingMeetingsByOwners (owner OR
+  // attendee match). A meeting a colleague, Sales, or the CEO organizes with
+  // a CS person on it should surface regardless of who owns the underlying
+  // deal/account.
+  const dealAllowed = (props: Record<string, string> | undefined): boolean =>
+    inScope(props);
 
   const meetingToDeal = new Map<string, string>();
   const surfacedDealIds = new Set<string>();

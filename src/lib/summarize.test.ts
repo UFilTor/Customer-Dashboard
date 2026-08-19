@@ -11,8 +11,8 @@ vi.mock("@anthropic-ai/sdk", () => {
   };
 });
 
-import { buildRecapPrompt, generateRecap } from "@/lib/summarize";
-import type { Engagement } from "@/lib/types";
+import { buildRecapPrompt, generateRecap } from "./summarize";
+import type { Engagement } from "./types";
 
 const { __mockCreate: mockCreate } = await import("@anthropic-ai/sdk") as unknown as { __mockCreate: ReturnType<typeof vi.fn> };
 

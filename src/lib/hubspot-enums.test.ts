@@ -5,7 +5,7 @@ import {
   closestMatch,
   countryName,
   humaniseValue,
-} from "@/lib/hubspot-enums";
+} from "./hubspot-enums";
 
 describe("COUNTRY_CODES", () => {
   it("maps ISO codes to friendly names", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Cache } from "@/lib/cache";
+import { Cache } from "./cache";
 
 describe("Cache", () => {
   beforeEach(() => {

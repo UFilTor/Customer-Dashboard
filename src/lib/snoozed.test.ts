@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { getSnoozed, getSnoozedIds, getSnoozeUntil, snoozeCompany, unsnoozeCompany } from "@/lib/snoozed";
+import { getSnoozed, getSnoozedIds, getSnoozeUntil, snoozeCompany, unsnoozeCompany } from "./snoozed";
 
 const KEY = "ud-v2-snoozed";
 const DAY = 24 * 60 * 60 * 1000;

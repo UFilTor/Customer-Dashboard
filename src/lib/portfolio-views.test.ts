@@ -7,7 +7,7 @@ import {
   saveView,
   setDefaultView,
   type PortfolioViewState,
-} from "@/lib/portfolio-views";
+} from "./portfolio-views";
 
 const KEY = "ud-v2-portfolio-views";
 

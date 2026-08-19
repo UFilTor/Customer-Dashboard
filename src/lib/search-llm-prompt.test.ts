@@ -10,7 +10,7 @@ vi.mock("@anthropic-ai/sdk", () => {
   return { default: MockAnthropic };
 });
 
-import { _buildPromptForTest as buildPrompt } from "@/lib/search-llm";
+import { _buildPromptForTest as buildPrompt } from "./search-llm";
 
 describe("buildPrompt (Lookup)", () => {
   const filter = { kind: "all" } as const;

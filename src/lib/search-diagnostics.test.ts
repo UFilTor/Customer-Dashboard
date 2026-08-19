@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { humaniseSpec, buildDiagnostic } from "@/lib/search-diagnostics";
-import type { SearchSpec } from "@/lib/types";
+import { humaniseSpec, buildDiagnostic } from "./search-diagnostics";
+import type { SearchSpec } from "./types";
 
 const filipId = "1939229547";
 

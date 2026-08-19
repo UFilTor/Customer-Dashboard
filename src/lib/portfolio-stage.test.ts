@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyPortfolioStage } from "@/lib/portfolio";
+import { classifyPortfolioStage } from "./portfolio";
 
 const RETENTION = "1072518362";
 const LIFECYCLE = "166333631";

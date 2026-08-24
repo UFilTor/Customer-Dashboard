@@ -34,17 +34,41 @@ export const COL_SORT_MAP: Partial<Record<string, PortfolioSortKey>> = {
 
 // Column grid for header + rows. Two variants based on `showAvatar`:
 //
-//   STAGE 96 · ACCOUNT clamp · SIGNALS 280 · 1fr spacer · HEALTH 60 · REVENUE 80 · LAST 50 · OWNER 44
-//   STAGE 96 · ACCOUNT clamp · SIGNALS 280 · 1fr spacer · HEALTH 60 · REVENUE 80 · LAST 50
+//   STAGE 96 · ACCOUNT 2fr · SIGNALS 1.6fr · spacer 1fr · HEALTH 60 · REVENUE 80 · LAST 50 · OWNER 44 · ACTIONS 207
+//   STAGE 96 · ACCOUNT 2fr · SIGNALS 1.6fr · spacer 1fr · HEALTH 60 · REVENUE 80 · LAST 50 · ACTIONS 207
 //
-// ACCOUNT is now a clamped column (220px-360px) instead of a 1fr stretch so
-// signals sit close to the account name instead of being pushed to the
-// middle. The leftover slack absorbs into a dedicated 1fr spacer between
-// signals and the right cluster (HEALTH/REVENUE/LAST/OWNER), keeping that
-// cluster pinned to the row's right edge.
-export const COLS_GRID_WITH_OWNER = "96px minmax(220px, 360px) 280px 1fr 60px 80px 50px 44px";
+// The page is fluid (see --page-max), so extra width flows into the content
+// columns instead of empty space: ACCOUNT and SIGNALS absorb slack in a
+// 2 : 1.6 ratio, and the spacer keeps growing at 1fr so the right cluster
+// (HEALTH/REVENUE/LAST/OWNER/ACTIONS) stays visually separated and pinned to
+// the row's right edge. ACTIONS is the QuickActions glyph cluster (6 buttons
+// of 27px + 5 gaps of 5px = 187) plus 20px of leading air separating it from
+// the Last/Owner column (the cluster is justified end within the track). The
+// px minimums reproduce the old fixed-width look at narrow viewports; below
+// ~1180px viewport the row is wider than the page and clips at the right -
+// acceptable for this desktop-first tool where real usage sits at 1280+.
+export const COLS_GRID_WITH_OWNER = "96px minmax(200px, 2fr) minmax(240px, 1.6fr) minmax(24px, 1fr) 60px 80px 50px 44px 207px";
 
-export const COLS_GRID_NO_OWNER   = "96px minmax(220px, 360px) 280px 1fr 60px 80px 50px";
+export const COLS_GRID_NO_OWNER   = "96px minmax(200px, 2fr) minmax(240px, 1.6fr) minmax(24px, 1fr) 60px 80px 50px 207px";
+
+// Compact square icon-button used by the QuickActions cluster (cells.tsx)
+// and the snooze quick action (snooze.tsx). Glyph-only; each control carries
+// its full name via title/aria-label. Lives here (not cells.tsx) so
+// snooze.tsx can use it without a circular cells<->snooze import.
+export const quickActionBtn: CSSProperties = {
+  width: 27,
+  height: 27,
+  flexShrink: 0,
+  borderRadius: 8,
+  border: "1px solid var(--hairline)",
+  background: "var(--card-bg)",
+  color: "var(--moss)",
+  textDecoration: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+};
 
 export const refineInputStyle: CSSProperties = {
   width: 80,

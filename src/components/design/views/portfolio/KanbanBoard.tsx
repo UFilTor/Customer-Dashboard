@@ -4,6 +4,7 @@
 // container (PortfolioContainer.tsx) owns focus state and row grouping;
 // this component just renders KANBAN_COLUMNS.length columns of cards.
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type PortfolioRow } from "@/lib/types";
 import { type KanbanColumn, type KanbanColumnKey } from "@/lib/portfolio-kanban";
 import { fmtEur } from "@/lib/format-design";
@@ -18,6 +19,9 @@ interface KanbanBoardProps {
   showAvatar?: boolean;
   collapsedStages: ReadonlySet<KanbanColumnKey>;
   onToggleCollapsed: (key: KanbanColumnKey) => void;
+  snoozeUntilById: Map<string, number>;
+  onSnooze: (companyId: string, until: number) => void;
+  onUnsnooze: (companyId: string) => void;
 }
 
 // Columns never crush narrower than this: below it a card's ACV/signal
@@ -55,6 +59,9 @@ export function KanbanBoard({
   showAvatar = true,
   collapsedStages,
   onToggleCollapsed,
+  snoozeUntilById,
+  onSnooze,
+  onUnsnooze,
 }: KanbanBoardProps) {
   const minWidth =
     columns.reduce(
@@ -67,15 +74,63 @@ export function KanbanBoard({
     )
     .join(" ");
 
+  // The board is the page's only vertical scroll surface: it fills the
+  // viewport from its own top edge down (minus the 16px bottom gutter its
+  // view wrapper keeps), so the page itself never scrolls and each column
+  // body scrolls internally instead. The top offset is measured from the
+  // real DOM (callback-ref pattern, see AGENTS.md) because banner/toolbar
+  // heights vary; document-relative via scrollY so a pre-scrolled page
+  // measures correctly. Re-measured on window resize.
+  const [boardTop, setBoardTop] = useState(320);
+  const wrapElRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useCallback((el: HTMLDivElement | null) => {
+    wrapElRef.current = el;
+    if (el) setBoardTop(Math.round(el.getBoundingClientRect().top + window.scrollY));
+  }, []);
+  useEffect(() => {
+    // rAF-coalesced: resize fires ~60/s while dragging a window edge and
+    // each measure is a forced layout read.
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
+      const el = wrapElRef.current;
+      if (el) setBoardTop(Math.round(el.getBoundingClientRect().top + window.scrollY));
+    };
+    const schedule = () => {
+      if (raf === 0) raf = requestAnimationFrame(measure);
+    };
+    window.addEventListener("resize", schedule);
+    // Content above the board changes height without a window resize: the
+    // banner rewrapping on filter change, the refresh-failed notice
+    // appearing, toolbar pills wrapping after a snooze, display fonts
+    // swapping in. Any of those changes the body's content height, so a
+    // body ResizeObserver catches them all and keeps boardTop fresh.
+    const ro = new ResizeObserver(schedule);
+    ro.observe(document.body);
+    return () => {
+      window.removeEventListener("resize", schedule);
+      ro.disconnect();
+      if (raf !== 0) cancelAnimationFrame(raf);
+    };
+  }, []);
+
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div
+      ref={measureRef}
+      style={{
+        overflowX: "auto",
+        // max() keeps the board usable on very short windows.
+        height: `max(320px, calc(100vh - ${boardTop}px - 16px))`,
+      }}
+    >
       <div
         style={{
           display: "grid",
           gridTemplateColumns,
           gap: COLUMN_GAP,
-          alignItems: "start",
+          alignItems: "stretch",
           minWidth,
+          height: "100%",
         }}
       >
         {columns.map((col, columnIdx) => {
@@ -235,7 +290,10 @@ export function KanbanBoard({
                   gap: 8,
                   padding: 10,
                   overflowY: "auto",
-                  maxHeight: "calc(100vh - 320px)",
+                  // Fill the stretched column and scroll internally; minHeight 0
+                  // lets the flex child actually shrink below its content size.
+                  flex: 1,
+                  minHeight: 0,
                 }}
               >
                 {col.rows.length === 0 ? (
@@ -255,6 +313,9 @@ export function KanbanBoard({
                         showAvatar={showAvatar}
                         flatIndex={flatIndex}
                         onClick={onCardClick}
+                        snoozedUntil={snoozeUntilById.get(row.id) ?? null}
+                        onSnooze={onSnooze}
+                        onUnsnooze={onUnsnooze}
                       />
                     );
                   })

@@ -81,6 +81,10 @@ export function ColumnHeaders({
       {showAvatar && (
         <span role="columnheader" style={{ ...eyebrowStyle, justifySelf: "end" }}>Owner</span>
       )}
+      {/* Quick-actions column: no visible label (the glyph cluster is
+          self-explanatory), but the columnheader still needs an accessible
+          name for AT users navigating by column. */}
+      <span role="columnheader" aria-label="Quick actions" />
     </div>
   );
 }

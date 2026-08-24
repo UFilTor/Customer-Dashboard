@@ -95,8 +95,8 @@ export function SearchView({
         }
       />
 
-      <div style={{ padding: "20px 28px 60px" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <div className="page-gutter" style={{ paddingTop: 20, paddingBottom: 60 }}>
+        <div className="page-max">
         {/* REFINEMENT BREADCRUMB — clickable chips that rewind the chain */}
         {hasChain && (
           <div

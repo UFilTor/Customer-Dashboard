@@ -4,8 +4,119 @@
 // The container (PortfolioContainer.tsx) still owns all state; these
 // components receive everything through props exactly as before.
 
+import { useState } from "react";
 import { type PortfolioRow } from "@/lib/types";
 import { signalStyle, pillText, calmCopy } from "@/lib/signal-display";
+import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
+import { Icon } from "../../Icon";
+import { quickActionBtn } from "./chrome";
+import { SnoozeControl } from "./snooze";
+
+// ---------- Quick actions (shared by KanbanCard + table rows) ----------
+
+// Clipboard copy with a citrus background flash as confirmation. Icon.Check
+// is already the glyph for the "Create task" action on this same row, so an
+// icon swap would put two identical checkmarks side by side for 1.5s - the
+// background flash confirms without that collision and keeps the button's
+// footprint fixed so the row never reflows. Mailto fallback if the clipboard
+// API is unavailable.
+function CopyEmailButton({ email }: { email: string | null }) {
+  const [copied, setCopied] = useState(false);
+  if (!email) return null;
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      window.location.href = `mailto:${email}`;
+    }
+  };
+  const label = copied ? `Copied ${email}` : `Copy ${email}`;
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      title={label}
+      aria-label={label}
+      style={{ ...quickActionBtn, background: copied ? "var(--citrus)" : "var(--card-bg)" }}
+    >
+      <Icon.Mail size={13} />
+    </button>
+  );
+}
+
+// The six CTA controls: copy email, create task, schedule meeting, make
+// call, open in HubSpot, snooze. Callers own the layout wrapper (and must
+// stop click/keydown propagation when the surrounding row/card is itself
+// clickable - see KanbanCard.tsx and PortfolioRow.tsx).
+export function QuickActions({
+  row,
+  snoozedUntil,
+  onSnooze,
+  onUnsnooze,
+}: {
+  row: PortfolioRow;
+  snoozedUntil: number | null;
+  onSnooze: (companyId: string, until: number) => void;
+  onUnsnooze: (companyId: string) => void;
+}) {
+  return (
+    <>
+      <CopyEmailButton email={row.contactEmail} />
+      {row.dealId && (
+        <>
+          <a
+            href={`${hubspotDealUrl(row.dealId) ?? "#"}&interaction=task`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Create task"
+            aria-label="Create task"
+            style={quickActionBtn}
+          >
+            <Icon.Check size={13} />
+          </a>
+          <a
+            href={`${hubspotDealUrl(row.dealId) ?? "#"}&interaction=schedule`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Schedule meeting"
+            aria-label="Schedule meeting"
+            style={quickActionBtn}
+          >
+            <Icon.Calendar size={13} />
+          </a>
+          <a
+            href={`${hubspotDealUrl(row.dealId) ?? "#"}&interaction=call`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Make call"
+            aria-label="Make call"
+            style={quickActionBtn}
+          >
+            <Icon.Phone size={13} />
+          </a>
+        </>
+      )}
+      <a
+        href={hubspotCompanyUrl(row.id) ?? "#"}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open in HubSpot"
+        aria-label="Open in HubSpot"
+        style={quickActionBtn}
+      >
+        <Icon.External size={13} />
+      </a>
+      <SnoozeControl
+        row={row}
+        snoozedUntil={snoozedUntil}
+        onSnooze={onSnooze}
+        onUnsnooze={onUnsnooze}
+      />
+    </>
+  );
+}
 
 // Stage colours the "no signals" state: an Onboarding row with nothing flagged
 // reads differently from an Established row with nothing flagged. Glyph stays
@@ -87,7 +198,11 @@ export function SignalPill({
         whiteSpace: "nowrap",
         overflow: "hidden",
         textOverflow: "ellipsis",
-        maxWidth: 180,
+        maxWidth: 260,
+        // As a flex item the default min-width:auto blocks shrinking, so a
+        // long pill would hard-clip at the signals track edge instead of
+        // ellipsizing when the column sits at its minmax minimum.
+        minWidth: 0,
         display: "inline-block",
         lineHeight: 1.4,
       }}

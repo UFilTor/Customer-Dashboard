@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DASHBOARDS } from "@/components/design/VariantPicker";
 
 interface Props {
   isOpen: boolean;
@@ -45,15 +46,14 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
     ],
   });
 
+  // Derived from DASHBOARDS so hidden dashboards drop out of the sheet (and
+  // reappear when un-hidden) together with their chord.
   out.push({
     heading: "Switch dashboard",
-    rows: [
-      { label: "Portfolio", keys: "G then P" },
-      { label: "Meeting prep", keys: "G then M" },
-      { label: "Lookup", keys: "G then L" },
-      { label: "Understory Pay Migration", keys: "G then U" },
-      { label: "Bloom", keys: "G then B" },
-    ],
+    rows: DASHBOARDS.filter((d) => !d.hidden).map((d) => ({
+      label: d.label,
+      keys: `G then ${d.chord.toUpperCase()}`,
+    })),
   });
 
   if (ctx.hasSelectedCompany) {

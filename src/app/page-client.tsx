@@ -639,23 +639,16 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       if (goActive) {
         const k = e.key.toLowerCase();
         goPrefixRef.current = null;
-        const dashMap: Record<string, DashboardKey | undefined> = {
-          p: "portfolio",
-          s: "status",
-          m: "meeting_prep",
-          u: "pay_migration",
-          b: "bloom",
-          l: "search",
-        };
-        const target = dashMap[k];
-        if (target) {
+        // Chord letters live on DASHBOARDS itself; hidden dashboards keep
+        // their route but lose the chord until they're un-hidden.
+        const dash = DASHBOARDS.find((d) => d.chord === k && !d.hidden);
+        if (dash) {
           e.preventDefault();
           window.dispatchEvent(new Event("ud-dashboard-picker-close"));
-          const dash = DASHBOARDS.find((d) => d.key === target);
-          if (dash?.available) {
-            setDashboard(target);
+          if (dash.available) {
+            setDashboard(dash.key);
           } else {
-            showToast(`${dash?.label ?? target}: coming soon`);
+            showToast(`${dash.label}: coming soon`);
           }
           return;
         }
@@ -845,6 +838,11 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       }
       if (inListView && e.key === "Enter") {
         if (portfolioPopupActive) return;
+        // A Tab-focused control owns its Enter press: quick-action buttons/
+        // links in Portfolio rows and cards (and the role="button" rows
+        // themselves) must activate natively instead of this capture-phase
+        // handler preventDefault-ing and opening the arrow-focused row.
+        if (target?.closest?.("a, button, [role='button']")) return;
         e.preventDefault();
         window.dispatchEvent(new Event("ud-list-open"));
         return;
@@ -1228,7 +1226,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
 
 function ListLoading() {
   return (
-    <div className="animate-pulse" style={{ padding: "32px 28px", maxWidth: 1080, margin: "0 auto" }}>
+    <div className="animate-pulse page-shell" style={{ paddingTop: 32, paddingBottom: 32 }}>
       <div style={{ height: 200, background: "var(--hairline)", borderRadius: 20, marginBottom: 28 }} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 32 }}>
         {[0, 1, 2, 3].map((i) => (
@@ -1247,7 +1245,7 @@ function ListLoading() {
 
 function DetailLoading() {
   return (
-    <div className="animate-pulse" style={{ padding: "28px 32px", maxWidth: 1200, margin: "0 auto" }}>
+    <div className="animate-pulse page-shell" style={{ paddingTop: 28, paddingBottom: 28 }}>
       <div style={{ height: 56, width: "40%", background: "var(--hairline)", borderRadius: 8, marginBottom: 18 }} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10, marginBottom: 18 }}>
         {[0, 1, 2, 3, 4].map((i) => (

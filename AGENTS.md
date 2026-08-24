@@ -13,6 +13,8 @@ These are non-obvious conventions and footguns we've run into while working on t
 - **Prefer batch associations over `/deals/search`.** The `crm/v3/objects/deals/search` endpoint with `associatedWith` filters is fundamentally slow (1-3s/page, sequential pagination). Use `crm/v4/associations/{from}/{to}/batch/read` instead — ~100ms per parallel batch of 100 IDs. See `fetchSalesDealsForCompanies` (was 27s with search → 0.6s after switch) and `fetchZeroEventDealIds` (11s → 1.9s).
 - **Always pass a `sorts` clause** when calling search endpoints. Without it pagination silently truncates after a few pages and the results get cached for 15 min. Canonical retry helper: `searchDealsPage` in `src/lib/pay-migration.ts`.
 - **Parallelize independent batches.** Outer batch loops over IDs (typically 80-100 per HubSpot call) should run via `Promise.all`. Inner pagination has to stay sequential because `next-cursor` is opaque.
+- **No next-activity-type property exists.** Derive the type from `hs_notes_next_activity` object coordinates: the `<objectTypeId>-` prefix maps `0-27` Task, `0-47` Meeting, `0-48` Call, `0-49` Email, `0-46` Note (see `nextActivityTypeLabel` in `src/lib/portfolio.ts`).
+- **Auto-calculated HubSpot properties are computed independently and can disagree.** Example that produced a real bug: `hs_notes_next_activity` can report type "Meeting" while `hs_next_meeting_start_time` is empty. Never build logic that assumes two calculated properties are consistent; handle the disagreeing case explicitly.
 
 ## Caching
 
@@ -20,6 +22,7 @@ These are non-obvious conventions and footguns we've run into while working on t
 - Cache keys include the filter scope (e.g. `onboarding:${ownerIds}`) so different filter views get their own window. Bounded LRU at 64 keys to prevent unbounded growth from unknown ownerIds.
 - API routes also send `Cache-Control: s-maxage=840, stale-while-revalidate=60` so Vercel's edge CDN caches identical responses for 14 min.
 - A Vercel cron at `*/14 * * * *` (`/api/cron/warm`, gated by `CRON_SECRET`) refreshes all three main routes proactively so users almost never see cold builds.
+- **New payload fields must tolerate `undefined` in client code.** The edge cache means that for up to 14 min after a deploy, the new client can receive pre-deploy cached payloads that lack newly added fields, even when the TS type says the field is required. Normalize with `?? null` / `== null` in every derivation that consumes a new field, or the UI renders literals like "Next: undefined" during the window. This shipped-adjacent bug was caught twice in review; write the undefined-tolerance test alongside the field.
 
 ## Cross-call shared state
 
@@ -66,10 +69,12 @@ These are non-obvious conventions and footguns we've run into while working on t
 
 Clickable list rows get keyboard/AT access one of two ways depending on the markup:
 
-- **Row is a styled `<div>`/grid, not real table markup** (e.g. `PortfolioView.tsx`): make the row itself a real `<button>`. Real button semantics, zero extra ARIA.
-- **Row is a real `<table><tr>`** (e.g. `PayMigrationView.tsx`): a `<button>` can't legally nest inside a `<tr>`. Use `role="button"` + `tabIndex={0}` + a manual Enter/Space `onKeyDown` handler instead — see `clickableRowProps()` in `PayMigrationView.tsx`. Skip it (return `{}`) when the row has no click handler (e.g. a stage-change row with no matching deal), so non-actionable rows don't become dead tab stops.
+- **Row is a styled `<div>`/grid with no interactive children**: make the row itself a real `<button>`. Real button semantics, zero extra ARIA.
+- **Row contains interactive controls, or is a real `<table><tr>`** (e.g. `PortfolioRow.tsx` with its QuickActions cluster, `KanbanCard.tsx`, `PayMigrationView.tsx` rows): a `<button>`/`<a>` can't legally nest inside a `<button>` (nor inside a `<tr>`). Use `role="button"` + `tabIndex={0}` + a manual Enter/Space `onKeyDown` handler instead — see `clickableRowProps()` in `PayMigrationView.tsx`. Skip it (return `{}`) when the row has no click handler, so non-actionable rows don't become dead tab stops. Known tradeoff: ARIA treats `role="button"` children as presentational, so nested controls are Tab-reachable but announced without row context by some AT.
 
 Either way, the focus ring is already covered: `globals.css`'s `:focus-visible` rule includes `[role="button"]` alongside `button, a, input, select`, so a `role="button"` row gets the same visible ring for free.
+
+Nested controls also need two guards: stop click/keydown propagation on the controls' wrapper so activating one never triggers the row's own open handler, and keep the page-level capture keydown handler (page-client.tsx) yielding Enter to any focused `a`/`button`/`[role="button"]` target so native activation wins over list-open.
 
 ## Sticky scroll-shadow pattern
 
@@ -106,6 +111,11 @@ Fires the exact frame the strip pins, no scroll listener, no rAF. Pattern lives 
 - `src/lib/search-llm.ts` (`ENTITY_FIELDS`) and `src/lib/search.ts` (`ENTITY_FIELDS` Set) must stay in sync — the prompt presents the allowlist to the LLM, the runtime validates against it. Adding a new HubSpot property means editing both.
 - **Pseudo-fields** (currently only `outstanding_amount_eur`) are validated like real fields but stripped from the HubSpot request and applied as in-memory post-filters (`matchesPseudoFilter` in `search.ts`). The runtime ensures their dependencies are returned (`outstanding_amount` + `deal_currency_code` are always in the deal `SEARCH_RETURN_PROPS`). Use this pattern for any cross-currency or computed threshold the user asks for in a unit HubSpot doesn't natively store.
 - **No cross-entity intersection.** Each `target` is its own HubSpot search; the runtime doesn't AND-combine results across targets. `customer_stage` (deal-only) and `health_score` (company-only) cannot co-filter. The prompt includes a field-to-entity routing rule and an example that drops the weaker qualifier rather than misroutes it.
+
+## Dashboard container lifecycle
+
+- **Opening a company detail unmounts the active dashboard container.** page-client renders the detail node INSTEAD of the dashboard body, so all container state (selected signals, refine, sort, page, focus) resets when the user closes the detail. Meeting Prep deliberately works around this by keeping its container mounted inside a `display: none` wrapper while the detail renders on top (see the comment in page-client). If a dashboard's state must survive a detail round-trip, copy that keep-mounted pattern; do not try to persist individual state slots.
+- **Never thread a subview toggle into ViewTransition's key.** A key change there remounts the entire container: state wipe, skeleton flash, and a full API refetch. This shipped as a Critical review finding once. Animate subview swaps INSIDE the container by keying a wrapper around only the presentational branch, e.g. `PortfolioContainer`'s `<div key={view} className="view-fade">` around the table/board ternary. Container state lives above the keyed node and survives.
 
 ## URL state pattern
 

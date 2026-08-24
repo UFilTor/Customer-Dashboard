@@ -309,8 +309,8 @@ function MeetingsPanel({
         }
       />
 
-      <div style={{ padding: "0 28px 60px" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <div className="page-gutter" style={{ paddingBottom: 60 }}>
+        <div className="page-max">
         {/* Sticky day-selector now leads the page (was below the KPI strip).
             Moving it to the top means a returning user lands directly on the
             day they last navigated to, no scroll-past required. */}

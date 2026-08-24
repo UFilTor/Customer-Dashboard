@@ -4,13 +4,13 @@
 // The container (PortfolioContainer.tsx) still owns all state; these
 // components receive everything through props exactly as before.
 
-import { memo } from "react";
+import { memo, type KeyboardEvent, type MouseEvent } from "react";
 import { type PortfolioRow } from "@/lib/types";
 import { OWNER_MAP } from "@/lib/owners";
 import { Avatar } from "../../Avatar";
-import { CalmGlyph, DealStatusTag, SignalPill } from "./cells";
+import { CalmGlyph, DealStatusTag, QuickActions, SignalPill } from "./cells";
 import { COLS_GRID_NO_OWNER, COLS_GRID_WITH_OWNER, STAGE_BADGE, formatNum } from "./chrome";
-import { SnoozeControl, SnoozedTag } from "./snooze";
+import { SnoozedTag } from "./snooze";
 
 // Wrapped in React.memo because Portfolio renders this hundreds of times.
 // `onSelect` is taken as a stable callback (parent useCallbacks it) so the
@@ -91,14 +91,32 @@ export const Row = memo(function Row({
   const owner = row.ownerId ? OWNER_MAP[row.ownerId] : null;
   const ownerForAvatar = owner ?? (row.ownerName ? { name: row.ownerName } : null);
 
+  // The row holds real <button>/<a> quick-action controls now, and those
+  // can't legally nest inside a <button>. Same pattern as KanbanCard.tsx and
+  // clickableRowProps() in PayMigrationView.tsx: a role="button" div with a
+  // manual Enter/Space handler. globals.css's :focus-visible already covers
+  // [role="button"], so the focus ring is unchanged.
+  const onRowKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onSelect(row);
+    }
+  };
+
+  // The quick-action cell's own buttons/links must not trigger the row's
+  // click-to-open behavior. Stopping propagation once on the cell covers
+  // both mouse clicks and Enter/Space presses.
+  const stopRowPropagation = {
+    onClick: (e: MouseEvent<HTMLDivElement>) => e.stopPropagation(),
+    onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => e.stopPropagation(),
+  };
+
   return (
-    // Wrapper div, not part of the row button: a <button> can't nest inside a
-    // <button>, so the snooze control overlays as a sibling (revealed on
-    // hover / focus-within via .pf-row-wrap in globals.css).
-    <div className="pf-row-wrap" style={{ position: "relative" }}>
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(row)}
+      onKeyDown={onRowKeyDown}
       aria-label={rowAriaLabel}
       className={`pf-row${focused ? " focused" : ""}`}
       style={{
@@ -109,7 +127,6 @@ export const Row = memo(function Row({
         alignItems: "center",
         width: "100%",
         padding: "12px 18px",
-        border: "none",
         borderBottom: isLast ? "none" : "1px solid var(--hairline)",
         background: "transparent",
         color: "inherit",
@@ -277,13 +294,21 @@ export const Row = memo(function Row({
           <Avatar owner={ownerForAvatar} size={22} />
         </span>
       )}
-    </button>
-    <SnoozeControl
-      row={row}
-      snoozedUntil={snoozedUntil}
-      onSnooze={onSnooze}
-      onUnsnooze={onUnsnooze}
-    />
+
+      {/* Quick actions - same glyph cluster as the kanban card (QuickActions
+          in cells.tsx). Right-aligned so a shorter cluster (no email / no
+          deal) still hugs the row's right edge. */}
+      <div
+        style={{ display: "inline-flex", gap: 5, justifySelf: "end" }}
+        {...stopRowPropagation}
+      >
+        <QuickActions
+          row={row}
+          snoozedUntil={snoozedUntil}
+          onSnooze={onSnooze}
+          onUnsnooze={onUnsnooze}
+        />
+      </div>
     </div>
   );
 });

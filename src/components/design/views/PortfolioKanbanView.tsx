@@ -41,6 +41,9 @@ interface Props {
   toggleStatus: (s: keyof PortfolioShownStatuses) => void;
 
   snoozedCount: number;
+  snoozeUntilById: Map<string, number>;
+  onSnoozeCompany: (companyId: string, until: number) => void;
+  onUnsnoozeCompany: (companyId: string) => void;
 
   currentViewState: PortfolioViewState;
   onApplyView: (state: PortfolioViewState) => void;
@@ -123,8 +126,11 @@ export function PortfolioKanbanView(props: Props) {
         toggleSignal={props.toggleSignal}
       />
 
-      <div style={{ padding: "0 28px 60px" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+      {/* 16px bottom (not the usual 60) because the board sizes itself to
+          fill the viewport exactly (see KanbanBoard.tsx) - the page must not
+          scroll; each column scrolls internally instead. */}
+      <div className="page-gutter" style={{ paddingBottom: 16 }}>
+        <div className="page-max">
           <div ref={sentinelRef} aria-hidden="true" style={{ height: 1, marginBottom: -1 }} />
           <div className={`pf-sticky${scrolled ? " scrolled" : ""}`}>
             <Toolbar
@@ -165,6 +171,9 @@ export function PortfolioKanbanView(props: Props) {
               showAvatar={showAvatar}
               collapsedStages={props.collapsedStages}
               onToggleCollapsed={props.toggleColumnCollapsed}
+              snoozeUntilById={props.snoozeUntilById}
+              onSnooze={props.onSnoozeCompany}
+              onUnsnooze={props.onUnsnoozeCompany}
             />
           </div>
         </div>

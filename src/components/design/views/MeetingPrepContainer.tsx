@@ -244,14 +244,15 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
   if (isFirstLoading && !data) {
     return (
       <div
-        className="animate-pulse"
+        className="animate-pulse page-gutter"
         style={{
           background: "var(--beige-new)",
           minHeight: "calc(100vh - 120px)",
-          padding: "32px 28px",
+          paddingTop: 32,
+          paddingBottom: 32,
         }}
       >
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        <div className="page-max">
           <div style={{ height: 200, background: "var(--hairline)", borderRadius: 20, marginBottom: 28 }} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 32 }}>
             {[0, 1, 2, 3].map((i) => (

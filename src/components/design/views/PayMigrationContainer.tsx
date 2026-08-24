@@ -81,10 +81,10 @@ export function PayMigrationContainer({ payFilter, onSelectCompany }: Props) {
   if (isLoading) {
     return (
       <div
-        className="animate-pulse"
-        style={{ background: "var(--beige-new)", minHeight: "calc(100vh - 120px)", padding: "32px 28px" }}
+        className="animate-pulse page-gutter"
+        style={{ background: "var(--beige-new)", minHeight: "calc(100vh - 120px)", paddingTop: 32, paddingBottom: 32 }}
       >
-        <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <div className="page-max">
           <div style={{ height: 60, width: "40%", background: "var(--hairline)", borderRadius: 8, marginBottom: 24 }} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 12, marginBottom: 32 }}>
             {[0, 1, 2, 3, 4].map((i) => (

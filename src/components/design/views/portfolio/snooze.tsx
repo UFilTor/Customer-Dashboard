@@ -8,7 +8,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type PortfolioRow } from "@/lib/types";
 import { DatePopover } from "../../DatePopover";
-import { eyebrowStyle } from "./chrome";
+import { Icon } from "../../Icon";
+import { eyebrowStyle, quickActionBtn } from "./chrome";
 
 const SNOOZE_PRESETS: Array<{ label: string; days: number }> = [
   { label: "1 day", days: 1 },
@@ -38,10 +39,10 @@ function untilFromDate(value: string): number | null {
   return Number.isFinite(until) && until > Date.now() ? until : null;
 }
 
-// Hover/focus-revealed control overlaying the row's right edge. Snoozing
-// hides the company from Portfolio until the chosen date (the Status pill can
-// toggle snoozed rows back in). The menu portals to <body> because the rows
-// container clips overflow.
+// Snooze quick action: a glyph button in the QuickActions cluster (table
+// rows and kanban cards). Snoozing hides the company from Portfolio until
+// the chosen date (the Status pill can toggle snoozed rows back in). The
+// menu portals to <body> because the rows/columns containers clip overflow.
 export function SnoozeControl({
   row,
   snoozedUntil,
@@ -99,11 +100,22 @@ export function SnoozeControl({
     };
   }, [open]);
 
-  // Yield the page-level row-nav shortcuts while the menu is open.
+  // Yield the page-level row-nav shortcuts while the menu is open. The
+  // cleanup matters: picking a preset snoozes the row, which filters it out
+  // and unmounts this control while the menu is still open - without the
+  // false dispatch, page-client's popup flag would stay stuck and kill
+  // arrow/Enter list navigation across all of Portfolio.
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("ud-portfolio-popup-state", { detail: open })
     );
+    return () => {
+      if (open) {
+        window.dispatchEvent(
+          new CustomEvent("ud-portfolio-popup-state", { detail: false })
+        );
+      }
+    };
   }, [open]);
 
   function snoozeDays(days: number) {
@@ -122,15 +134,16 @@ export function SnoozeControl({
   }
 
   if (snoozedUntil != null) {
+    // Citrus fill marks the active snooze; clicking wakes the company up.
     return (
       <button
         type="button"
-        className="pf-row-snooze"
         onClick={() => onUnsnooze(row.id)}
         title={`Snoozed until ${fmtSnoozeDate(snoozedUntil)} — click to unsnooze`}
         aria-label={`Unsnooze ${row.name} (snoozed until ${fmtSnoozeDate(snoozedUntil)})`}
+        style={{ ...quickActionBtn, background: "var(--citrus)" }}
       >
-        Unsnooze
+        <Icon.Moon size={13} />
       </button>
     );
   }
@@ -140,13 +153,13 @@ export function SnoozeControl({
       <button
         ref={triggerRef}
         type="button"
-        className="pf-row-snooze"
         onClick={() => setOpen((v) => !v)}
         title={`Snooze ${row.name}`}
         aria-label={`Snooze ${row.name}`}
         aria-expanded={open}
+        style={quickActionBtn}
       >
-        Snooze
+        <Icon.Moon size={13} />
       </button>
       {open &&
         pos &&

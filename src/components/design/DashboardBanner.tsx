@@ -10,22 +10,17 @@ interface DashboardBannerProps {
   eyebrow: string;
   headline: ReactNode;
   detail?: ReactNode;
-  // Matches the dashboard's content max-width so the banner aligns with the
-  // surface beneath it (Portfolio + Meeting Prep at 1200, Pay Migration at
-  // 1280, Lookup at 1080). Defaults to 1200.
-  maxWidth?: number;
 }
 
-export function DashboardBanner({ eyebrow, headline, detail, maxWidth = 1200 }: DashboardBannerProps) {
+export function DashboardBanner({ eyebrow, headline, detail }: DashboardBannerProps) {
   const dateStr = useDateLabel();
   const greeting = useGreeting();
 
   return (
-    <div style={{ padding: "20px 28px 0" }}>
+    <div className="page-gutter" style={{ paddingTop: 20 }}>
       <div
+        className="page-max"
         style={{
-          maxWidth,
-          margin: "0 auto",
           background: "var(--moss)",
           color: "var(--page-bg)",
           borderRadius: 18,

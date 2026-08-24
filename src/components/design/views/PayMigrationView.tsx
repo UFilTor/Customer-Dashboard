@@ -138,7 +138,6 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
     >
       <DashboardBanner
         eyebrow="Pay migration"
-        maxWidth={1280}
         headline={
           <>
             Moving {topline.deals.length} {topline.deals.length === 1 ? "deal" : "deals"} to Understory Pay.
@@ -161,8 +160,8 @@ export const PayMigrationView = memo(function PayMigrationViewImpl({ data, payFi
         }
       />
 
-      <div style={{ padding: "20px 28px 60px" }}>
-        <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+      <div className="page-gutter" style={{ paddingTop: 20, paddingBottom: 60 }}>
+        <div className="page-max">
         {/* KPI CARDS */}
         <Stagger
           delay={70}
@@ -891,6 +890,10 @@ function PathCard({
           the table scrolls horizontally instead of illegibly compressing. */}
       <div style={{ overflowX: "auto" }}>
       <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", tableLayout: "fixed" }}>
+        {/* Fluid page: the Customer column (no width) absorbs all extra
+            width. CSS max()/calc() in <col> width is ignored under
+            tableLayout: fixed (Chrome treats it as auto), so keep plain px
+            for the label columns. */}
         <colgroup>
           <col style={{ width: 28 }} />
           <col style={{ minWidth: 160 }} />

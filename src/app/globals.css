@@ -134,6 +134,14 @@
   --font-display: var(--font-oswald), 'National 2 Condensed', Impact, sans-serif;
   --font-editorial: var(--font-fraunces), 'PP Editorial New', Georgia, serif;
   --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  /* Fluid page shell. Content fills the viewport up to --page-max, then
+     centers. 2512 = a 2560px external monitor minus 2x the 24px gutter, so
+     both MacBooks and QHD externals are filled edge-to-edge; only ultrawide
+     (3440+) screens get centered content. Tune the whole app's width here,
+     not per view. */
+  --page-max: 2512px;
+  --page-gutter: 24px;
 }
 
 @theme inline {
@@ -292,34 +300,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    feel consistent across Portfolio, Briefing, Onboarding, and Pay views. */
 .pf-row:hover { background: var(--light-grey); }
 .pf-row.focused { background: var(--beige-new); box-shadow: inset 3px 0 0 var(--moss); }
-
-/* Row snooze control: hidden until the row is hovered or anything inside the
-   wrapper has focus (so keyboard users reach it by tabbing). Solid card
-   background because it overlays the row's numeric cluster. */
-.pf-row-snooze {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
-  opacity: 0;
-  pointer-events: none;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: var(--card-bg);
-  border: 1px solid var(--hairline-strong);
-  color: var(--moss);
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: opacity 120ms var(--ease-out);
-}
-.pf-row-wrap:hover .pf-row-snooze,
-.pf-row-wrap:focus-within .pf-row-snooze {
-  opacity: 1;
-  pointer-events: auto;
-}
-.pf-row-snooze:hover { background: var(--beige-new); }
 
 .pf-sticky { position: sticky; top: 0; z-index: 30; background: var(--page-bg); transition: box-shadow 160ms var(--ease-out); }
 /* Once the page scrolls, the sticky strip otherwise butts flush against the
@@ -505,8 +485,35 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 16px;
-  padding: 10px 20px;
+  padding: 10px var(--page-gutter);
   border-bottom: 1px solid var(--hairline-strong);
+}
+
+/* Fluid page shell (see --page-max/--page-gutter in :root). Every dashboard
+   view wraps its content in an outer .page-gutter div (full-bleed background,
+   vertical padding stays inline per view as paddingTop/Bottom longhands) and
+   an inner .page-max div. A single view can opt back into a fixed width by
+   putting maxWidth back inline on its .page-max div (inline beats class). */
+.page-gutter {
+  padding-left: var(--page-gutter);
+  padding-right: var(--page-gutter);
+}
+.page-max {
+  max-width: var(--page-max);
+  margin-left: auto;
+  margin-right: auto;
+}
+/* Single-element variant for wrappers that can't nest the two divs (some
+   skeletons, CompanyDetail's root). The gutter padding is added on top of
+   --page-max so the content box matches the nested pattern exactly; without
+   the calc, border-box sizing would make these render 48px narrower than
+   the views they stand in for. */
+.page-shell {
+  max-width: calc(var(--page-max) + 2 * var(--page-gutter));
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--page-gutter);
+  padding-right: var(--page-gutter);
 }
 
 .topbar-search-wrap {

@@ -271,8 +271,8 @@ export function PortfolioView(props: Props) {
         toggleSignal={props.toggleSignal}
       />
 
-      <div style={{ padding: "0 28px 60px" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <div className="page-gutter" style={{ paddingBottom: 60 }}>
+        <div className="page-max">
           <div ref={sentinelRef} aria-hidden="true" style={{ height: 1, marginBottom: -1 }} />
           {/* The ColumnHeaders/Row components already author role="columnheader"
               and role="row" on the header, but had no role="table"/"grid"

@@ -29,7 +29,6 @@ export function Banner({
     return (
       <DashboardBanner
         eyebrow={eyebrow}
-        maxWidth={1200}
         headline={<>No accounts in scope.</>}
         detail={<>Try a different filter to widen the search.</>}
       />
@@ -66,7 +65,6 @@ export function Banner({
   return (
     <DashboardBanner
       eyebrow={eyebrow}
-      maxWidth={1200}
       headline={
         <>
           {totalRows} {totalRows === 1 ? "customer" : "customers"}

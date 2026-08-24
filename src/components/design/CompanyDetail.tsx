@@ -216,17 +216,19 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
   }, [company, deal]);
 
   const wrapperStyle: React.CSSProperties = embedded
-    ? { padding: "0", margin: 0, background: "transparent" }
+    ? { paddingTop: 0, paddingBottom: 0, margin: 0, background: "transparent" }
     : {
-        padding: "28px 32px",
-        maxWidth: 1200,
-        margin: "0 auto",
+        paddingTop: 28,
+        paddingBottom: 28,
         background: "var(--beige-new)",
         minHeight: "calc(100vh - 120px)",
       };
 
   return (
-    <div className="animate-fadeIn" style={wrapperStyle}>
+    <div
+      className={embedded ? "animate-fadeIn" : "animate-fadeIn page-shell"}
+      style={wrapperStyle}
+    >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
           {stageLabel && (

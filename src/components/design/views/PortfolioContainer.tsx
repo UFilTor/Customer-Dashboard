@@ -25,6 +25,7 @@ import { announce } from "@/lib/live-announcer";
 import { groupByStage, flattenBoard, flattenBoardOffsets, type KanbanColumn, type KanbanColumnKey } from "@/lib/portfolio-kanban";
 import { PortfolioKanbanView } from "./PortfolioKanbanView";
 import { PortfolioView } from "./PortfolioView";
+import { COLS_GRID_WITH_OWNER } from "./portfolio/chrome";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Pagination size. Default 50 rows per page — large enough that scrolling
@@ -786,6 +787,9 @@ export function PortfolioContainer({
             setShownStatuses((prev) => ({ ...prev, [s]: !prev[s] }))
           }
           snoozedCount={snoozedCount}
+          snoozeUntilById={snoozeUntilById}
+          onSnoozeCompany={onSnoozeCompany}
+          onUnsnoozeCompany={onUnsnoozeCompany}
           currentViewState={currentViewState}
           onApplyView={applyView}
           portfolioValueEur={portfolioValueEur}
@@ -866,12 +870,10 @@ function PortfolioSkeleton() {
   // already in globals.css.
   return (
     <div style={{ background: "var(--page-bg)", minHeight: "calc(100vh - 120px)" }}>
-      <div style={{ padding: "20px 28px 0" }}>
+      <div className="page-gutter" style={{ paddingTop: 20 }}>
         <div
-          className="animate-pulse"
+          className="animate-pulse page-max"
           style={{
-            maxWidth: 1200,
-            margin: "0 auto",
             background: "var(--moss)",
             borderRadius: 18,
             height: 154,
@@ -879,8 +881,8 @@ function PortfolioSkeleton() {
           }}
         />
       </div>
-      <div className="animate-pulse" style={{ padding: "0 28px 60px" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <div className="animate-pulse page-gutter" style={{ paddingBottom: 60 }}>
+        <div className="page-max">
           <div style={{ display: "flex", gap: 10, padding: "12px 0" }}>
             <div style={{ height: 36, width: 180, background: "var(--hairline)", borderRadius: 10 }} />
             <div style={{ flex: 1 }} />
@@ -919,7 +921,7 @@ function PortfolioSkeleton() {
                 key={i}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "96px 1fr 280px 60px 80px 50px 44px",
+                  gridTemplateColumns: COLS_GRID_WITH_OWNER,
                   gap: 12,
                   alignItems: "center",
                   padding: "12px 18px",
@@ -929,10 +931,12 @@ function PortfolioSkeleton() {
                 <span style={{ height: 18, background: "var(--hairline)", borderRadius: 6 }} />
                 <span style={{ height: 14, background: "var(--hairline)", borderRadius: 4, width: "70%" }} />
                 <span style={{ height: 16, background: "var(--hairline)", borderRadius: 6, width: "55%" }} />
+                <span aria-hidden />
                 <span style={{ height: 12, background: "var(--hairline)", borderRadius: 4, justifySelf: "end", width: 28 }} />
                 <span style={{ height: 12, background: "var(--hairline)", borderRadius: 4, justifySelf: "end", width: 50 }} />
                 <span style={{ height: 12, background: "var(--hairline)", borderRadius: 4, justifySelf: "end", width: 30 }} />
                 <span style={{ height: 22, width: 22, background: "var(--hairline)", borderRadius: "50%", justifySelf: "end" }} />
+                <span style={{ height: 24, background: "var(--hairline)", borderRadius: 6, justifySelf: "end", width: 120 }} />
               </div>
             ))}
           </div>

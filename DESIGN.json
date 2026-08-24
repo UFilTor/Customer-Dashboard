@@ -36,6 +36,10 @@
     ],
     "breakpoints": [
       { "name": "desktop", "value": "1280px" }
+    ],
+    "layout": [
+      { "name": "page-max", "value": "2512px", "purpose": "Fluid page shell cap: content fills the viewport up to this width, then centers. Fills QHD (2560px) monitors; only ultrawides center. Tuned once in globals.css :root." },
+      { "name": "page-gutter", "value": "24px", "purpose": "Single horizontal gutter shared by TopBar, VariantPicker, banners, and all view content." }
     ]
   },
   "components": [

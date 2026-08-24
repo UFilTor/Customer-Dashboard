@@ -9,67 +9,8 @@ import { type PortfolioRow } from "@/lib/types";
 import { OWNER_MAP } from "@/lib/owners";
 import { fmtEur } from "@/lib/format-design";
 import { KANBAN_COLUMNS, buildKanbanCard, type KanbanColumnKey } from "@/lib/portfolio-kanban";
-import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 import { Avatar } from "../../Avatar";
-import { Icon } from "../../Icon";
-import { DealStatusTag, SignalPill } from "./cells";
-
-// Compact square icon-button variant of CompanyDetail.tsx's quickActionBtn.
-// The card is ~240-300px wide and needs five actions on one line, so this
-// drops the text label entirely and keeps only a centered glyph - each
-// control still carries its full name via title/aria-label (see usages
-// below), so the glyph-only presentation loses no accessible information.
-const cardActionBtn: React.CSSProperties = {
-  width: 27,
-  height: 27,
-  flexShrink: 0,
-  borderRadius: 8,
-  border: "1px solid var(--hairline)",
-  background: "var(--card-bg)",
-  color: "var(--moss)",
-  textDecoration: "none",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  cursor: "pointer",
-};
-
-// Local compact copy - CompanyDetail.tsx's CopyEmailButton isn't exported
-// and this task's file allowlist doesn't include CompanyDetail.tsx, so the
-// clean extraction path (export + shared module) isn't available here.
-// Behavior (clipboard write, "Copied!" flash, mailto fallback) mirrors it;
-// the flash itself is a brief citrus background swap rather than an icon
-// swap. Icon.Check is already the glyph for the "Create task" action on
-// this same row, so reusing it here would put two identical checkmarks
-// side by side for 1.5s - the background flash (same pattern as the
-// bookmark toggle in CompanyDetail.tsx) gives a clear, unambiguous
-// confirmation without that collision, and keeps the button's footprint
-// fixed so the row never reflows.
-function CardCopyEmailButton({ email }: { email: string | null }) {
-  const [copied, setCopied] = useState(false);
-  if (!email) return null;
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(email);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      window.location.href = `mailto:${email}`;
-    }
-  };
-  const label = copied ? `Copied ${email}` : `Copy ${email}`;
-  return (
-    <button
-      type="button"
-      onClick={onCopy}
-      title={label}
-      aria-label={label}
-      style={{ ...cardActionBtn, background: copied ? "var(--citrus)" : "var(--card-bg)" }}
-    >
-      <Icon.Mail size={13} />
-    </button>
-  );
-}
+import { DealStatusTag, QuickActions, SignalPill } from "./cells";
 
 interface KanbanCardProps {
   row: PortfolioRow;
@@ -82,6 +23,9 @@ interface KanbanCardProps {
   // the right card, same convention PortfolioRow.tsx's table rows use.
   flatIndex: number;
   onClick: (row: PortfolioRow) => void;
+  snoozedUntil: number | null;
+  onSnooze: (companyId: string, until: number) => void;
+  onUnsnooze: (companyId: string) => void;
 }
 
 // Wrapped in React.memo: a board can render well over a hundred cards
@@ -94,6 +38,9 @@ export const KanbanCard = memo(function KanbanCard({
   showAvatar,
   flatIndex,
   onClick,
+  snoozedUntil,
+  onSnooze,
+  onUnsnooze,
 }: KanbanCardProps) {
   // Hover is local component state rather than a direct DOM-style mutation
   // in onMouseEnter/onMouseLeave. That keeps every border property as a
@@ -256,11 +203,10 @@ export const KanbanCard = memo(function KanbanCard({
         </div>
       )}
 
-      {/* Quick-action row, mirrors CompanyDetail.tsx's header actions at
-          card scale - glyph-only so all five fit on one line. Wrapped with
-          stopRowPropagation so clicking or keying an action here never
-          triggers the card's own onClick. No flex-wrap: the fixed-width
-          icon buttons are sized to always fit this row. */}
+      {/* Quick-action row - shared QuickActions cluster (cells.tsx), also
+          used by the table rows. Wrapped with stopRowPropagation so clicking
+          or keying an action here never triggers the card's own onClick. No
+          flex-wrap: the fixed-width icon buttons always fit this row. */}
       <div
         style={{
           display: "flex",
@@ -272,51 +218,12 @@ export const KanbanCard = memo(function KanbanCard({
         }}
         {...stopRowPropagation}
       >
-        <CardCopyEmailButton email={row.contactEmail} />
-        {row.dealId && (
-          <>
-            <a
-              href={`${hubspotDealUrl(row.dealId) ?? "#"}&interaction=task`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Create task"
-              aria-label="Create task"
-              style={cardActionBtn}
-            >
-              <Icon.Check size={13} />
-            </a>
-            <a
-              href={`${hubspotDealUrl(row.dealId) ?? "#"}&interaction=schedule`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Schedule meeting"
-              aria-label="Schedule meeting"
-              style={cardActionBtn}
-            >
-              <Icon.Calendar size={13} />
-            </a>
-            <a
-              href={`${hubspotDealUrl(row.dealId) ?? "#"}&interaction=call`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Make call"
-              aria-label="Make call"
-              style={cardActionBtn}
-            >
-              <Icon.Phone size={13} />
-            </a>
-          </>
-        )}
-        <a
-          href={hubspotCompanyUrl(row.id) ?? "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Open in HubSpot"
-          aria-label="Open in HubSpot"
-          style={cardActionBtn}
-        >
-          <Icon.External size={13} />
-        </a>
+        <QuickActions
+          row={row}
+          snoozedUntil={snoozedUntil}
+          onSnooze={onSnooze}
+          onUnsnooze={onUnsnooze}
+        />
       </div>
     </div>
   );

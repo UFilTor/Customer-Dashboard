@@ -121,4 +121,9 @@ export const Icon = {
       <path d="M12 17h.01" />
     </Svg>
   ),
+  Moon: (p: IconProps & { size?: number }) => (
+    <Svg {...p}>
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+    </Svg>
+  ),
 };

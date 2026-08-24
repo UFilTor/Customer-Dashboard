@@ -22,25 +22,34 @@ interface DashboardDef {
   key: DashboardKey;
   label: string;
   sub: string;
+  /** Second key of the "g" chord that jumps to this dashboard (g + chord).
+   *  The keyboard handler in page-client and the shortcut cheat sheet both
+   *  derive from this, so hiding a dashboard disables its chord and
+   *  un-hiding restores it with no per-file cleanup needed. */
+  chord: string;
   /** Whether the dashboard is wired up. Unavailable entries render in the
    *  picker as disabled "coming soon" rows (e.g. Bloom). */
   available: boolean;
-  /** Removes the entry from the picker entirely while keeping the route +
-   *  code paths reachable via URL. Use for legacy dashboards we want to
-   *  preserve as a fallback (e.g. Status after Portfolio replaced it). */
+  /** Removes the entry from the picker entirely (and disables its "g"
+   *  chord) while keeping the route + code paths reachable via URL. Use
+   *  for legacy dashboards we want to preserve as a fallback (e.g. Status
+   *  after Portfolio replaced it). */
   hidden?: boolean;
 }
 
 export const DASHBOARDS: DashboardDef[] = [
-  { key: "portfolio",     label: "Portfolio",     sub: "Every account, every signal", available: true  },
+  { key: "portfolio",     label: "Portfolio",     sub: "Every account, every signal", chord: "p", available: true  },
   // Status is the legacy dashboard. Hidden from the picker now that Portfolio
   // covers the same surface; URL `?d=status` still resolves so we can flip
   // back to visible if we ever need to re-expose it.
-  { key: "status",        label: "Status",        sub: "Needs attention today (legacy)", available: true, hidden: true },
-  { key: "meeting_prep",  label: "Meeting prep",  sub: "Today's meetings, prep ready", available: true },
-  { key: "pay_migration", label: "Understory Pay Migration", sub: "Moving accounts to Understory Pay", available: true },
-  { key: "bloom",         label: "Bloom",         sub: "Marketing candidates to pitch", available: false },
-  { key: "search",        label: "Lookup",        sub: "Ask anything in plain English", available: true },
+  { key: "status",        label: "Status",        sub: "Needs attention today (legacy)", chord: "s", available: true, hidden: true },
+  { key: "meeting_prep",  label: "Meeting prep",  sub: "Today's meetings, prep ready", chord: "m", available: true },
+  { key: "pay_migration", label: "Understory Pay Migration", sub: "Moving accounts to Understory Pay", chord: "u", available: true },
+  { key: "bloom",         label: "Bloom",         sub: "Marketing candidates to pitch", chord: "b", available: false },
+  // Lookup is hidden from the picker (feature kept; URL `?d=search` still
+  // resolves). Flip `hidden` off to bring back the picker row and the
+  // `g l` chord together.
+  { key: "search",        label: "Lookup",        sub: "Ask anything in plain English", chord: "l", available: true, hidden: true },
 ];
 
 interface VariantPickerProps {
@@ -86,7 +95,7 @@ export function VariantPicker({
     >
       <div
         style={{
-          padding: "10px 20px",
+          padding: "10px var(--page-gutter)",
           display: "flex",
           alignItems: "center",
           gap: 14,

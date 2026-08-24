@@ -48,7 +48,7 @@ HubSpot API ──► src/lib/{hubspot,onboarding,pay-migration,attention}.ts
 
 Bulk endpoints stay light; heavier per-record data backfills from dedicated endpoints:
 
-- `/api/onboarding` returns deals + meeting-only history. `/api/onboarding/history` fills calls + emails after paint. `/api/onboarding/day` fetches a single day outside the default 5-work-day window.
+- `/api/meeting-prep` returns deals + meeting-only history. `/api/meeting-prep/history` fills calls + emails after paint. `/api/meeting-prep/day` fetches a single day outside the default 5-work-day window.
 - `/api/companies/[id]` returns the full detail brief on click.
 
 When you add new bulk fetches, follow the same pattern — return only what the list needs.
@@ -100,7 +100,7 @@ When adding a new shortcut, dispatch from `page.tsx` and subscribe in the releva
 
 ### Per-variant selection memory
 
-Each Status variant (briefing / split / kanban) has its own selection slot in `selectionByScope`; non-Status dashboards share `_other`. Switching between variants brings back what was last selected there — including `null`.
+Each Status variant (briefing / split) has its own selection slot in `selectionByScope`; non-Status dashboards share `_other`. Switching between variants brings back what was last selected there — including `null`.
 
 ## Deploy
 
@@ -113,6 +113,8 @@ Available profiles:
 Config: `.playwright/profiles.json`
 To load a profile, use `playwright-cli -s={session} state-load .playwright/profiles/<role>.json` to restore cookies and localStorage.
 Run `/setup-profiles` to refresh profiles. Note: prod requires real HubSpot OAuth — `.env.local` would need `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` for the OAuth flow to work.
+
+**Synthetic keyboard input in browser tools.** When driving the app with the in-app browser tools (or any CDP-based automation), the key aliases `Down`, `Right`, `Up`, `Left`, and `Return` dispatch keydown events with a wrong or empty `e.key`, so the app's `e.key === "ArrowDown"` / `"Enter"` checks silently no-op. The app is fine; the test input is broken. Always send the full DOM key names: `ArrowDown`, `ArrowRight`, `Enter`. If a shortcut "doesn't work" under automation, instrument `window.addEventListener("keydown", ...)` and inspect `e.key` before debugging the app.
 
 **chrome-devtools MCP vs playwright-cli.** The chrome-devtools MCP tool holds a single browser-profile lock (`~/.cache/chrome-devtools-mcp/chrome-profile`) — if another agent or session already has it open, `new_page`/`list_pages` fail with "browser is already running... Use --isolated". This recurs any time two agents in the same session both want browser automation. Don't retry chrome-devtools — fall back to `playwright-cli -s=<unique-name> open <url>` immediately, and give each concurrent agent its own `-s=` session name so they don't collide with each other either.
 

@@ -105,13 +105,15 @@ export const BriefingView = memo(function BriefingViewImpl({ companies, onSelect
 
   return (
     <div
+      className="page-gutter"
       style={{
         background: "var(--beige-new)",
         minHeight: "calc(100vh - 120px)",
-        padding: "32px 28px 60px",
+        paddingTop: 32,
+        paddingBottom: 60,
       }}
     >
-      <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+      <div className="page-max">
         {/* MORNING BAND — distilled per critique. One editorial line carrying
             date + greeting + counts; no hero theatre, no decorative drift
             circles, no citrus wipe on the count (that moment now lives on the

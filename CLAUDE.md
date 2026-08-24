@@ -115,3 +115,10 @@ To load a profile, use `playwright-cli -s={session} state-load .playwright/profi
 Run `/setup-profiles` to refresh profiles. Note: prod requires real HubSpot OAuth — `.env.local` would need `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` for the OAuth flow to work.
 
 **chrome-devtools MCP vs playwright-cli.** The chrome-devtools MCP tool holds a single browser-profile lock (`~/.cache/chrome-devtools-mcp/chrome-profile`) — if another agent or session already has it open, `new_page`/`list_pages` fail with "browser is already running... Use --isolated". This recurs any time two agents in the same session both want browser automation. Don't retry chrome-devtools — fall back to `playwright-cli -s=<unique-name> open <url>` immediately, and give each concurrent agent its own `-s=` session name so they don't collide with each other either.
+
+## Design skills in this project
+
+impeccable, ui-ux-pro-max, emil-design-eng, design-motion-principles and gsap-animation are enabled here alongside the global understory-brand.
+
+- Understory brand tokens are the default starting point, not a hard rule. When a design direction conflicts with them, flag the conflict and follow the direction Filip sets in the session.
+- impeccable drives the process when invoked; ui-ux-pro-max, emil-design-eng and design-motion-principles are reference material; gsap-animation only for GSAP work.

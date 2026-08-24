@@ -708,6 +708,44 @@ async function fetchMeetingsForDeals(
 }
 
 /**
+ * Slim sibling of fetchMeetingsForDeals for callers that only need the
+ * meeting start time and activity type (e.g. Portfolio's OB-meeting column).
+ * Skips the meeting body/notes properties and the owner-directory lookup
+ * that make the full fetch too heavy for a bulk payload.
+ */
+export async function fetchMeetingStartsForDeals(
+  dealIds: string[]
+): Promise<Map<string, { startTime: string; activityType: string | null }[]>> {
+  const result = new Map<string, { startTime: string; activityType: string | null }[]>();
+  if (dealIds.length === 0) return result;
+
+  const dealAssocs = await fetchAssociations("deals", "meetings", dealIds);
+  const dealToMeetingIds = new Map<string, string[]>();
+  for (const a of dealAssocs) dealToMeetingIds.set(a.fromId, a.toIds);
+
+  const allMeetingIds = Array.from(new Set(Array.from(dealToMeetingIds.values()).flat()));
+  if (allMeetingIds.length === 0) return result;
+
+  const meetingProps = await fetchObjectsBatch("meetings", allMeetingIds, [
+    "hs_meeting_start_time",
+    "hs_activity_type",
+  ]);
+
+  for (const [dealId, meetingIds] of dealToMeetingIds) {
+    const meetings: { startTime: string; activityType: string | null }[] = [];
+    for (const mid of meetingIds) {
+      const props = meetingProps.get(mid);
+      if (!props) continue;
+      const startTime = nullable(props.hs_meeting_start_time);
+      if (!startTime) continue;
+      meetings.push({ startTime, activityType: nullable(props.hs_activity_type) });
+    }
+    if (meetings.length > 0) result.set(dealId, meetings);
+  }
+  return result;
+}
+
+/**
  * Pulls every meeting starting in [fromIso, toIso) where a given CS owner is
  * either the meeting's own engagement owner OR listed as an attendee (e.g. a
  * Sales/Product/CEO-organized customer meeting that a CS person was invited

@@ -4,8 +4,9 @@ import { PORTFOLIO_EXPECTED_DAYS } from "@/config/thresholds";
 import { dealCurrency, hasUnpaidInvoice, unpaidAmountLocal, unpaidInvoiceCount } from "./invoice-fields";
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { searchObjectsPage } from "./hubspot-search";
-import { fetchAssociations, fetchOwnerNames } from "./onboarding";
+import { fetchAssociations, fetchMeetingStartsForDeals, fetchObjectsBatch, fetchOwnerNames, isOnboardingMeeting } from "./onboarding";
 import { OWNERS } from "./owners";
+import { KANBAN_COLUMNS } from "./portfolio-kanban";
 import {
   computeWatchOutSignals,
   STAGE_APPLICABILITY as SHARED_STAGE_APPLICABILITY,
@@ -28,6 +29,19 @@ import type {
 // stage fallback signal.
 const LIFECYCLE_PIPELINE_ID = "166333631";
 const RETENTION_PIPELINE_ID = "1072518362";
+
+// Lifecycle dealstage ids for the "awaiting first OB meeting" columns: Create
+// account, Create Experience, Awaiting meeting. Only deals sitting in one of
+// these columns need the OB meeting-start lookup.
+const OB_MEETING_STAGE_IDS = new Set(["1571910876", "1899766980", "875045332"]);
+
+// The dealstage ids the kanban board maps directly to a column, derived from
+// KANBAN_COLUMNS (portfolio-kanban.ts) so the two never drift apart. Any
+// lifecycle deal whose dealstage falls outside this set (null, or an id
+// HubSpot added after KANBAN_COLUMNS was written) falls back to the board's
+// "Create account" column, so it needs the OB meeting-start lookup too even
+// though it isn't in OB_MEETING_STAGE_IDS.
+const MAPPED_BOARD_DEALSTAGE_IDS = new Set(KANBAN_COLUMNS.map((c) => c.dealstageId));
 
 // Maps a deal to one of the 5 Portfolio stages.
 //
@@ -285,6 +299,12 @@ export function getSortOptions(selectedSignals: PortfolioSignalKey[]): SortOptio
 
 interface BuildRowInput {
   nowIso: string;
+  /**
+   * Primary contact email for the "Copy email" card action. Resolved in bulk
+   * by fetchContactEmailsForDeals, keyed by deal id (not company/deal shaped
+   * since it's a contact-entity concern, not a property of either).
+   */
+  contactEmail: string | null;
   company: {
     id: string;
     name: string;
@@ -297,8 +317,13 @@ interface BuildRowInput {
     volume3m: number;
     volume6m: number;
     upcomingEvents: number | null;
+    experiencesCreated: number | null;
+    hasHadEvent: boolean | null;
+    latestEventAt: string | null;
   };
   deal: {
+    /** Backing HubSpot deal id. Threaded onto the row for hubspotDealUrl deep links. */
+    dealId: string;
     customerStage: string;
     customerSubstage: string | null;
     pipelineId: string;
@@ -306,6 +331,15 @@ interface BuildRowInput {
     dealstageId?: string | null;
     enteredStageDate: string | null;
     customerLiveDate: string | null;
+    nextStep: string | null;
+    /** Onboarding meeting start time ISO; populated by a later task, thread as null for now. */
+    obMeetingAt: string | null;
+    /** Raw ISO from hs_next_meeting_start_time. */
+    nextMeetingAt: string | null;
+    /** Raw ISO from notes_next_activity_date; parsed by the caller. */
+    nextActivityAt: string | null;
+    /** Mapped label from hs_notes_next_activity; parsed by the caller via nextActivityTypeLabel. */
+    nextActivityType: string | null;
     unpaidInvoice: boolean;
     invoiceDueDate: string | null;
     outstandingEur: number | null;
@@ -391,6 +425,55 @@ function daysBetween(now: string, then: string | null): number | null {
   const t = new Date(then).getTime();
   if (isNaN(t)) return null;
   return Math.max(0, Math.floor((new Date(now).getTime() - t) / 86400000));
+}
+
+// Picks the OB meeting date to surface on a row: the soonest upcoming
+// onboarding meeting if one exists, otherwise the most recent past one.
+// Meetings whose activity type isn't a recognised onboarding type are
+// ignored entirely (isOnboardingMeeting is the single source of truth for
+// that, shared with the meeting-prep dashboard).
+function pickObMeetingDate(
+  meetings: { startTime: string; activityType: string | null }[],
+  nowIso: string
+): string | null {
+  const nowMs = Date.parse(nowIso);
+  let soonestUpcoming: { startTime: string; ms: number } | null = null;
+  let mostRecentPast: { startTime: string; ms: number } | null = null;
+
+  for (const m of meetings) {
+    if (!isOnboardingMeeting(m.activityType)) continue;
+    const ms = Date.parse(m.startTime);
+    if (isNaN(ms)) continue;
+    if (ms >= nowMs) {
+      if (!soonestUpcoming || ms < soonestUpcoming.ms) soonestUpcoming = { startTime: m.startTime, ms };
+    } else if (!mostRecentPast || ms > mostRecentPast.ms) {
+      mostRecentPast = { startTime: m.startTime, ms };
+    }
+  }
+
+  return soonestUpcoming?.startTime ?? mostRecentPast?.startTime ?? null;
+}
+
+// Maps the HubSpot object-type id prefix of `hs_notes_next_activity` ("object
+// coordinates", e.g. "0-27-513733934284") to a human label. Verified live
+// against the portal: 0-27 Task, 0-47 Meeting, 0-48 Call, 0-49 Email,
+// 0-46 Note, 0-18 Communication.
+const NEXT_ACTIVITY_TYPE_BY_OBJECT_ID: Record<string, string> = {
+  "0-27": "Task",
+  "0-47": "Meeting",
+  "0-48": "Call",
+  "0-49": "Email",
+  "0-46": "Note",
+  "0-18": "Communication",
+};
+
+export function nextActivityTypeLabel(coordinates: string | null | undefined): string | null {
+  if (!coordinates) return null;
+  const trimmed = coordinates.trim();
+  if (!trimmed) return null;
+  const match = /^(\d+-\d+)-/.exec(trimmed);
+  if (!match) return "Activity";
+  return NEXT_ACTIVITY_TYPE_BY_OBJECT_ID[match[1]] ?? "Activity";
 }
 
 export function buildRow(input: BuildRowInput): PortfolioRow {
@@ -485,6 +568,18 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     prior3mVolume: Math.max(0, input.company.volume6m - input.company.volume3m) || null,
     wishToChurnAt: input.deal.wishToChurnAt,
     estimatedAdoptionDate: input.deal.estimatedAdoptionDate,
+    dealstageId: input.deal.dealstageId ?? null,
+    pipelineId: input.deal.pipelineId,
+    nextStep: input.deal.nextStep,
+    experiencesCreated: input.company.experiencesCreated,
+    hasHadEvent: input.company.hasHadEvent,
+    latestEventAt: input.company.latestEventAt,
+    obMeetingAt: input.deal.obMeetingAt,
+    nextActivityAt: input.deal.nextActivityAt,
+    nextActivityType: input.deal.nextActivityType,
+    dealId: input.deal.dealId,
+    nextMeetingAt: input.deal.nextMeetingAt,
+    contactEmail: input.contactEmail,
   };
 }
 
@@ -528,6 +623,7 @@ const PORTFOLIO_DEAL_PROPS = [
   "churn_date",
   "dealstage",
   "pipeline",
+  "hs_next_step",
   // Owner of the *deal* (the CSM working the account), not the company. The
   // company-level hubspot_owner_id is typically the AE; using deal owner
   // matches the peer onboarding flow (`onboarding.ts:466`) and gives the
@@ -559,6 +655,12 @@ const PORTFOLIO_DEAL_PROPS = [
   "product_hold_expected_end_date",
   "pause_start_date",
   "pause_end_date",
+  // Next activity (date + type) surfaced on ongoing kanban cards.
+  "notes_next_activity_date",
+  "hs_notes_next_activity",
+  // Next booked meeting start time, surfaced as its own dedicated line on
+  // ongoing kanban cards (see nextMeetingLabel in portfolio-kanban.ts).
+  "hs_next_meeting_start_time",
 ];
 
 const PORTFOLIO_COMPANY_PROPS = [
@@ -572,6 +674,9 @@ const PORTFOLIO_COMPANY_PROPS = [
   "understory_health_score_upcoming_events",
   "notes_last_contacted",
   "createdate",
+  "number_of_experiences_created",
+  "understory_has_had_event",
+  "understory_latest_event",
 ];
 
 interface RawDeal {
@@ -614,6 +719,38 @@ async function fetchPortfolioDealsForPipeline(
     out.push(...results);
     after = nextAfter;
   } while (after);
+  return out;
+}
+
+// Bulk primary-contact email lookup for ALL portfolio deals, feeding the
+// kanban card's "Copy email" action. Mirrors the company-detail selection in
+// `fetchPrimaryContact` (hubspot.ts: company -> associations/contacts,
+// limit=1, first result wins) as closely as a bulk fetch allows, with two
+// intentional divergences:
+//   1. Deal-level, not company-level - a company can back several deals with
+//      different associated contacts, and the card is deal-scoped.
+//   2. Picks the first associated contact with a NON-EMPTY email, not just
+//      the first associated contact (fetchPrimaryContact would happily
+//      return a contact with no email at all, since it also surfaces
+//      name/phone; here email is the only thing the card needs).
+// Company-level fallback is explicitly out of scope (see task brief).
+async function fetchContactEmailsForDeals(dealIds: string[]): Promise<Map<string, string>> {
+  const assocs = await fetchAssociations("deals", "contacts", dealIds);
+  const uniqueContactIds = Array.from(new Set(assocs.flatMap((a) => a.toIds)));
+  if (uniqueContactIds.length === 0) return new Map();
+
+  const contactProps = await fetchObjectsBatch("contacts", uniqueContactIds, ["email"]);
+
+  const out = new Map<string, string>();
+  for (const a of assocs) {
+    for (const contactId of a.toIds) {
+      const email = contactProps.get(contactId)?.email?.trim();
+      if (email) {
+        out.set(a.fromId, email);
+        break;
+      }
+    }
+  }
   return out;
 }
 
@@ -667,6 +804,31 @@ export async function fetchPortfolioRows(
   });
   if (allDeals.length === 0) return [];
 
+  // OB meeting starts: kicked off here (before step 2b's associations await)
+  // so it overlaps with steps 2b/2c instead of adding to the critical path.
+  // Only deals in the OB-meeting stages need the lookup.
+  const obDealIds = allDeals
+    .filter(
+      (d) =>
+        d.properties.pipeline === LIFECYCLE_PIPELINE_ID &&
+        (OB_MEETING_STAGE_IDS.has(d.properties.dealstage) ||
+          !MAPPED_BOARD_DEALSTAGE_IDS.has(d.properties.dealstage))
+    )
+    .map((d) => d.id);
+  const obMeetingsPromise = obDealIds.length
+    ? fetchMeetingStartsForDeals(obDealIds).catch(
+        () => new Map<string, { startTime: string; activityType: string | null }[]>()
+      )
+    : Promise.resolve(new Map<string, { startTime: string; activityType: string | null }[]>());
+
+  // Primary-contact emails: kicked off here too, for the same reason as
+  // obMeetingsPromise above - overlaps with the assoc/companies work below
+  // instead of adding to the critical path. Scoped to ALL portfolio deals
+  // (every ongoing card gets a "Copy email" action), best-effort.
+  const contactEmailsPromise = fetchContactEmailsForDeals(allDeals.map((d) => d.id)).catch(
+    () => new Map<string, string>()
+  );
+
   // Step 2b: deal -> company associations via the shared retry-aware helper.
   // (The previous hand-rolled version had no retry, so a transient 429 under
   // warm-cycle load silently dropped whole 100-deal slices from the payload.)
@@ -713,8 +875,17 @@ export async function fetchPortfolioRows(
   await Promise.all(companyBatches);
   mark("hubspot.companies", tCompanies);
 
-  // Step 2e: owner directory — kicked off at t=0 above, resolved here.
+  // Step 2e: owner directory, OB meeting starts, and contact emails - all
+  // kicked off earlier.
   const ownerNames = await ownerNamesPromise;
+  // Captured immediately before the await so the span measures only the
+  // residual wait, not the assoc/companies work it overlapped with above.
+  const tObMeetings = performance.now();
+  const obMeetingsByDeal = await obMeetingsPromise;
+  mark("hubspot.obMeetings", tObMeetings);
+  const tContacts = performance.now();
+  const contactEmailsByDeal = await contactEmailsPromise;
+  mark("hubspot.contacts", tContacts);
 
   // Step 2f: assemble rows.
   const nowIso = new Date().toISOString();
@@ -804,8 +975,30 @@ export async function fetchPortfolioRows(
     const volume3m = parseFloat(props.understory_booking_volume_3m || "0") || 0;
     const volume6m = parseFloat(props.understory_booking_volume_6m || "0") || 0;
 
+    const experiencesCreatedRaw = parseFloat(props.number_of_experiences_created || "");
+    const experiencesCreated =
+      isNaN(experiencesCreatedRaw) || experiencesCreatedRaw < 0
+        ? null
+        : Math.round(experiencesCreatedRaw);
+
+    const hasHadEventRaw = (props.understory_has_had_event || "").trim();
+    const hasHadEvent =
+      hasHadEventRaw === ""
+        ? null
+        : ["true", "yes"].includes(hasHadEventRaw.toLowerCase());
+
+    const latestEventAt = toIsoDateOnly(props.understory_latest_event);
+
+    // Only deals in an OB-meeting stage were fetched above, so a missing
+    // entry means "not in scope" and stays null without calling the picker.
+    const obMeetingsForDeal = obMeetingsByDeal.get(deal.id);
+    const obMeetingAt = obMeetingsForDeal
+      ? pickObMeetingDate(obMeetingsForDeal, nowIso)
+      : null;
+
     rows.push(buildRow({
       nowIso,
+      contactEmail: contactEmailsByDeal.get(deal.id) ?? null,
       company: {
         id: companyId,
         name: props.name || "Unknown",
@@ -818,14 +1011,23 @@ export async function fetchPortfolioRows(
         volume3m,
         volume6m,
         upcomingEvents,
+        experiencesCreated,
+        hasHadEvent,
+        latestEventAt,
       },
       deal: {
+        dealId: deal.id,
         customerStage: dealProps.customer_stage || "",
         customerSubstage: dealProps.customer_substage || null,
         dealstageId: dealProps.dealstage || null,
         pipelineId: dealProps.pipeline || "",
         enteredStageDate: dealProps.hs_v2_date_entered_current_stage || null,
         customerLiveDate: dealProps.customer_live_date || null,
+        nextStep: dealProps.hs_next_step?.trim() || null,
+        obMeetingAt,
+        nextMeetingAt: dealProps.hs_next_meeting_start_time || null,
+        nextActivityAt: dealProps.notes_next_activity_date || null,
+        nextActivityType: nextActivityTypeLabel(dealProps.hs_notes_next_activity),
         unpaidInvoice,
         invoiceDueDate,
         outstandingEur,
@@ -886,4 +1088,4 @@ function aggregatePayload(rows: PortfolioRow[]): PortfolioResponse {
 }
 
 // Test-only re-export.
-export const __test = { aggregatePayload };
+export const __test = { aggregatePayload, pickObMeetingDate, nextActivityTypeLabel };

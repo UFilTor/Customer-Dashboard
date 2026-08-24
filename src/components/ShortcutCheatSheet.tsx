@@ -105,8 +105,10 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
         { label: "Open saved Views", keys: "Shift + V" },
         { label: "Cycle sort", keys: "S" },
         { label: "Save current as default", keys: `${modLabel} + S` },
-        { label: "Previous / next page", keys: "[ / ]" },
+        { label: "Table / Board layout", keys: "Shift + B" },
+        { label: "Previous / next page (Table)", keys: "[ / ]" },
         { label: "Navigate rows", keys: "Up / Down" },
+        { label: "Previous / next column (Board)", keys: "Left / Right" },
         { label: "Open account", keys: "Enter" },
       ],
     });

@@ -49,6 +49,8 @@ interface VariantPickerProps {
   dashboard: DashboardKey;
   payFilter?: "default" | "all";
   setPayFilter?: (v: "default" | "all") => void;
+  portfolioView?: "table" | "board";
+  setPortfolioView?: (v: "table" | "board") => void;
 }
 
 const VARIANTS: { key: Variant; label: string }[] = [
@@ -62,14 +64,18 @@ export function VariantPicker({
   dashboard,
   payFilter,
   setPayFilter,
+  portfolioView,
+  setPortfolioView,
 }: VariantPickerProps) {
   const showLayout = dashboard === "status";
   const showPayFilter = dashboard === "pay_migration" && setPayFilter && payFilter;
+  const showPortfolioView =
+    dashboard === "portfolio" && setPortfolioView && portfolioView;
 
-  // Dashboards without variant tabs (Portfolio, Meeting Prep, Lookup) skip
-  // the sub-bar entirely. DashboardPicker in the TopBar already names the
-  // current dashboard, so a second bar with no controls was empty chrome.
-  if (!showLayout && !showPayFilter) return null;
+  // Dashboards without variant tabs (Meeting Prep, Lookup) skip the sub-bar
+  // entirely. DashboardPicker in the TopBar already names the current
+  // dashboard, so a second bar with no controls was empty chrome.
+  if (!showLayout && !showPayFilter && !showPortfolioView) return null;
 
   return (
     <div
@@ -98,6 +104,23 @@ export function VariantPicker({
                 className={variant === v.key ? "seg-light-btn active" : "seg-light-btn"}
               >
                 {v.label}
+              </button>
+            ))}
+          </SegLight>
+        ) : showPortfolioView ? (
+          <SegLight label="Portfolio layout">
+            {([
+              { key: "table", label: "Table" },
+              { key: "board", label: "Board" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.key}
+                role="tab"
+                aria-selected={portfolioView === opt.key}
+                onClick={() => setPortfolioView!(opt.key)}
+                className={portfolioView === opt.key ? "seg-light-btn active" : "seg-light-btn"}
+              >
+                {opt.label}
               </button>
             ))}
           </SegLight>

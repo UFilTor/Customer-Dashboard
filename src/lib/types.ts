@@ -825,6 +825,30 @@ export interface PortfolioRow {
    * range filter (before / after / both).
    */
   estimatedAdoptionDate: string | null;
+  /** Raw HubSpot dealstage id of the backing deal. */
+  dealstageId: string | null;
+  /** Raw HubSpot pipeline id of the backing deal. */
+  pipelineId: string;
+  /** hs_next_step free text from the deal. */
+  nextStep: string | null;
+  /** Company number_of_experiences_created. */
+  experiencesCreated: number | null;
+  /** Company understory_has_had_event; null = property empty. */
+  hasHadEvent: boolean | null;
+  /** Company understory_latest_event, normalized yyyy-mm-dd. */
+  latestEventAt: string | null;
+  /** Onboarding meeting start time ISO; populated by a later task, thread as null for now. */
+  obMeetingAt: string | null;
+  /** Raw ISO from the deal's notes_next_activity_date. */
+  nextActivityAt: string | null;
+  /** Mapped label derived from hs_notes_next_activity (see nextActivityTypeLabel). */
+  nextActivityType: string | null;
+  /** Backing HubSpot deal id. Used for hubspotDealUrl deep links on kanban cards. */
+  dealId: string | null;
+  /** Raw ISO from the deal's hs_next_meeting_start_time. */
+  nextMeetingAt: string | null;
+  /** Primary contact email for the card's "Copy email" action. Deal-level, first associated contact with a non-empty email. */
+  contactEmail: string | null;
 }
 
 export interface PortfolioResponse {

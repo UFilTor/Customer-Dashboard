@@ -18,6 +18,7 @@ const baseState: PortfolioViewState = {
   shownStatuses: { paused: true, product_hold: false, hibernation: false, snoozed: false },
   sortKey: "revenue",
   sortDirection: "asc",
+  collapsedStages: ["create_account", "started"],
 };
 
 beforeEach(() => {
@@ -35,6 +36,7 @@ describe("portfolio-views", () => {
     expect(views[0].state.refine.acvMin).toBe(1000);
     expect(views[0].state.sortKey).toBe("revenue");
     expect(views[0].state.sortDirection).toBe("asc");
+    expect(views[0].state.collapsedStages).toEqual(["create_account", "started"]);
   });
 
   it("same name replaces instead of duplicating", () => {
@@ -71,6 +73,7 @@ describe("portfolio-views", () => {
             shownStatuses: { paused: "true", snoozed: true },
             sortKey: "drop_tables",
             sortDirection: "sideways",
+            collapsedStages: "garbage",
           },
         },
       ])
@@ -85,11 +88,44 @@ describe("portfolio-views", () => {
     expect(v.state.shownStatuses.snoozed).toBe(true);
     expect(v.state.sortKey).toBe("urgency");
     expect(v.state.sortDirection).toBe("desc");
+    expect(v.state.collapsedStages).toEqual([]);
   });
 
   it("returns [] for a corrupt blob", () => {
     localStorage.setItem(KEY, "{{{");
     expect(getSavedViews()).toEqual([]);
+  });
+
+  it("drops non-string and unknown collapsedStages entries", () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify([
+        {
+          id: "v-y",
+          name: "Poisoned stages",
+          createdAt: 1,
+          state: {
+            ...baseState,
+            collapsedStages: [42, "bogus_stage", "started", null],
+          },
+        },
+      ])
+    );
+    const [v] = getSavedViews();
+    expect(v.state.collapsedStages).toEqual(["started"]);
+  });
+
+  it("legacy blob without collapsedStages loads cleanly with []", () => {
+    const legacyState: Record<string, unknown> = { ...baseState };
+    delete legacyState.collapsedStages;
+    localStorage.setItem(
+      KEY,
+      JSON.stringify([
+        { id: "v-legacy", name: "Legacy", createdAt: 1, state: legacyState },
+      ])
+    );
+    const [v] = getSavedViews();
+    expect(v.state.collapsedStages).toEqual([]);
   });
 });
 

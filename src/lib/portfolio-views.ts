@@ -11,6 +11,7 @@ import type {
   PortfolioStage,
 } from "./types";
 import { PORTFOLIO_SIGNAL_ORDER } from "./signals";
+import { KANBAN_COLUMNS } from "./portfolio-kanban";
 
 const STORAGE_KEY = "ud-v2-portfolio-views";
 const DEFAULT_KEY = "ud-v2-portfolio-views-default";
@@ -49,6 +50,11 @@ export const VALID_SORT_KEYS: ReadonlySet<PortfolioSortKey> = new Set<PortfolioS
 ]);
 
 const VALID_SIGNAL_KEYS: ReadonlySet<string> = new Set(PORTFOLIO_SIGNAL_ORDER);
+
+// Allowlist of kanban column keys collapsedStages can reference. Derived from
+// KANBAN_COLUMNS (single source of truth) rather than re-listed here, so the
+// board and saved views can never drift apart.
+const VALID_COLLAPSED_STAGES: ReadonlySet<string> = new Set(KANBAN_COLUMNS.map((c) => c.key));
 const VALID_STAGES: ReadonlySet<string> = new Set([
   "Onboarding",
   "Adopted",
@@ -71,6 +77,8 @@ export interface PortfolioViewState {
   shownStatuses: PortfolioShownStatuses;
   sortKey: PortfolioSortKey;
   sortDirection: "asc" | "desc";
+  /** Kanban column keys collapsed by the user. Board-view-only state. */
+  collapsedStages: string[];
 }
 
 export interface SavedPortfolioView {
@@ -139,6 +147,14 @@ function sanitizeState(raw: unknown): PortfolioViewState | null {
   const shown = (typeof s.shownStatuses === "object" && s.shownStatuses !== null
     ? s.shownStatuses
     : {}) as Record<string, unknown>;
+  // Missing/invalid -> []; drop non-string entries and unknown column keys.
+  // Old saved views without this field land here too, since s.collapsedStages
+  // is simply undefined for them, and Array.isArray(undefined) is false.
+  const collapsedStages = Array.isArray(s.collapsedStages)
+    ? (s.collapsedStages as unknown[])
+        .filter((v): v is string => typeof v === "string" && VALID_COLLAPSED_STAGES.has(v))
+        .slice(0, KANBAN_COLUMNS.length)
+    : [];
   return {
     signals,
     stackedSignals: s.stackedSignals === true,
@@ -151,6 +167,7 @@ function sanitizeState(raw: unknown): PortfolioViewState | null {
     },
     sortKey,
     sortDirection: s.sortDirection === "asc" ? "asc" : "desc",
+    collapsedStages,
   };
 }
 
@@ -294,6 +311,7 @@ export function saveView(name: string, state: PortfolioViewState): SavedPortfoli
       shownStatuses: { paused: false, product_hold: false, hibernation: false, snoozed: false },
       sortKey: "urgency",
       sortDirection: "desc",
+      collapsedStages: [],
     },
   };
   list.unshift(view);

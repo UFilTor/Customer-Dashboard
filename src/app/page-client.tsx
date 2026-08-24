@@ -73,6 +73,7 @@ type UrlState = {
   variant: Variant;
   filter: GlobalFilter;
   payFilter: "default" | "all";
+  portfolioView?: "table" | "board";
   selectedCompanyId: string | null;
 };
 
@@ -102,6 +103,8 @@ function readUrlState(): Partial<UrlState> {
   }
   const pf = sp.get("pf");
   if (pf === "default" || pf === "all") out.payFilter = pf;
+  const pv = sp.get("pv");
+  if (pv === "table" || pv === "board") out.portfolioView = pv;
   const c = sp.get("c");
   if (c) out.selectedCompanyId = c;
   return out;
@@ -119,6 +122,9 @@ function writeUrlState(state: UrlState): void {
   }
   if (state.dashboard === "pay_migration" && state.payFilter !== "default") {
     sp.set("pf", state.payFilter);
+  }
+  if (state.dashboard === "portfolio" && state.portfolioView && state.portfolioView !== "table") {
+    sp.set("pv", state.portfolioView);
   }
   if (state.selectedCompanyId) sp.set("c", state.selectedCompanyId);
   const qs = sp.toString();
@@ -146,6 +152,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   const [globalFilter, setGlobalFilter] = useState<GlobalFilter>(ALL_FILTER);
   const [defaultFilter, setDefaultFilter] = useState<GlobalFilter | null>(null);
   const [payFilter, setPayFilter] = useState<"default" | "all">("default");
+  const [portfolioView, setPortfolioView] = useState<"table" | "board">("table");
 
   // Data state — seed from server-rendered payload when available so the
   // first paint already has the attention rows. Without it (refresh during
@@ -320,6 +327,11 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
     } else if (ls("ud-v2-pay-filter") === "all") {
       setPayFilter("all");
     }
+    if (fromUrl.portfolioView) {
+      setPortfolioView(fromUrl.portfolioView);
+    } else if (ls("ud-v2-portfolio-view") === "board") {
+      setPortfolioView("board");
+    }
     if (fromUrl.selectedCompanyId) {
       const dash = fromUrl.dashboard ?? "status";
       const scope: SelectionScope =
@@ -342,6 +354,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       variant,
       filter: globalFilter,
       payFilter,
+      portfolioView,
       selectedCompanyId:
         selectionByScope[dashboard === "status" ? variant : "_other"],
     });
@@ -350,10 +363,11 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       localStorage.setItem("ud-v2-dashboard", dashboard);
       localStorage.setItem("ud-v2-filter", serializeFilter(globalFilter));
       localStorage.setItem("ud-v2-pay-filter", payFilter);
+      localStorage.setItem("ud-v2-portfolio-view", portfolioView);
     } catch {
       /* ignore */
     }
-  }, [variant, dashboard, globalFilter, payFilter, selectionByScope]);
+  }, [variant, dashboard, globalFilter, payFilter, portfolioView, selectionByScope]);
 
   // Honor browser back/forward — re-read URL params on popstate and apply.
   useEffect(() => {
@@ -363,6 +377,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       if (s.variant) setVariant(s.variant);
       if (s.filter) setGlobalFilter(s.filter);
       if (s.payFilter) setPayFilter(s.payFilter);
+      if (s.portfolioView) setPortfolioView(s.portfolioView);
       // Selection: drop into the matching scope.
       const popDash = s.dashboard ?? "status";
       const scope: SelectionScope =
@@ -531,14 +546,14 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   // libraries / browser extensions can't swallow keys before us.
   const stateRef = useRef({
     cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, orderedCompanies,
-    filter: globalFilter,
+    filter: globalFilter, portfolioView,
   });
   // Mirror the latest values via an effect (no deps) so the ref update
   // happens after render commits, satisfying react-hooks/refs.
   useEffect(() => {
     stateRef.current = {
       cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, orderedCompanies,
-      filter: globalFilter,
+      filter: globalFilter, portfolioView,
     };
   });
 
@@ -724,6 +739,28 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         if (e.key.toLowerCase() === "s" && !e.shiftKey) {
           e.preventDefault();
           window.dispatchEvent(new Event("ud-portfolio-sort-cycle"));
+          return;
+        }
+        // Shift+B toggles between Table and Board layout. Skip while a
+        // Portfolio toolbar popover (Signals/Sort) is open, same guard as
+        // the ↑/↓/Enter list-nav block below via portfolioPopupOpenRef.
+        if (e.shiftKey && e.key.toLowerCase() === "b") {
+          if (portfolioPopupOpenRef.current) return;
+          e.preventDefault();
+          setPortfolioView((v) => (v === "board" ? "table" : "board"));
+          return;
+        }
+        // Board mode: Left/Right move focus to the previous/next non-empty
+        // column. PortfolioContainer owns the column-jump math and ignores
+        // this event entirely while rendering the table, so it is safe to
+        // dispatch unconditionally once we know we're in board mode. Same
+        // popover guard as above so arrow keys don't fight the open popup.
+        if (s.portfolioView === "board" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+          if (portfolioPopupOpenRef.current) return;
+          e.preventDefault();
+          window.dispatchEvent(
+            new CustomEvent("ud-kanban-column-jump", { detail: { dir: e.key === "ArrowLeft" ? -1 : 1 } })
+          );
           return;
         }
       }
@@ -1046,6 +1083,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         filterLabel={filterLabel}
         showAvatar={globalFilter.kind !== "person"}
         onSelectCompany={(id) => selectCompany(id)}
+        view={portfolioView}
       />
     );
   } else if (dashboard === "meeting_prep") {
@@ -1135,6 +1173,8 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
           dashboard={dashboard}
           payFilter={payFilter}
           setPayFilter={setPayFilter}
+          portfolioView={portfolioView}
+          setPortfolioView={setPortfolioView}
         />
         <main>
           <ViewTransition dashboard={dashboard} variant={variant}>

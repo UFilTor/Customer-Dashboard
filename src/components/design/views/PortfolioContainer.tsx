@@ -22,6 +22,8 @@ import {
 } from "@/lib/portfolio-views";
 import { reportFreshness } from "@/lib/freshness";
 import { announce } from "@/lib/live-announcer";
+import { groupByStage, flattenBoard, flattenBoardOffsets, type KanbanColumn, type KanbanColumnKey } from "@/lib/portfolio-kanban";
+import { PortfolioKanbanView } from "./PortfolioKanbanView";
 import { PortfolioView } from "./PortfolioView";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -39,6 +41,11 @@ interface Props {
   // the OWNER column hides because every row would show the same avatar.
   showAvatar?: boolean;
   onSelectCompany: (companyId: string) => void;
+  // "board" renders PortfolioKanbanView (bypasses pagination entirely,
+  // groups every filtered+sorted row into its stage column) instead of the
+  // paginated table. Wiring the actual toggle is a later task; this
+  // container just needs to honor the prop.
+  view?: "table" | "board";
 }
 
 const DEFAULTS_KEY = "ud-v2-portfolio-default";
@@ -90,7 +97,13 @@ function saveDefaults(d: PortfolioDefaults): void {
   );
 }
 
-export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onSelectCompany }: Props) {
+export function PortfolioContainer({
+  filter,
+  filterLabel,
+  showAvatar = true,
+  onSelectCompany,
+  view = "table",
+}: Props) {
   const [data, setData] = useState<PortfolioResponse | null>(null);
 
   // Report payload build time for the TopBar freshness label.
@@ -116,6 +129,23 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+
+  // Kanban column collapse state - board-view-only, but lives at the
+  // container level (not PortfolioKanbanView) so it survives a table<->board
+  // flip and can be captured into currentViewState for saved views.
+  const [collapsedStages, setCollapsedStages] = useState<KanbanColumnKey[]>([]);
+  const collapsedStagesSet = useMemo(() => new Set(collapsedStages), [collapsedStages]);
+  // Toggling collapse changes which flat index each card owns (see
+  // flattenBoard/flattenBoardOffsets in portfolio-kanban.ts), so a stale
+  // focusedRowIndex could point at the wrong card, or one that's now hidden
+  // inside a collapsed column. Simplest correct fix: clear it right here in
+  // the handler rather than an effect (react-hooks/set-state-in-effect).
+  const toggleColumnCollapsed = useCallback((key: KanbanColumnKey) => {
+    setCollapsedStages((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+    setFocusedRowIndex(null);
+  }, []);
 
   // Snoozed companies live in localStorage (per device, see snoozed.ts).
   // Mount-only read + change-event subscription, same pattern as the saved
@@ -290,6 +320,19 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
     });
   }, [data, selectedSignals, stackedSignals, shownStatuses, snoozedIds, sortKey, sortDirection, refine]);
 
+  // Board mode groups the full filtered+sorted set into stage columns and
+  // bypasses pagination entirely (no PAGE_SIZE slice). boardFlatRows is the
+  // column-major flattening (all rows of column 0, then column 1, ...) that
+  // keyboard nav and PortfolioKanbanView both key focus off of.
+  const boardColumns = useMemo<KanbanColumn[]>(
+    () => groupByStage(filteredSortedRows),
+    [filteredSortedRows]
+  );
+  const boardFlatRows = useMemo<PortfolioRow[]>(
+    () => flattenBoard(boardColumns, collapsedStagesSet),
+    [boardColumns, collapsedStagesSet]
+  );
+
   // Accumulated ACV (EUR) of everything currently in view — the hero's
   // "portfolio value". row.revenue is amount_in_home_currency, already EUR.
   const portfolioValueEur = useMemo(
@@ -322,13 +365,29 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
 
   // Reset to page 1 whenever filter/signal/sort context changes. Following
   // the prev-X "adjust state during render" pattern the strict react-hooks
-  // lint expects — convergent because the equality check stops firing once
-  // page is 1 and the signature stabilizes.
+  // lint expects, convergent because the equality check stops firing once
+  // page is 1 and the signature stabilizes. Kept to its pre-board-mode
+  // composition (no `view`) so filter/signal/sort changes keep their
+  // existing table-mode behavior untouched.
   const pageResetSig = `${key}|${selectedSignals.join(",")}|${sortKey}|${sortDirection}`;
   const [prevPageResetSig, setPrevPageResetSig] = useState(pageResetSig);
   if (prevPageResetSig !== pageResetSig) {
     setPrevPageResetSig(pageResetSig);
     setPage(1);
+  }
+
+  // Board and table order rows differently (paginated list order vs.
+  // column-major board order), so a focusedRowIndex carried over from one
+  // mode could land on an unrelated row/card in the other. This is its own
+  // adjust-during-render slot, separate from pageResetSig above, so the
+  // reset fires only on an actual view flip, not on every filter/signal/
+  // sort change. Page itself is left untouched on a view flip: board mode
+  // has no pagination to preserve, and flipping back to table with the old
+  // page intact is harmless, so there's no need to also reset it here.
+  const [prevView, setPrevView] = useState(view);
+  if (prevView !== view) {
+    setPrevView(view);
+    setFocusedRowIndex(null);
   }
 
   const totalPages = Math.max(1, Math.ceil(filteredSortedRows.length / PAGE_SIZE));
@@ -346,24 +405,33 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
   // Previously each of those changes torn down and re-attached six window
   // listeners. The refs pattern keeps the listeners stable for the
   // component's lifetime while still letting them read current state.
-  // Keyboard nav uses `paginatedRows` (not the full sorted list) so ↑/↓
-  // bounds and ↵-to-open both operate within the current page.
+  // Keyboard nav uses `activeFlatRows`: `paginatedRows` in table mode so
+  // ↑/↓ bounds and ↵-to-open both operate within the current page,
+  // `boardFlatRows` in board mode so the same nav walks every column in
+  // column-major order instead.
+  const activeFlatRows = view === "board" ? boardFlatRows : paginatedRows;
   const stateRef = useRef({
-    rows: paginatedRows,
+    rows: activeFlatRows,
     focused: focusedRowIndex,
     selectedSignals,
     sortKey,
     filter,
     onSelectCompany,
+    view,
+    boardColumns,
+    collapsedStages: collapsedStagesSet,
   });
   useEffect(() => {
     stateRef.current = {
-      rows: paginatedRows,
+      rows: activeFlatRows,
       focused: focusedRowIndex,
       selectedSignals,
       sortKey,
       filter,
       onSelectCompany,
+      view,
+      boardColumns,
+      collapsedStages: collapsedStagesSet,
     };
   });
 
@@ -411,6 +479,47 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
       // becomes available immediately after a Cmd+S save.
       setHasSavedDefault(true);
     }
+    // Board-only: jump focus to the first row of the previous/next
+    // non-empty column relative to whichever column the focused card is
+    // currently in. With no focus yet, land on the first card overall.
+    // Table mode ignores the event entirely (page.tsx / a later task owns
+    // which physical key dispatches it).
+    function onKanbanColumnJump(e: Event) {
+      const { view: activeView, boardColumns: cols, focused, collapsedStages: collapsed } = stateRef.current;
+      if (activeView !== "board") return;
+      const detail = (e as CustomEvent<{ dir: -1 | 1 }>).detail;
+      if (!detail || cols.length === 0) return;
+      const { dir } = detail;
+
+      // Shared with boardFlatRows/PortfolioKanbanView's flatIndexOf so a
+      // collapsed column contributes zero flat-index slots here too.
+      const offsets = flattenBoardOffsets(cols, collapsed);
+      const isJumpable = (i: number) => cols[i].rows.length > 0 && !collapsed.has(cols[i].def.key);
+
+      if (focused == null) {
+        const firstNonEmpty = cols.findIndex((_, i) => isJumpable(i));
+        if (firstNonEmpty === -1) return;
+        setFocusedRowIndex(offsets[firstNonEmpty]);
+        return;
+      }
+
+      let curCol = -1;
+      for (let i = 0; i < cols.length; i++) {
+        if (collapsed.has(cols[i].def.key)) continue;
+        if (focused >= offsets[i] && focused < offsets[i] + cols[i].rows.length) {
+          curCol = i;
+          break;
+        }
+      }
+      if (curCol === -1) return;
+
+      let nextCol = curCol + dir;
+      while (nextCol >= 0 && nextCol < cols.length && !isJumpable(nextCol)) {
+        nextCol += dir;
+      }
+      if (nextCol < 0 || nextCol >= cols.length) return;
+      setFocusedRowIndex(offsets[nextCol]);
+    }
 
     window.addEventListener("ud-list-nav", onNav);
     window.addEventListener("ud-list-open", onOpen);
@@ -418,6 +527,7 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
     window.addEventListener("ud-portfolio-signal-clear", onSignalClear);
     window.addEventListener("ud-portfolio-sort-cycle", onSortCycle);
     window.addEventListener("ud-portfolio-save-defaults", onSaveDefaults);
+    window.addEventListener("ud-kanban-column-jump", onKanbanColumnJump);
     return () => {
       window.removeEventListener("ud-list-nav", onNav);
       window.removeEventListener("ud-list-open", onOpen);
@@ -425,6 +535,7 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
       window.removeEventListener("ud-portfolio-signal-clear", onSignalClear);
       window.removeEventListener("ud-portfolio-sort-cycle", onSortCycle);
       window.removeEventListener("ud-portfolio-save-defaults", onSaveDefaults);
+      window.removeEventListener("ud-kanban-column-jump", onKanbanColumnJump);
     };
   }, []);
 
@@ -488,6 +599,11 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Pagination doesn't exist in board mode (no PAGE_SIZE slice, no
+      // Pagination control rendered) - leave `[`/`]` untouched there so a
+      // later task can repurpose them (e.g. column jump) without this
+      // handler eating the keydown first.
+      if (view === "board") return;
       if (e.metaKey || e.ctrlKey) return;
       if (popupOpenRef.current) return;
       const target = e.target as HTMLElement | null;
@@ -509,7 +625,7 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [page, onPageChange, filteredSortedRows.length]);
+  }, [page, onPageChange, filteredSortedRows.length, view]);
 
   // When a filter is active, the global totalsBySignal payload (which
   // counts the entire book) misrepresents the current scope. Recompute
@@ -561,6 +677,15 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
     setShownStatuses(state.shownStatuses);
     setSortKey(state.sortKey);
     setSortDirection(state.sortDirection);
+    // Already sanitized against the KANBAN_COLUMNS allowlist in
+    // portfolio-views.ts, so this is a known-good KanbanColumnKey[].
+    setCollapsedStages(state.collapsedStages as KanbanColumnKey[]);
+    // Applying a view can change signals/refine/sort/collapsedStages all at
+    // once, reshuffling the flat row list (table and board both). A stale
+    // focusedRowIndex would then resolve to a different, unrelated company,
+    // so Enter would open the wrong account. Clear synchronously here, same
+    // as toggleColumnCollapsed does above.
+    setFocusedRowIndex(null);
   }, []);
   const currentViewState = useMemo<PortfolioViewState>(
     () => ({
@@ -570,8 +695,9 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
       shownStatuses,
       sortKey,
       sortDirection,
+      collapsedStages,
     }),
-    [selectedSignals, stackedSignals, refine, shownStatuses, sortKey, sortDirection]
+    [selectedSignals, stackedSignals, refine, shownStatuses, sortKey, sortDirection, collapsedStages]
   );
 
   // Snooze actions — stable callbacks so the memoized Row stays cheap. The
@@ -638,44 +764,83 @@ export function PortfolioContainer({ filter, filterLabel, showAvatar = true, onS
           Refresh failed: {error}. Showing cached data.
         </div>
       )}
-      <PortfolioView
-        rows={paginatedRows}
-        totalRowCount={filteredSortedRows.length}
-        totalsBySignal={totalsBySignal}
-        globalTotalsBySignal={data?.totalsBySignal ?? totalsBySignal}
-        filterLabel={filterLabel}
-        showAvatar={showAvatar}
-        selectedSignals={selectedSignals}
-        toggleSignal={toggleSignal}
-        clearSignals={clearSignals}
-        stackedSignals={stackedSignals}
-        toggleStackedSignals={() => setStackedSignals((v) => !v)}
-        refine={refine}
-        setRefine={setRefine}
-        shownStatuses={shownStatuses}
-        toggleStatus={(s) =>
-          setShownStatuses((prev) => ({ ...prev, [s]: !prev[s] }))
-        }
-        snoozedCount={snoozedCount}
-        snoozeUntilById={snoozeUntilById}
-        onSnoozeCompany={onSnoozeCompany}
-        onUnsnoozeCompany={onUnsnoozeCompany}
-        currentViewState={currentViewState}
-        onApplyView={applyView}
-        portfolioValueEur={portfolioValueEur}
-        sortKey={sortKey}
-        sortDirection={sortDirection}
-        setSortKey={setSort}
-        focusedRowIndex={focusedRowIndex}
-        onRowClick={onRowClick}
-        hasSavedDefault={hasSavedDefault}
-        defaultsAreCurrent={isCurrentEqualToSaved(filter, selectedSignals, sortKey)}
-        onResetDefaults={onResetDefaults}
-        page={effectivePage}
-        totalPages={totalPages}
-        pageSize={PAGE_SIZE}
-        onPageChange={onPageChange}
-      />
+      <div key={view} className="view-fade">
+      {view === "board" ? (
+        <PortfolioKanbanView
+          rows={filteredSortedRows}
+          nowIso={data?.generatedAt ?? new Date().toISOString()}
+          totalRowCount={filteredSortedRows.length}
+          totalsBySignal={totalsBySignal}
+          globalTotalsBySignal={data?.totalsBySignal ?? totalsBySignal}
+          filterLabel={filterLabel}
+          showAvatar={showAvatar}
+          selectedSignals={selectedSignals}
+          toggleSignal={toggleSignal}
+          clearSignals={clearSignals}
+          stackedSignals={stackedSignals}
+          toggleStackedSignals={() => setStackedSignals((v) => !v)}
+          refine={refine}
+          setRefine={setRefine}
+          shownStatuses={shownStatuses}
+          toggleStatus={(s) =>
+            setShownStatuses((prev) => ({ ...prev, [s]: !prev[s] }))
+          }
+          snoozedCount={snoozedCount}
+          currentViewState={currentViewState}
+          onApplyView={applyView}
+          portfolioValueEur={portfolioValueEur}
+          sortKey={sortKey}
+          sortDirection={sortDirection}
+          setSortKey={setSort}
+          focusedRowIndex={focusedRowIndex}
+          onRowClick={onRowClick}
+          hasSavedDefault={hasSavedDefault}
+          defaultsAreCurrent={isCurrentEqualToSaved(filter, selectedSignals, sortKey)}
+          onResetDefaults={onResetDefaults}
+          collapsedStages={collapsedStagesSet}
+          toggleColumnCollapsed={toggleColumnCollapsed}
+        />
+      ) : (
+        <PortfolioView
+          rows={paginatedRows}
+          totalRowCount={filteredSortedRows.length}
+          totalsBySignal={totalsBySignal}
+          globalTotalsBySignal={data?.totalsBySignal ?? totalsBySignal}
+          filterLabel={filterLabel}
+          showAvatar={showAvatar}
+          selectedSignals={selectedSignals}
+          toggleSignal={toggleSignal}
+          clearSignals={clearSignals}
+          stackedSignals={stackedSignals}
+          toggleStackedSignals={() => setStackedSignals((v) => !v)}
+          refine={refine}
+          setRefine={setRefine}
+          shownStatuses={shownStatuses}
+          toggleStatus={(s) =>
+            setShownStatuses((prev) => ({ ...prev, [s]: !prev[s] }))
+          }
+          snoozedCount={snoozedCount}
+          snoozeUntilById={snoozeUntilById}
+          onSnoozeCompany={onSnoozeCompany}
+          onUnsnoozeCompany={onUnsnoozeCompany}
+          currentViewState={currentViewState}
+          onApplyView={applyView}
+          portfolioValueEur={portfolioValueEur}
+          sortKey={sortKey}
+          sortDirection={sortDirection}
+          setSortKey={setSort}
+          focusedRowIndex={focusedRowIndex}
+          onRowClick={onRowClick}
+          hasSavedDefault={hasSavedDefault}
+          defaultsAreCurrent={isCurrentEqualToSaved(filter, selectedSignals, sortKey)}
+          onResetDefaults={onResetDefaults}
+          page={effectivePage}
+          totalPages={totalPages}
+          pageSize={PAGE_SIZE}
+          onPageChange={onPageChange}
+        />
+      )}
+      </div>
     </ErrorBoundary>
   );
 }

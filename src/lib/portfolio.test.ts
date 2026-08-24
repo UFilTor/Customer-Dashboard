@@ -28,6 +28,18 @@ function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
     wishToChurnAt: null,
     dealStatus: null,
     estimatedAdoptionDate: null,
+    dealstageId: null,
+    pipelineId: "166333631",
+    nextStep: null,
+    experiencesCreated: null,
+    hasHadEvent: null,
+    latestEventAt: null,
+    obMeetingAt: null,
+    nextActivityAt: null,
+    nextActivityType: null,
+    dealId: null,
+    nextMeetingAt: null,
+    contactEmail: null,
     ...overrides,
   };
 }
@@ -156,6 +168,7 @@ const nowIso = "2026-05-03T00:00:00.000Z";
 describe("buildRow", () => {
   const baseInput = {
     nowIso,
+    contactEmail: null as string | null,
     company: {
       id: "100",
       name: "Acme",
@@ -168,13 +181,22 @@ describe("buildRow", () => {
       volume3m: 0,
       volume6m: 0,
       upcomingEvents: 5 as number | null,
+      experiencesCreated: null as number | null,
+      hasHadEvent: null as boolean | null,
+      latestEventAt: null as string | null,
     },
     deal: {
+      dealId: "500",
       customerStage: "Established",
       customerSubstage: null as string | null,
       pipelineId: RETENTION_PIPELINE,
       enteredStageDate: "2026-04-01T00:00:00.000Z",
       customerLiveDate: "2025-09-01T00:00:00.000Z",
+      nextStep: null as string | null,
+      obMeetingAt: null as string | null,
+      nextMeetingAt: null as string | null,
+      nextActivityAt: null as string | null,
+      nextActivityType: null as string | null,
       unpaidInvoice: false,
       invoiceDueDate: null as string | null,
       outstandingEur: null as number | null,
@@ -237,6 +259,77 @@ describe("buildRow", () => {
     expect(r.overdueDays).toBe(13);
     expect(r.outstandingEur).toBe(4500);
     expect(r.openInvoiceCount).toBe(2);
+  });
+
+  it("threads dealstageId, pipelineId, nextStep, and company event fields onto the row", () => {
+    const r = buildRow({
+      ...baseInput,
+      company: {
+        ...baseInput.company,
+        experiencesCreated: 4,
+        hasHadEvent: true,
+        latestEventAt: "2026-03-15",
+      },
+      deal: {
+        ...baseInput.deal,
+        dealstageId: "1899766980",
+        nextStep: "Call about launch",
+        nextActivityAt: "2026-05-10T09:00:00.000Z",
+        nextActivityType: "Task",
+      },
+    });
+    expect(r.dealstageId).toBe("1899766980");
+    expect(r.pipelineId).toBe(RETENTION_PIPELINE);
+    expect(r.nextStep).toBe("Call about launch");
+    expect(r.experiencesCreated).toBe(4);
+    expect(r.hasHadEvent).toBe(true);
+    expect(r.latestEventAt).toBe("2026-03-15");
+    expect(r.obMeetingAt).toBeNull();
+    expect(r.nextActivityAt).toBe("2026-05-10T09:00:00.000Z");
+    expect(r.nextActivityType).toBe("Task");
+  });
+
+  it("threads dealId, nextMeetingAt, and contactEmail onto the row", () => {
+    const r = buildRow({
+      ...baseInput,
+      contactEmail: "person@example.com",
+      deal: {
+        ...baseInput.deal,
+        dealId: "999",
+        nextMeetingAt: "2026-05-06T09:00:00.000Z",
+      },
+    });
+    expect(r.dealId).toBe("999");
+    expect(r.nextMeetingAt).toBe("2026-05-06T09:00:00.000Z");
+    expect(r.contactEmail).toBe("person@example.com");
+  });
+
+  it("defaults nextMeetingAt and contactEmail to null when not provided", () => {
+    const r = buildRow(baseInput);
+    expect(r.dealId).toBe("500");
+    expect(r.nextMeetingAt).toBeNull();
+    expect(r.contactEmail).toBeNull();
+  });
+});
+
+describe("nextActivityTypeLabel", () => {
+  it("maps the task object-type prefix", () => {
+    expect(__test.nextActivityTypeLabel("0-27-513733934284")).toBe("Task");
+  });
+
+  it("maps the meeting object-type prefix", () => {
+    expect(__test.nextActivityTypeLabel("0-47-513361609926")).toBe("Meeting");
+  });
+
+  it("falls back to Activity for an unrecognized prefix", () => {
+    expect(__test.nextActivityTypeLabel("0-99-513361609926")).toBe("Activity");
+  });
+
+  it("returns null for null/empty input, and Activity for unparseable non-empty input", () => {
+    expect(__test.nextActivityTypeLabel(null)).toBeNull();
+    expect(__test.nextActivityTypeLabel(undefined)).toBeNull();
+    expect(__test.nextActivityTypeLabel("")).toBeNull();
+    expect(__test.nextActivityTypeLabel("garbage")).toBe("Activity");
   });
 });
 

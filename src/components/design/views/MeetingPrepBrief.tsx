@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 import { countryName } from "@/lib/hubspot-enums";
+import { signalStyle } from "@/lib/signal-display";
 import { fmtFutureEvents, toWebUrl } from "@/lib/format-design";
 import { OWNER_MAP } from "@/lib/owners";
 import { VolumeChart } from "../VolumeChart";
@@ -701,6 +702,13 @@ function ObNotesSection({ deal }: { deal: MeetingPrepDeal }) {
   return (
     <div>
       <SectionHeader>OB Notes</SectionHeader>
+      {obNotes.understoryPayEnabled === false && (
+        <Row label="Understory Pay">
+          <span style={{ color: signalStyle("warn").fg, fontWeight: 600 }}>
+            Ineligible / Unwilling
+          </span>
+        </Row>
+      )}
       <Row label="Experiences">
         {obNotes.experiencesLink ? (
           expLink ? (

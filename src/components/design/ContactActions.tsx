@@ -15,9 +15,9 @@
 
 import { useState } from "react";
 import { hubspotDealUrl } from "@/lib/hubspot-links";
-import { whatsappUrl } from "@/lib/phone";
 import { Icon } from "./Icon";
 import { Tooltip } from "./Tooltip";
+import { WhatsAppAction } from "./WhatsAppAction";
 import { quickActionBtn } from "./views/portfolio/chrome";
 
 export interface ContactActionsProps {
@@ -112,8 +112,6 @@ export function ContactActions({
   // contact fields must degrade to "no WhatsApp button, unnamed labels"
   // rather than render "undefined".
   const name = contactName ?? null;
-  const waHref = whatsappUrl(contactPhone ?? null, country ?? null);
-  const waLabel = name ? `Send WhatsApp to ${name}` : "Send WhatsApp to contact";
 
   return (
     <>
@@ -127,19 +125,14 @@ export function ContactActions({
         </DealActionButton>
       )}
       <CopyEmailButton email={contactEmail ?? null} contactName={name} />
-      {waHref && (
-        <Tooltip label={waLabel}>
-          <a
-            href={waHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={waLabel}
-            style={quickActionBtn}
-          >
-            <Icon.WhatsApp size={13} />
-          </a>
-        </Tooltip>
-      )}
+      <WhatsAppAction
+        phone={contactPhone ?? null}
+        country={country ?? null}
+        contactName={name}
+        style={quickActionBtn}
+      >
+        <Icon.WhatsApp size={13} />
+      </WhatsAppAction>
       {dealId && (
         <>
           <DealActionButton dealId={dealId} interaction="schedule" label="Schedule meeting">

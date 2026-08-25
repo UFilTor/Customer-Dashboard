@@ -103,3 +103,20 @@ export function whatsappUrl(
   const number = whatsappNumber(raw, country);
   return number ? `https://api.whatsapp.com/send?phone=${number}&text=` : null;
 }
+
+/**
+ * Native WhatsApp URL scheme, which macOS and Windows hand straight to the
+ * desktop app instead of routing through api.whatsapp.com's redirect page.
+ * Null on the same terms as whatsappUrl.
+ *
+ * Nothing handles this scheme when WhatsApp desktop is not installed and the
+ * click is then a silent no-op, so callers must pair it with whatsappUrl as a
+ * fallback rather than using it alone (see WhatsAppAction).
+ */
+export function whatsappAppUrl(
+  raw: string | null | undefined,
+  country: string | null | undefined
+): string | null {
+  const number = whatsappNumber(raw, country);
+  return number ? `whatsapp://send?phone=${number}` : null;
+}

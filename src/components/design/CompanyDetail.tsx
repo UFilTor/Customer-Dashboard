@@ -16,8 +16,8 @@ import { isBookmarked, toggleBookmark } from "@/lib/bookmarks";
 import { computeWatchOutSignals } from "@/lib/signals";
 import { signalStyle, pillText, calmCopy } from "@/lib/signal-display";
 import { classifyPortfolioStage } from "@/lib/portfolio";
-import { whatsappUrl } from "@/lib/phone";
 import { Tooltip } from "./Tooltip";
+import { WhatsAppAction } from "./WhatsAppAction";
 
 interface Props {
   companyId: string;
@@ -137,13 +137,8 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
 
   const stageLabel = deal?.dealstage ? stages[deal.dealstage] || deal.dealstage : null;
 
-  // Contact behind the call / email / WhatsApp actions. The WhatsApp link
-  // needs the company's country to resolve a nationally formatted number.
+  // Contact behind the call / email / WhatsApp actions.
   const contactName = data.primaryContact?.name ?? null;
-  const whatsappHref = whatsappUrl(
-    data.primaryContact?.phone ?? null,
-    company.understory_company_country ?? null
-  );
 
   const dealStatusLabel = (() => {
     const now = Date.now();
@@ -404,13 +399,14 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
             email={data.primaryContact?.email ?? null}
             contactName={contactName}
           />
-          {whatsappHref && (
-            <QuickActionLink
-              href={whatsappHref}
-              label="WhatsApp"
-              tooltip={contactName ? `Send WhatsApp to ${contactName}` : "Send WhatsApp to contact"}
-            />
-          )}
+          <WhatsAppAction
+            phone={data.primaryContact?.phone ?? null}
+            country={company.understory_company_country ?? null}
+            contactName={contactName}
+            style={quickActionBtn}
+          >
+            WhatsApp
+          </WhatsAppAction>
           {deal?.hs_object_id && (
             <>
               <QuickActionLink

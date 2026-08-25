@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { whatsappNumber, whatsappUrl } from "./phone";
+import { whatsappAppUrl, whatsappNumber, whatsappUrl } from "./phone";
 
 describe("whatsappNumber", () => {
   it("strips formatting from international numbers", () => {
@@ -82,5 +82,21 @@ describe("whatsappUrl", () => {
   it("is null when the number cannot be normalized", () => {
     expect(whatsappUrl("29650141", null)).toBeNull();
     expect(whatsappUrl(null, "SE")).toBeNull();
+  });
+});
+
+describe("whatsappAppUrl", () => {
+  it("builds the native scheme link the desktop app handles", () => {
+    expect(whatsappAppUrl("+46 73 386 75 27", "SE")).toBe(
+      "whatsapp://send?phone=46733867527"
+    );
+    // Same normalization as the web link, trunk digit dropped and all.
+    expect(whatsappAppUrl("0764494133", "SE")).toBe("whatsapp://send?phone=46764494133");
+  });
+
+  it("is null on exactly the same input as the web link", () => {
+    expect(whatsappAppUrl("29650141", null)).toBeNull();
+    expect(whatsappAppUrl(null, "SE")).toBeNull();
+    expect(whatsappAppUrl("+45 12 34", "DK")).toBeNull();
   });
 });

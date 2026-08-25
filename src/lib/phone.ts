@@ -59,7 +59,11 @@ export function whatsappNumber(
   const trimmed = raw?.trim();
   if (!trimmed) return null;
 
-  const digits = trimmed.replace(/\D/g, "");
+  // "(0)" is the international notation for a trunk digit that is dialled
+  // domestically and dropped from abroad ("+46 (0)70 123 45 67"). Stripping
+  // non-digits blind would keep that 0 and hand WhatsApp a number belonging
+  // to someone else, which is the one outcome this module exists to avoid.
+  const digits = trimmed.replace(/\(\s*0\s*\)/g, "").replace(/\D/g, "");
   if (!digits) return null;
 
   let intl: string;

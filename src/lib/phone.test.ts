@@ -30,6 +30,16 @@ describe("whatsappNumber", () => {
     expect(whatsappNumber("030 9589084", "IT")).toBe("390309589084");
   });
 
+  it("drops a parenthesized trunk digit from an international number", () => {
+    // "(0)" means "dial this only from inside the country". Keeping it
+    // produces a number that belongs to someone else entirely.
+    expect(whatsappNumber("+46 (0)70 123 45 67", "SE")).toBe("46701234567");
+    expect(whatsappNumber("+45 (0) 20 21 88 81", "DK")).toBe("4520218881");
+    expect(whatsappNumber("+44 (0)7568 478932", "GB")).toBe("447568478932");
+    // Parens that are not a trunk digit stay put (US area-code style).
+    expect(whatsappNumber("+1 (555) 123-4567", "US")).toBe("15551234567");
+  });
+
   it("does not double-prefix a number stored with its country code but no +", () => {
     expect(whatsappNumber("46701234567", "SE")).toBe("46701234567");
     // Swedish national number in an area code that starts with the dialling

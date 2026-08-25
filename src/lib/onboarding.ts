@@ -505,6 +505,16 @@ export interface BatchAssoc {
   toIds: string[];
 }
 
+/**
+ * Same batch read as BatchAssoc but keeping HubSpot's association *types*,
+ * so callers can pick a labelled association (e.g. "Onboarding Contact")
+ * instead of whichever record happens to come back first.
+ */
+export interface LabelledBatchAssoc {
+  fromId: string;
+  to: { id: string; typeIds: number[] }[];
+}
+
 // Wraps a HubSpot fetch with up to 3 attempts, retrying on 429 + 5xx with
 // exponential backoff. Without this, transient failures silently return
 // empty data that gets cached for 15 min — see AGENTS.md "HubSpot fetch
@@ -532,6 +542,15 @@ export async function fetchAssociations(
   toObject: string,
   fromIds: string[]
 ): Promise<BatchAssoc[]> {
+  const labelled = await fetchLabelledAssociations(fromObject, toObject, fromIds);
+  return labelled.map((a) => ({ fromId: a.fromId, toIds: a.to.map((t) => t.id) }));
+}
+
+export async function fetchLabelledAssociations(
+  fromObject: string,
+  toObject: string,
+  fromIds: string[]
+): Promise<LabelledBatchAssoc[]> {
   // Parallelize batches of 50 — same reasoning as fetchObjectsBatch above.
   const batches: string[][] = [];
   for (let i = 0; i < fromIds.length; i += 50) batches.push(fromIds.slice(i, i + 50));
@@ -545,18 +564,25 @@ export async function fetchAssociations(
           body: JSON.stringify({ inputs: batch.map((id) => ({ id })) }),
         }
       );
-      if (!res || !res.ok) return [] as BatchAssoc[];
+      if (!res || !res.ok) return [] as LabelledBatchAssoc[];
       try {
         const data = await res.json();
-        const items: BatchAssoc[] = [];
+        const items: LabelledBatchAssoc[] = [];
         for (const result of data.results || []) {
           const fromId = String(result.from?.id ?? "");
-          const toIds = (result.to || []).map((t: { toObjectId: number | string }) => String(t.toObjectId));
-          if (fromId) items.push({ fromId, toIds });
+          const to = (result.to || []).map(
+            (t: { toObjectId: number | string; associationTypes?: { typeId?: number }[] }) => ({
+              id: String(t.toObjectId),
+              typeIds: (t.associationTypes || [])
+                .map((a) => a.typeId)
+                .filter((id): id is number => typeof id === "number"),
+            })
+          );
+          if (fromId) items.push({ fromId, to });
         }
         return items;
       } catch {
-        return [] as BatchAssoc[];
+        return [] as LabelledBatchAssoc[];
       }
     })
   );
@@ -1014,12 +1040,27 @@ export interface ContactInfo {
   phone: string | null;
 }
 
+/**
+ * HubSpot association type id for the user-defined "Onboarding Contact - Deal"
+ * label (deal 0-3 → contact 0-1). This is the contact CS actually works with,
+ * and it is set on 198 of the 200 most recent open lifecycle deals — so it is
+ * the right anchor for the per-row call / email / WhatsApp actions.
+ * Verify with: GET /crm/v4/associations/deals/contacts/labels.
+ */
+const ONBOARDING_CONTACT_ASSOC_TYPE_ID = 25;
+
 export async function fetchPrimaryContactsForDeals(
   dealIds: string[]
 ): Promise<Map<string, ContactInfo>> {
-  const dealAssocs = await fetchAssociations("deals", "contacts", dealIds);
+  const dealAssocs = await fetchLabelledAssociations("deals", "contacts", dealIds);
   const dealToContact = new Map<string, string>();
-  for (const a of dealAssocs) if (a.toIds[0]) dealToContact.set(a.fromId, a.toIds[0]);
+  for (const a of dealAssocs) {
+    // Labelled "Onboarding Contact" wins; otherwise fall back to the first
+    // associated contact, which is what this used to return unconditionally.
+    const labelled = a.to.find((t) => t.typeIds.includes(ONBOARDING_CONTACT_ASSOC_TYPE_ID));
+    const chosen = labelled ?? a.to[0];
+    if (chosen) dealToContact.set(a.fromId, chosen.id);
+  }
 
   const uniqueContactIds = Array.from(new Set(dealToContact.values()));
   // Email + phone surface on the meeting brief and detail header so the CS

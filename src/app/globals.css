@@ -207,6 +207,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .animate-fadeIn { animation: fadeIn 200ms ease-out; }
 
+/* Quick-action tooltip (Tooltip.tsx). Opacity only — the element's transform
+   is doing the centering/flip, so animating it here would fight that. */
+@keyframes ud-tooltip-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 @keyframes modalIn {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }

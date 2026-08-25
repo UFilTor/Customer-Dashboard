@@ -4,7 +4,7 @@
 // weight, ACV formatting, signal pills) but reshaped for a vertical card
 // instead of a grid row. Presentation only, no data fetching.
 
-import { memo, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { memo, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
 import { type PortfolioRow } from "@/lib/types";
 import { OWNER_MAP } from "@/lib/owners";
 import { fmtEur } from "@/lib/format-design";
@@ -206,16 +206,22 @@ export const KanbanCard = memo(function KanbanCard({
       {/* Quick-action row - shared QuickActions cluster (cells.tsx), also
           used by the table rows. Wrapped with stopRowPropagation so clicking
           or keying an action here never triggers the card's own onClick. No
-          flex-wrap: the fixed-width icon buttons always fit this row. */}
+          flex-wrap: the buttons always fit this row, but only because the
+          cluster is shrunk here - seven table-sized 27px buttons overflow a
+          card in a 240px-minimum column, so --qa-size trims them to 23. */}
       <div
         style={{
           display: "flex",
-          justifyContent: "center",
-          gap: 5,
+          // space-between, not center: the seven buttons only just fit the
+          // narrowest column, so the row distributes whatever slack the card
+          // actually has instead of assuming a fixed gap that overflows.
+          justifyContent: "space-between",
+          gap: 2,
           marginTop: 8,
           paddingTop: 8,
           borderTop: "1px solid var(--hairline)",
-        }}
+          ["--qa-size" as string]: "23px",
+        } as CSSProperties}
         {...stopRowPropagation}
       >
         <QuickActions

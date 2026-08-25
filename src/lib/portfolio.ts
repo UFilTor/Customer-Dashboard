@@ -4,7 +4,14 @@ import { PORTFOLIO_EXPECTED_DAYS } from "@/config/thresholds";
 import { dealCurrency, hasUnpaidInvoice, unpaidAmountLocal, unpaidInvoiceCount } from "./invoice-fields";
 import { HUBSPOT_API, hubspotHeaders } from "./hubspot-api";
 import { searchObjectsPage } from "./hubspot-search";
-import { fetchAssociations, fetchMeetingStartsForDeals, fetchObjectsBatch, fetchOwnerNames, isOnboardingMeeting } from "./onboarding";
+import {
+  fetchAssociations,
+  fetchMeetingStartsForDeals,
+  fetchOwnerNames,
+  fetchPrimaryContactsForDeals,
+  isOnboardingMeeting,
+  type ContactInfo,
+} from "./onboarding";
 import { OWNERS } from "./owners";
 import { KANBAN_COLUMNS } from "./portfolio-kanban";
 import {
@@ -300,15 +307,19 @@ export function getSortOptions(selectedSignals: PortfolioSignalKey[]): SortOptio
 interface BuildRowInput {
   nowIso: string;
   /**
-   * Primary contact email for the "Copy email" card action. Resolved in bulk
-   * by fetchContactEmailsForDeals, keyed by deal id (not company/deal shaped
-   * since it's a contact-entity concern, not a property of either).
+   * Onboarding contact behind the row's call / email / WhatsApp actions.
+   * Resolved in bulk by fetchPrimaryContactsForDeals, keyed by deal id (not
+   * company/deal shaped since it's a contact-entity concern, not a property
+   * of either).
    */
+  contactName: string | null;
   contactEmail: string | null;
+  contactPhone: string | null;
   company: {
     id: string;
     name: string;
     domain: string | null;
+    country: string | null;
     ownerId: string | null;
     ownerName: string | null;
     healthScore: number | null;
@@ -579,7 +590,10 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     nextActivityType: input.deal.nextActivityType,
     dealId: input.deal.dealId,
     nextMeetingAt: input.deal.nextMeetingAt,
+    contactName: input.contactName,
     contactEmail: input.contactEmail,
+    contactPhone: input.contactPhone,
+    companyCountry: input.company.country,
   };
 }
 
@@ -666,6 +680,7 @@ const PORTFOLIO_DEAL_PROPS = [
 const PORTFOLIO_COMPANY_PROPS = [
   "name",
   "domain",
+  "understory_company_country",
   "hubspot_owner_id",
   "health_score",
   "understory_booking_volume_12m",
@@ -719,38 +734,6 @@ async function fetchPortfolioDealsForPipeline(
     out.push(...results);
     after = nextAfter;
   } while (after);
-  return out;
-}
-
-// Bulk primary-contact email lookup for ALL portfolio deals, feeding the
-// kanban card's "Copy email" action. Mirrors the company-detail selection in
-// `fetchPrimaryContact` (hubspot.ts: company -> associations/contacts,
-// limit=1, first result wins) as closely as a bulk fetch allows, with two
-// intentional divergences:
-//   1. Deal-level, not company-level - a company can back several deals with
-//      different associated contacts, and the card is deal-scoped.
-//   2. Picks the first associated contact with a NON-EMPTY email, not just
-//      the first associated contact (fetchPrimaryContact would happily
-//      return a contact with no email at all, since it also surfaces
-//      name/phone; here email is the only thing the card needs).
-// Company-level fallback is explicitly out of scope (see task brief).
-async function fetchContactEmailsForDeals(dealIds: string[]): Promise<Map<string, string>> {
-  const assocs = await fetchAssociations("deals", "contacts", dealIds);
-  const uniqueContactIds = Array.from(new Set(assocs.flatMap((a) => a.toIds)));
-  if (uniqueContactIds.length === 0) return new Map();
-
-  const contactProps = await fetchObjectsBatch("contacts", uniqueContactIds, ["email"]);
-
-  const out = new Map<string, string>();
-  for (const a of assocs) {
-    for (const contactId of a.toIds) {
-      const email = contactProps.get(contactId)?.email?.trim();
-      if (email) {
-        out.set(a.fromId, email);
-        break;
-      }
-    }
-  }
   return out;
 }
 
@@ -821,12 +804,12 @@ export async function fetchPortfolioRows(
       )
     : Promise.resolve(new Map<string, { startTime: string; activityType: string | null }[]>());
 
-  // Primary-contact emails: kicked off here too, for the same reason as
+  // Onboarding contacts: kicked off here too, for the same reason as
   // obMeetingsPromise above - overlaps with the assoc/companies work below
   // instead of adding to the critical path. Scoped to ALL portfolio deals
-  // (every ongoing card gets a "Copy email" action), best-effort.
-  const contactEmailsPromise = fetchContactEmailsForDeals(allDeals.map((d) => d.id)).catch(
-    () => new Map<string, string>()
+  // (every ongoing row gets call / email / WhatsApp actions), best-effort.
+  const contactsPromise = fetchPrimaryContactsForDeals(allDeals.map((d) => d.id)).catch(
+    () => new Map<string, ContactInfo>()
   );
 
   // Step 2b: deal -> company associations via the shared retry-aware helper.
@@ -875,8 +858,8 @@ export async function fetchPortfolioRows(
   await Promise.all(companyBatches);
   mark("hubspot.companies", tCompanies);
 
-  // Step 2e: owner directory, OB meeting starts, and contact emails - all
-  // kicked off earlier.
+  // Step 2e: owner directory, OB meeting starts, and onboarding contacts -
+  // all kicked off earlier.
   const ownerNames = await ownerNamesPromise;
   // Captured immediately before the await so the span measures only the
   // residual wait, not the assoc/companies work it overlapped with above.
@@ -884,7 +867,7 @@ export async function fetchPortfolioRows(
   const obMeetingsByDeal = await obMeetingsPromise;
   mark("hubspot.obMeetings", tObMeetings);
   const tContacts = performance.now();
-  const contactEmailsByDeal = await contactEmailsPromise;
+  const contactsByDeal = await contactsPromise;
   mark("hubspot.contacts", tContacts);
 
   // Step 2f: assemble rows.
@@ -996,13 +979,18 @@ export async function fetchPortfolioRows(
       ? pickObMeetingDate(obMeetingsForDeal, nowIso)
       : null;
 
+    const contact = contactsByDeal.get(deal.id);
     rows.push(buildRow({
       nowIso,
-      contactEmail: contactEmailsByDeal.get(deal.id) ?? null,
+      contactName:
+        [contact?.firstName, contact?.lastName].filter(Boolean).join(" ").trim() || null,
+      contactEmail: contact?.email ?? null,
+      contactPhone: contact?.phone ?? null,
       company: {
         id: companyId,
         name: props.name || "Unknown",
         domain: props.domain || null,
+        country: props.understory_company_country || null,
         ownerId,
         ownerName: ownerId ? ownerNames[ownerId] || null : null,
         healthScore,

@@ -16,6 +16,8 @@ import { isBookmarked, toggleBookmark } from "@/lib/bookmarks";
 import { computeWatchOutSignals } from "@/lib/signals";
 import { signalStyle, pillText, calmCopy } from "@/lib/signal-display";
 import { classifyPortfolioStage } from "@/lib/portfolio";
+import { whatsappUrl } from "@/lib/phone";
+import { Tooltip } from "./Tooltip";
 
 interface Props {
   companyId: string;
@@ -134,6 +136,14 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
   const ownerLocal = OWNER_MAP[company.hubspot_owner_id || ""] || null;
 
   const stageLabel = deal?.dealstage ? stages[deal.dealstage] || deal.dealstage : null;
+
+  // Contact behind the call / email / WhatsApp actions. The WhatsApp link
+  // needs the company's country to resolve a nationally formatted number.
+  const contactName = data.primaryContact?.name ?? null;
+  const whatsappHref = whatsappUrl(
+    data.primaryContact?.phone ?? null,
+    company.understory_company_country ?? null
+  );
 
   const dealStatusLabel = (() => {
     const now = Date.now();
@@ -376,35 +386,56 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
           >
             {bookmarked ? "★" : "☆"}
           </button>
-          <CopyEmailButton email={data.primaryContact?.email ?? null} />
+          {/* Same order as the Portfolio row cluster (cells.tsx): call, email,
+              WhatsApp, schedule, task, HubSpot. These carry visible labels, so
+              the tooltip's job is to name the contact behind the action. */}
+          {deal?.hs_object_id && (
+            <QuickActionLink
+              href={`${hubspotDealUrl(deal.hs_object_id) ?? "#"}&interaction=call`}
+              label="Call"
+              tooltip={
+                contactName
+                  ? `Call ${contactName} (opens HubSpot's call flow)`
+                  : "Open HubSpot's call flow on this deal"
+              }
+            />
+          )}
+          <CopyEmailButton
+            email={data.primaryContact?.email ?? null}
+            contactName={contactName}
+          />
+          {whatsappHref && (
+            <QuickActionLink
+              href={whatsappHref}
+              label="WhatsApp"
+              tooltip={contactName ? `Send WhatsApp to ${contactName}` : "Send WhatsApp to contact"}
+            />
+          )}
           {deal?.hs_object_id && (
             <>
               <QuickActionLink
-                href={`${hubspotDealUrl(deal.hs_object_id) ?? "#"}&interaction=task`}
-                label="Create task"
-                title="Open HubSpot's create-task flow on this deal"
-              />
-              <QuickActionLink
                 href={`${hubspotDealUrl(deal.hs_object_id) ?? "#"}&interaction=schedule`}
                 label="Schedule meeting"
-                title="Open HubSpot's schedule-meeting flow on this deal"
+                tooltip="Open HubSpot's schedule-meeting flow on this deal"
               />
               <QuickActionLink
-                href={`${hubspotDealUrl(deal.hs_object_id) ?? "#"}&interaction=call`}
-                label="Make call"
-                title="Open HubSpot's call flow on this deal"
+                href={`${hubspotDealUrl(deal.hs_object_id) ?? "#"}&interaction=task`}
+                label="Create task"
+                tooltip="Open HubSpot's create-task flow on this deal"
               />
             </>
           )}
-          <a
-            href={hubspotCompanyUrl(companyId) ?? "#"}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={quickActionBtn}
-          >
-            <Icon.External />
-            Open in HubSpot
-          </a>
+          <Tooltip label={`Open ${company.name || "this company"} in HubSpot`}>
+            <a
+              href={hubspotCompanyUrl(companyId) ?? "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={quickActionBtn}
+            >
+              <Icon.External />
+              Open in HubSpot
+            </a>
+          </Tooltip>
         </div>
       </div>
 
@@ -467,26 +498,34 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
 function QuickActionLink({
   href,
   label,
-  title,
+  tooltip,
 }: {
   href: string;
   label: string;
-  title?: string;
+  tooltip: string;
 }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={title}
-      style={quickActionBtn}
-    >
-      {label}
-    </a>
+    <Tooltip label={tooltip}>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={tooltip}
+        style={quickActionBtn}
+      >
+        {label}
+      </a>
+    </Tooltip>
   );
 }
 
-function CopyEmailButton({ email }: { email: string | null }) {
+function CopyEmailButton({
+  email,
+  contactName,
+}: {
+  email: string | null;
+  contactName: string | null;
+}) {
   const [copied, setCopied] = useState(false);
   if (!email) return null;
   const onCopy = async () => {
@@ -499,15 +538,22 @@ function CopyEmailButton({ email }: { email: string | null }) {
       window.location.href = `mailto:${email}`;
     }
   };
+  const tooltip = copied
+    ? `Copied ${email}`
+    : contactName
+      ? `Copy email for ${contactName} (${email})`
+      : `Copy ${email}`;
   return (
-    <button
-      type="button"
-      onClick={onCopy}
-      title={copied ? `Copied ${email}` : `Copy ${email}`}
-      style={{ ...quickActionBtn, cursor: "pointer" }}
-    >
-      {copied ? "Copied!" : "Copy email"}
-    </button>
+    <Tooltip label={tooltip}>
+      <button
+        type="button"
+        onClick={onCopy}
+        aria-label={tooltip}
+        style={{ ...quickActionBtn, cursor: "pointer" }}
+      >
+        {copied ? "Copied!" : "Copy email"}
+      </button>
+    </Tooltip>
   );
 }
 

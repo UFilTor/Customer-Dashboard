@@ -47,7 +47,10 @@ function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
     nextActivityType: null,
     dealId: null,
     nextMeetingAt: null,
+    contactName: null,
     contactEmail: null,
+    contactPhone: null,
+    companyCountry: null,
     ...overrides,
   };
 }

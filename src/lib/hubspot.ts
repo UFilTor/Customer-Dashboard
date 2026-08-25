@@ -3,6 +3,7 @@ import { HUBSPOT_API, hubspotHeaders as headers } from "./hubspot-api";
 
 import { TO_EUR } from "./fx";
 import { Cache } from "./cache";
+import { fetchPrimaryContactsForDeals } from "./onboarding";
 import {
   SLT_COMPANY_PROPS,
   SLT_DEAL_PROPS,
@@ -172,6 +173,9 @@ export async function getDealStages(): Promise<StageMap> {
 
 const COMPANY_PROPERTIES = [
   "name", "domain", "hubspot_owner_id", "notes_last_contacted",
+  // Only consumed by the WhatsApp quick action, to resolve a national
+  // contact phone number into a dialable international one.
+  "understory_company_country",
   "understory_total_number_of_transactions",
   "understory_booking_volume_all_time",
   "understory_booking_volume_1m",
@@ -249,14 +253,34 @@ async function buildCompanyDetail(companyId: string): Promise<CompanyDetail> {
     fetchTasks(companyId, d?.dealIds || [])
   );
 
-  const [companyRes, dealResult, engagementsRes, primaryContact, tasksRes] =
+  // The deal's "Onboarding Contact" is the person CS actually works with, so
+  // it wins over the company's first associated contact. Both lookups run in
+  // parallel (the company one needs no deal id) so preferring the labelled
+  // contact costs no extra latency on a cold detail click.
+  const dealContactPromise = dealResultPromise.then((d) => {
+    const dealId = d?.properties?.hs_object_id;
+    return dealId
+      ? fetchPrimaryContactsForDeals([dealId]).then((byDeal) => byDeal.get(dealId) ?? null)
+      : null;
+  });
+
+  const [companyRes, dealResult, engagementsRes, companyContact, dealContact, tasksRes] =
     await Promise.all([
       fetchCompany(companyId),
       dealResultPromise,
       fetchEngagements(companyId),
       fetchPrimaryContact(companyId),
+      dealContactPromise,
       tasksPromise,
     ]);
+
+  const primaryContact = dealContact
+    ? {
+        name: [dealContact.firstName, dealContact.lastName].filter(Boolean).join(" ").trim() || null,
+        email: dealContact.email,
+        phone: dealContact.phone,
+      }
+    : companyContact;
 
   // "Since last touch": last touch = most recent logged meeting/call in the
   // past. Two small history batch reads (company + deal), best-effort.

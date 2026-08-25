@@ -847,8 +847,19 @@ export interface PortfolioRow {
   dealId: string | null;
   /** Raw ISO from the deal's hs_next_meeting_start_time. */
   nextMeetingAt: string | null;
-  /** Primary contact email for the card's "Copy email" action. Deal-level, first associated contact with a non-empty email. */
+  /**
+   * The deal's "Onboarding Contact" (falls back to its first associated
+   * contact). Drives the row's Call / Email / WhatsApp quick actions and the
+   * names in their hover labels.
+   */
+  contactName: string | null;
   contactEmail: string | null;
+  contactPhone: string | null;
+  /**
+   * Company `understory_company_country` (ISO-2). Only used to resolve a
+   * national contact phone number into a WhatsApp-dialable one.
+   */
+  companyCountry: string | null;
 }
 
 export interface PortfolioResponse {

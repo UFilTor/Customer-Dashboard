@@ -16,6 +16,7 @@ import { OWNER_MAP } from "@/lib/owners";
 import { VolumeChart } from "../VolumeChart";
 import { HealthRings } from "../HealthRings";
 import { Avatar } from "../Avatar";
+import { ContactActions } from "../ContactActions";
 import { HistoryItem } from "./HistoryItem";
 import { WatchOutFor } from "../WatchOutFor";
 import { SinceLastTouchBlock } from "../SinceLastTouch";
@@ -329,7 +330,21 @@ export function MeetingPrepBrief({
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "row", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
+          {/* Same cluster and order as the Portfolio row (ContactActions):
+              call, email, WhatsApp, schedule, task. "Open in HubSpot" is not
+              repeated here - the header already ends with its own HubSpot
+              button - and snooze is a Portfolio-only concept. */}
+          <ContactActions
+            // Calendar-only meetings carry a synthetic "external-" deal id
+            // that HubSpot can't resolve, so their deal-scoped actions drop
+            // out and only email / WhatsApp remain.
+            dealId={isStub ? null : deal.dealId}
+            contactName={deal.contactName ?? null}
+            contactEmail={deal.contactEmail ?? null}
+            contactPhone={deal.contactPhone ?? null}
+            country={deal.country ?? null}
+          />
           {companyHref && (
             <a
               href={companyHref}

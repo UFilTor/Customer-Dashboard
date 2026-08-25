@@ -4,52 +4,24 @@
 // The container (PortfolioContainer.tsx) still owns all state; these
 // components receive everything through props exactly as before.
 
-import { useState } from "react";
 import { type PortfolioRow } from "@/lib/types";
 import { signalStyle, pillText, calmCopy } from "@/lib/signal-display";
-import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
+import { hubspotCompanyUrl } from "@/lib/hubspot-links";
+import { ContactActions } from "../../ContactActions";
 import { Icon } from "../../Icon";
+import { Tooltip } from "../../Tooltip";
 import { quickActionBtn } from "./chrome";
 import { SnoozeControl } from "./snooze";
 
 // ---------- Quick actions (shared by KanbanCard + table rows) ----------
 
-// Clipboard copy with a citrus background flash as confirmation. Icon.Check
-// is already the glyph for the "Create task" action on this same row, so an
-// icon swap would put two identical checkmarks side by side for 1.5s - the
-// background flash confirms without that collision and keeps the button's
-// footprint fixed so the row never reflows. Mailto fallback if the clipboard
-// API is unavailable.
-function CopyEmailButton({ email }: { email: string | null }) {
-  const [copied, setCopied] = useState(false);
-  if (!email) return null;
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(email);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      window.location.href = `mailto:${email}`;
-    }
-  };
-  const label = copied ? `Copied ${email}` : `Copy ${email}`;
-  return (
-    <button
-      type="button"
-      onClick={onCopy}
-      title={label}
-      aria-label={label}
-      style={{ ...quickActionBtn, background: copied ? "var(--citrus)" : "var(--card-bg)" }}
-    >
-      <Icon.Mail size={13} />
-    </button>
-  );
-}
-
-// The six CTA controls: copy email, create task, schedule meeting, make
-// call, open in HubSpot, snooze. Callers own the layout wrapper (and must
-// stop click/keydown propagation when the surrounding row/card is itself
-// clickable - see KanbanCard.tsx and PortfolioRow.tsx).
+// The seven CTA controls, in the order CS reaches for them: call, email,
+// WhatsApp, schedule meeting, create task, open in HubSpot, snooze. The first
+// five live in the shared <ContactActions /> so the Meeting Prep brief cannot
+// drift out of order with this cluster; the last two are Portfolio-only.
+// Callers own the layout wrapper (and must stop click/keydown propagation
+// when the surrounding row/card is itself clickable - see KanbanCard.tsx and
+// PortfolioRow.tsx).
 export function QuickActions({
   row,
   snoozedUntil,
@@ -63,51 +35,24 @@ export function QuickActions({
 }) {
   return (
     <>
-      <CopyEmailButton email={row.contactEmail} />
-      {row.dealId && (
-        <>
-          <a
-            href={`${hubspotDealUrl(row.dealId) ?? "#"}&interaction=task`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Create task"
-            aria-label="Create task"
-            style={quickActionBtn}
-          >
-            <Icon.Check size={13} />
-          </a>
-          <a
-            href={`${hubspotDealUrl(row.dealId) ?? "#"}&interaction=schedule`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Schedule meeting"
-            aria-label="Schedule meeting"
-            style={quickActionBtn}
-          >
-            <Icon.Calendar size={13} />
-          </a>
-          <a
-            href={`${hubspotDealUrl(row.dealId) ?? "#"}&interaction=call`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Make call"
-            aria-label="Make call"
-            style={quickActionBtn}
-          >
-            <Icon.Phone size={13} />
-          </a>
-        </>
-      )}
-      <a
-        href={hubspotCompanyUrl(row.id) ?? "#"}
-        target="_blank"
-        rel="noopener noreferrer"
-        title="Open in HubSpot"
-        aria-label="Open in HubSpot"
-        style={quickActionBtn}
-      >
-        <Icon.External size={13} />
-      </a>
+      <ContactActions
+        dealId={row.dealId}
+        contactName={row.contactName ?? null}
+        contactEmail={row.contactEmail ?? null}
+        contactPhone={row.contactPhone ?? null}
+        country={row.companyCountry ?? null}
+      />
+      <Tooltip label={`Open ${row.name} in HubSpot`}>
+        <a
+          href={hubspotCompanyUrl(row.id) ?? "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open ${row.name} in HubSpot`}
+          style={quickActionBtn}
+        >
+          <Icon.External size={13} />
+        </a>
+      </Tooltip>
       <SnoozeControl
         row={row}
         snoozedUntil={snoozedUntil}

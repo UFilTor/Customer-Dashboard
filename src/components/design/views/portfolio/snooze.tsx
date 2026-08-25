@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import { type PortfolioRow } from "@/lib/types";
 import { DatePopover } from "../../DatePopover";
 import { Icon } from "../../Icon";
+import { Tooltip } from "../../Tooltip";
 import { eyebrowStyle, quickActionBtn } from "./chrome";
 
 const SNOOZE_PRESETS: Array<{ label: string; days: number }> = [
@@ -136,31 +137,33 @@ export function SnoozeControl({
   if (snoozedUntil != null) {
     // Citrus fill marks the active snooze; clicking wakes the company up.
     return (
-      <button
-        type="button"
-        onClick={() => onUnsnooze(row.id)}
-        title={`Snoozed until ${fmtSnoozeDate(snoozedUntil)} — click to unsnooze`}
-        aria-label={`Unsnooze ${row.name} (snoozed until ${fmtSnoozeDate(snoozedUntil)})`}
-        style={{ ...quickActionBtn, background: "var(--citrus)" }}
-      >
-        <Icon.Moon size={13} />
-      </button>
+      <Tooltip label={`Snoozed until ${fmtSnoozeDate(snoozedUntil)} - click to unsnooze`}>
+        <button
+          type="button"
+          onClick={() => onUnsnooze(row.id)}
+          aria-label={`Unsnooze ${row.name} (snoozed until ${fmtSnoozeDate(snoozedUntil)})`}
+          style={{ ...quickActionBtn, background: "var(--citrus)" }}
+        >
+          <Icon.Moon size={13} />
+        </button>
+      </Tooltip>
     );
   }
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        title={`Snooze ${row.name}`}
-        aria-label={`Snooze ${row.name}`}
-        aria-expanded={open}
-        style={quickActionBtn}
-      >
-        <Icon.Moon size={13} />
-      </button>
+      <Tooltip label={`Snooze ${row.name}`}>
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label={`Snooze ${row.name}`}
+          aria-expanded={open}
+          style={quickActionBtn}
+        >
+          <Icon.Moon size={13} />
+        </button>
+      </Tooltip>
       {open &&
         pos &&
         createPortal(

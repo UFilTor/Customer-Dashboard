@@ -39,7 +39,10 @@ function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
     nextActivityType: null,
     dealId: null,
     nextMeetingAt: null,
+    contactName: null,
     contactEmail: null,
+    contactPhone: null,
+    companyCountry: null,
     ...overrides,
   };
 }
@@ -168,11 +171,14 @@ const nowIso = "2026-05-03T00:00:00.000Z";
 describe("buildRow", () => {
   const baseInput = {
     nowIso,
+    contactName: null as string | null,
     contactEmail: null as string | null,
+    contactPhone: null as string | null,
     company: {
       id: "100",
       name: "Acme",
       domain: "acme.com",
+      country: "SE" as string | null,
       ownerId: "1939229547",
       ownerName: "Filip",
       healthScore: null as number | null,
@@ -289,10 +295,12 @@ describe("buildRow", () => {
     expect(r.nextActivityType).toBe("Task");
   });
 
-  it("threads dealId, nextMeetingAt, and contactEmail onto the row", () => {
+  it("threads dealId, nextMeetingAt, and the onboarding contact onto the row", () => {
     const r = buildRow({
       ...baseInput,
+      contactName: "Anna Berg",
       contactEmail: "person@example.com",
+      contactPhone: "+46 73 386 75 27",
       deal: {
         ...baseInput.deal,
         dealId: "999",
@@ -301,14 +309,21 @@ describe("buildRow", () => {
     });
     expect(r.dealId).toBe("999");
     expect(r.nextMeetingAt).toBe("2026-05-06T09:00:00.000Z");
+    expect(r.contactName).toBe("Anna Berg");
     expect(r.contactEmail).toBe("person@example.com");
+    expect(r.contactPhone).toBe("+46 73 386 75 27");
+    // Sourced from the company, not the contact - the WhatsApp action needs
+    // it to resolve nationally formatted numbers.
+    expect(r.companyCountry).toBe("SE");
   });
 
-  it("defaults nextMeetingAt and contactEmail to null when not provided", () => {
+  it("defaults nextMeetingAt and the contact fields to null when not provided", () => {
     const r = buildRow(baseInput);
     expect(r.dealId).toBe("500");
     expect(r.nextMeetingAt).toBeNull();
+    expect(r.contactName).toBeNull();
     expect(r.contactEmail).toBeNull();
+    expect(r.contactPhone).toBeNull();
   });
 });
 

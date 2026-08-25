@@ -28,6 +28,11 @@ export interface ContactActionsProps {
   contactPhone: string | null;
   /** Company country (ISO-2), needed to dial a nationally formatted number. */
   country: string | null;
+  /**
+   * Glyph side in px. Defaults to the 13 that suits the 27px row buttons; the
+   * company detail header runs a larger --qa-size and asks for more.
+   */
+  glyphSize?: number;
 }
 
 // Clipboard copy with a citrus background flash as confirmation. Icon.Check
@@ -39,9 +44,11 @@ export interface ContactActionsProps {
 function CopyEmailButton({
   email,
   contactName,
+  glyphSize,
 }: {
   email: string | null;
   contactName: string | null;
+  glyphSize: number;
 }) {
   const [copied, setCopied] = useState(false);
   if (!email) return null;
@@ -67,7 +74,7 @@ function CopyEmailButton({
         aria-label={label}
         style={{ ...quickActionBtn, background: copied ? "var(--citrus)" : "var(--card-bg)" }}
       >
-        <Icon.Mail size={13} />
+        <Icon.Mail size={glyphSize} />
       </button>
     </Tooltip>
   );
@@ -106,6 +113,7 @@ export function ContactActions({
   contactEmail,
   contactPhone,
   country,
+  glyphSize = 13,
 }: ContactActionsProps) {
   // Read defensively: the edge CDN can serve a pre-deploy payload for up to
   // 14 min after a release (AGENTS.md "Caching"), so a row arriving without
@@ -121,25 +129,25 @@ export function ContactActions({
           interaction="call"
           label={name ? `Call ${name}` : "Log a call in HubSpot"}
         >
-          <Icon.Phone size={13} />
+          <Icon.Phone size={glyphSize} />
         </DealActionButton>
       )}
-      <CopyEmailButton email={contactEmail ?? null} contactName={name} />
+      <CopyEmailButton email={contactEmail ?? null} contactName={name} glyphSize={glyphSize} />
       <WhatsAppAction
         phone={contactPhone ?? null}
         country={country ?? null}
         contactName={name}
         style={quickActionBtn}
       >
-        <Icon.WhatsApp size={13} />
+        <Icon.WhatsApp size={glyphSize} />
       </WhatsAppAction>
       {dealId && (
         <>
           <DealActionButton dealId={dealId} interaction="schedule" label="Schedule meeting">
-            <Icon.Calendar size={13} />
+            <Icon.Calendar size={glyphSize} />
           </DealActionButton>
           <DealActionButton dealId={dealId} interaction="task" label="Create task">
-            <Icon.Check size={13} />
+            <Icon.Check size={glyphSize} />
           </DealActionButton>
         </>
       )}

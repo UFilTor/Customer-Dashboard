@@ -74,6 +74,7 @@ type UrlState = {
   filter: GlobalFilter;
   payFilter: "default" | "all";
   portfolioView?: "table" | "board";
+  portfolioSearch?: string;
   selectedCompanyId: string | null;
 };
 
@@ -105,6 +106,11 @@ function readUrlState(): Partial<UrlState> {
   if (pf === "default" || pf === "all") out.payFilter = pf;
   const pv = sp.get("pv");
   if (pv === "table" || pv === "board") out.portfolioView = pv;
+  // Capped because the term goes straight into a substring match over every
+  // row on every keystroke, and a hand-crafted link shouldn't be able to hand
+  // us a megabyte of it.
+  const q = sp.get("q");
+  if (q) out.portfolioSearch = q.slice(0, 100);
   const c = sp.get("c");
   if (c) out.selectedCompanyId = c;
   return out;
@@ -122,6 +128,7 @@ function resolveUrlState(p: Partial<UrlState>): UrlState {
     filter: p.filter ?? ALL_FILTER,
     payFilter: p.payFilter ?? "default",
     portfolioView: p.portfolioView ?? "table",
+    portfolioSearch: p.portfolioSearch ?? "",
     selectedCompanyId: p.selectedCompanyId ?? null,
   };
 }
@@ -133,6 +140,7 @@ function sameUrlState(a: UrlState, b: UrlState): boolean {
     serializeFilter(a.filter) === serializeFilter(b.filter) &&
     a.payFilter === b.payFilter &&
     (a.portfolioView ?? "table") === (b.portfolioView ?? "table") &&
+    (a.portfolioSearch ?? "") === (b.portfolioSearch ?? "") &&
     a.selectedCompanyId === b.selectedCompanyId
   );
 }
@@ -159,6 +167,9 @@ function writeUrlState(state: UrlState, mode: "push" | "replace"): void {
   }
   if (state.dashboard === "portfolio" && state.portfolioView && state.portfolioView !== "table") {
     sp.set("pv", state.portfolioView);
+  }
+  if (state.dashboard === "portfolio" && state.portfolioSearch) {
+    sp.set("q", state.portfolioSearch);
   }
   if (state.selectedCompanyId) sp.set("c", state.selectedCompanyId);
   const qs = sp.toString();
@@ -204,6 +215,12 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   const [defaultFilter, setDefaultFilter] = useState<GlobalFilter | null>(null);
   const [payFilter, setPayFilter] = useState<"default" | "all">("default");
   const [portfolioView, setPortfolioView] = useState<"table" | "board">("table");
+  // Portfolio's free-text row filter. Lives up here (not in
+  // PortfolioContainer) because opening a company detail unmounts the
+  // container - see AGENTS.md "Dashboard container lifecycle". Deliberately
+  // NOT mirrored to localStorage the way portfolioView is: a term restored on
+  // a fresh visit would silently hide rows with no visible cause.
+  const [portfolioSearch, setPortfolioSearch] = useState("");
 
   // Data state — seed from server-rendered payload when available so the
   // first paint already has the attention rows. Without it (refresh during
@@ -384,6 +401,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
     } else if (ls("ud-v2-portfolio-view") === "board") {
       setPortfolioView("board");
     }
+    if (fromUrl.portfolioSearch) setPortfolioSearch(fromUrl.portfolioSearch);
     if (fromUrl.selectedCompanyId) {
       // Default to "portfolio", not "status": writeUrlState omits d=portfolio,
       // so a link with ?c= and no ?d= means Portfolio, whose selection lives
@@ -416,6 +434,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       filter: globalFilter,
       payFilter,
       portfolioView,
+      portfolioSearch,
       selectedCompanyId:
         selectionByScope[dashboard === "status" ? variant : "_other"],
     };
@@ -446,7 +465,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
     } catch {
       /* ignore */
     }
-  }, [hydrated, variant, dashboard, globalFilter, payFilter, portfolioView, selectionByScope]);
+  }, [hydrated, variant, dashboard, globalFilter, payFilter, portfolioView, portfolioSearch, selectionByScope]);
 
   // Honor browser back/forward. Every slot is applied unconditionally from a
   // RESOLVED state. Applying only the params present in the URL left the old
@@ -470,6 +489,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       setGlobalFilter(s.filter);
       setPayFilter(s.payFilter);
       setPortfolioView(s.portfolioView ?? "table");
+      setPortfolioSearch(s.portfolioSearch ?? "");
       const scope: SelectionScope = s.dashboard === "status" ? s.variant : "_other";
       setSelectionByScope((prev) => ({ ...prev, [scope]: s.selectedCompanyId }));
     }
@@ -812,6 +832,14 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         if (e.key === "0") {
           e.preventDefault();
           window.dispatchEvent(new Event("ud-portfolio-signal-clear"));
+          return;
+        }
+        // `/` opens + focuses the toolbar's search field. Safe to dispatch
+        // unconditionally: we're already past the inInput guard, so this
+        // cannot fire while the user is typing in the field itself.
+        if (e.key === "/") {
+          e.preventDefault();
+          window.dispatchEvent(new Event("ud-portfolio-search-focus"));
           return;
         }
         // Plain S cycles the sort order; Shift+S opens the sort selector
@@ -1165,6 +1193,8 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
         filterLabel={filterLabel}
         showAvatar={globalFilter.kind !== "person"}
         onSelectCompany={(id) => selectCompany(id)}
+        search={portfolioSearch}
+        onSearchChange={setPortfolioSearch}
         view={portfolioView}
       />
     );

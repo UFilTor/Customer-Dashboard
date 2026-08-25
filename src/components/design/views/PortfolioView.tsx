@@ -37,6 +37,9 @@ interface Props {
   // the grid because every row would show the same avatar.
   showAvatar?: boolean;
 
+  // Free-text account filter, threaded straight to the shared Toolbar.
+  search: string;
+  onSearchChange: (q: string) => void;
   selectedSignals: PortfolioSignalKey[];
   toggleSignal: (key: PortfolioSignalKey) => void;
   clearSignals: () => void;
@@ -285,6 +288,8 @@ export function PortfolioView(props: Props) {
           <div role="table" aria-label="Portfolio accounts">
           <div className={`pf-sticky${scrolled ? " scrolled" : ""}`} ref={stickyRef}>
             <Toolbar
+              search={props.search}
+              onSearchChange={props.onSearchChange}
               selectedSignals={props.selectedSignals}
               toggleSignal={props.toggleSignal}
               clearSignals={props.clearSignals}

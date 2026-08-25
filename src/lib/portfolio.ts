@@ -304,6 +304,24 @@ export function getSortOptions(selectedSignals: PortfolioSignalKey[]): SortOptio
   return [...UNIVERSAL_SORTS, ...specific];
 }
 
+// Free-text row filter behind the Portfolio toolbar's search pill. Matches
+// account name and domain only - the two identifiers CS actually types when
+// hunting for a known account. Owner is deliberately excluded: the global
+// Person filter already covers that axis. An empty or whitespace-only query
+// matches everything, which is what lets the container call this
+// unconditionally.
+//
+// Both fields are read through `?? ""`: the edge CDN can serve a pre-deploy
+// payload for up to 14 min (AGENTS.md "Caching"), so a row that arrives
+// without `domain` has to degrade to "no domain match" rather than throw.
+export function matchesPortfolioSearch(row: PortfolioRow, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const name = (row.name ?? "").toLowerCase();
+  const domain = (row.domain ?? "").toLowerCase();
+  return name.includes(q) || domain.includes(q);
+}
+
 interface BuildRowInput {
   nowIso: string;
   /**

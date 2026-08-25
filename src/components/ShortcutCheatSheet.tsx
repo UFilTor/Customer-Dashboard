@@ -97,6 +97,7 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
     out.push({
       heading: "Portfolio",
       rows: [
+        { label: "Search accounts", keys: "/" },
         { label: "Open Signals filter", keys: "Shift + F" },
         { label: "Toggle signal filter (in popover or list)", keys: "1-8" },
         { label: "Clear all signal filters", keys: "0" },

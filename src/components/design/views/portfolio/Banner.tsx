@@ -72,7 +72,7 @@ export function Banner({
               Lives in the headline (not the detail row) because the detail
               fragments are clickable filters and a static value there would
               break that affordance. fmtEur renders 0 as "—", so skip it. */}
-          {totalValueEur > 0 && <> · {fmtEur(totalValueEur)} ACV</>} across your book.
+          {totalValueEur > 0 && <> · {fmtEur(totalValueEur)} ACV</>}
         </>
       }
       detail={

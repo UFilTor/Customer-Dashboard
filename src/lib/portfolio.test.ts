@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyPortfolioStage, isSignalApplicable, extractSortKey, getSortOptions, buildRow, __test } from "./portfolio";
+import { classifyPortfolioStage, isSignalApplicable, extractSortKey, getSortOptions, buildRow, matchesPortfolioSearch, __test } from "./portfolio";
 import type { PortfolioRow } from "./types";
 
 function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
@@ -370,5 +370,45 @@ describe("aggregatePayload", () => {
     const out = __test.aggregatePayload(rows);
     expect(out.totalsBySignal.open_invoices).toBe(1);
     expect(out.totalsBySignal.overdue_invoices).toBe(1);
+  });
+});
+
+describe("matchesPortfolioSearch", () => {
+  it("passes every row for an empty or whitespace-only query", () => {
+    const r = row({ name: "Kajakhotellet", domain: "kajakhotellet.dk" });
+    expect(matchesPortfolioSearch(r, "")).toBe(true);
+    expect(matchesPortfolioSearch(r, "   ")).toBe(true);
+  });
+
+  it("matches the account name case-insensitively on a partial term", () => {
+    const r = row({ name: "Kajakhotellet", domain: null });
+    expect(matchesPortfolioSearch(r, "kajak")).toBe(true);
+    expect(matchesPortfolioSearch(r, "KAJAK")).toBe(true);
+    expect(matchesPortfolioSearch(r, "hotell")).toBe(true);
+  });
+
+  it("matches the domain when the name doesn't", () => {
+    const r = row({ name: "Kajakhotellet", domain: "paddle.dk" });
+    expect(matchesPortfolioSearch(r, "paddle")).toBe(true);
+    expect(matchesPortfolioSearch(r, ".dk")).toBe(true);
+  });
+
+  it("trims the query before matching", () => {
+    const r = row({ name: "Kajakhotellet", domain: null });
+    expect(matchesPortfolioSearch(r, "  kajak  ")).toBe(true);
+  });
+
+  it("rejects a row that matches neither field", () => {
+    const r = row({ name: "Kajakhotellet", domain: "paddle.dk" });
+    expect(matchesPortfolioSearch(r, "surfing")).toBe(false);
+  });
+
+  // The edge CDN can serve a pre-deploy payload for up to 14 min (AGENTS.md
+  // "Caching"), so a row can arrive without the fields the TS type promises.
+  it("returns false instead of throwing when name and domain are absent", () => {
+    const stale = { id: "1" } as unknown as PortfolioRow;
+    expect(() => matchesPortfolioSearch(stale, "kajak")).not.toThrow();
+    expect(matchesPortfolioSearch(stale, "kajak")).toBe(false);
+    expect(matchesPortfolioSearch(stale, "")).toBe(true);
   });
 });

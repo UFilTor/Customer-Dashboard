@@ -109,6 +109,14 @@ export const Icon = {
       <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
     </Svg>
   ),
+  // Bookmark toggle. One glyph covers both states: baseProps sets fill:none,
+  // and {...p} spreads after it, so the caller flips it on with
+  // fill="currentColor" instead of us shipping a second filled component.
+  Star: (p: IconProps & { size?: number }) => (
+    <Svg {...p}>
+      <path d="M12 3.5l2.6 5.3 5.9.85-4.25 4.15 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.65l5.9-.85z" />
+    </Svg>
+  ),
   Alert: (p: IconProps & { size?: number }) => (
     <Svg {...p}>
       <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />

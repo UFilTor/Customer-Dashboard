@@ -17,7 +17,8 @@ import { computeWatchOutSignals } from "@/lib/signals";
 import { signalStyle, pillText, calmCopy } from "@/lib/signal-display";
 import { classifyPortfolioStage } from "@/lib/portfolio";
 import { Tooltip } from "./Tooltip";
-import { WhatsAppAction } from "./WhatsAppAction";
+import { ContactActions } from "./ContactActions";
+import { quickActionBtn } from "./views/portfolio/chrome";
 
 interface Props {
   companyId: string;
@@ -25,23 +26,9 @@ interface Props {
   embedded?: boolean;
 }
 
-
-// Shared style for the row of header action buttons (Email / Copy / Open
-// in HubSpot). Keeps the cluster visually consistent without lifting the
-// styling into globals.css.
-const quickActionBtn: React.CSSProperties = {
-  padding: "8px 14px",
-  borderRadius: 10,
-  fontSize: 12,
-  fontWeight: 500,
-  color: "var(--moss)",
-  border: "1px solid var(--hairline)",
-  background: "var(--card-bg)",
-  textDecoration: "none",
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-};
+// Glyph side for the header cluster. Larger than the 13px the table rows use
+// because this header runs a bigger --qa-size - see the cluster wrapper below.
+const HEADER_GLYPH = 15;
 
 
 export function CompanyDetail({ companyId, data, embedded = false }: Props) {
@@ -358,78 +345,50 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
             </div>
           )}
         </div>
-        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-          <button
-            onClick={onToggleBookmark}
-            aria-label={bookmarked ? "Remove bookmark" : "Bookmark this company"}
-            aria-pressed={bookmarked}
-            title={bookmarked ? "Remove bookmark" : "Bookmark this company"}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              fontSize: 16,
-              border: "1px solid var(--hairline)",
-              background: bookmarked ? "var(--citrus)" : "var(--card-bg)",
-              color: "var(--moss)",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "background 0.15s",
-            }}
-          >
-            {bookmarked ? "★" : "☆"}
-          </button>
-          {/* Same order as the Portfolio row cluster (cells.tsx): call, email,
-              WhatsApp, schedule, task, HubSpot. These carry visible labels, so
-              the tooltip's job is to name the contact behind the action. */}
-          {deal?.hs_object_id && (
-            <QuickActionLink
-              href={`${hubspotDealUrl(deal.hs_object_id) ?? "#"}&interaction=call`}
-              label="Call"
-              tooltip={
-                contactName
-                  ? `Call ${contactName} (opens HubSpot's call flow)`
-                  : "Open HubSpot's call flow on this deal"
-              }
-            />
-          )}
-          <CopyEmailButton
-            email={data.primaryContact?.email ?? null}
+        {/* Same cluster and order as the Portfolio row (cells.tsx): bookmark,
+            call, email, WhatsApp, schedule, task, HubSpot. Glyph-only, so each
+            button's tooltip + aria-label IS its name. The header has room the
+            239px table track doesn't, so --qa-size runs larger here (the same
+            escape hatch KanbanCard.tsx uses to shrink to 23px). */}
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            flexShrink: 0,
+            ["--qa-size" as string]: "32px",
+          }}
+        >
+          <Tooltip label={bookmarked ? "Remove bookmark" : "Bookmark this company"}>
+            <button
+              onClick={onToggleBookmark}
+              aria-label={bookmarked ? "Remove bookmark" : "Bookmark this company"}
+              aria-pressed={bookmarked}
+              style={{
+                ...quickActionBtn,
+                background: bookmarked ? "var(--citrus)" : "var(--card-bg)",
+                transition: "background 0.15s",
+              }}
+            >
+              <Icon.Star size={HEADER_GLYPH} fill={bookmarked ? "currentColor" : "none"} />
+            </button>
+          </Tooltip>
+          <ContactActions
+            dealId={deal?.hs_object_id ?? null}
             contactName={contactName}
-          />
-          <WhatsAppAction
-            phone={data.primaryContact?.phone ?? null}
+            contactEmail={data.primaryContact?.email ?? null}
+            contactPhone={data.primaryContact?.phone ?? null}
             country={company.understory_company_country ?? null}
-            contactName={contactName}
-            style={quickActionBtn}
-          >
-            WhatsApp
-          </WhatsAppAction>
-          {deal?.hs_object_id && (
-            <>
-              <QuickActionLink
-                href={`${hubspotDealUrl(deal.hs_object_id) ?? "#"}&interaction=schedule`}
-                label="Schedule meeting"
-                tooltip="Open HubSpot's schedule-meeting flow on this deal"
-              />
-              <QuickActionLink
-                href={`${hubspotDealUrl(deal.hs_object_id) ?? "#"}&interaction=task`}
-                label="Create task"
-                tooltip="Open HubSpot's create-task flow on this deal"
-              />
-            </>
-          )}
+            glyphSize={HEADER_GLYPH}
+          />
           <Tooltip label={`Open ${company.name || "this company"} in HubSpot`}>
             <a
               href={hubspotCompanyUrl(companyId) ?? "#"}
               target="_blank"
               rel="noopener noreferrer"
+              aria-label={`Open ${company.name || "this company"} in HubSpot`}
               style={quickActionBtn}
             >
-              <Icon.External />
-              Open in HubSpot
+              <Icon.External size={HEADER_GLYPH} />
             </a>
           </Tooltip>
         </div>
@@ -488,68 +447,6 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
         </div>
       )}
     </div>
-  );
-}
-
-function QuickActionLink({
-  href,
-  label,
-  tooltip,
-}: {
-  href: string;
-  label: string;
-  tooltip: string;
-}) {
-  return (
-    <Tooltip label={tooltip}>
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={tooltip}
-        style={quickActionBtn}
-      >
-        {label}
-      </a>
-    </Tooltip>
-  );
-}
-
-function CopyEmailButton({
-  email,
-  contactName,
-}: {
-  email: string | null;
-  contactName: string | null;
-}) {
-  const [copied, setCopied] = useState(false);
-  if (!email) return null;
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(email);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Older browsers / permission denied — fall back to mailto.
-      window.location.href = `mailto:${email}`;
-    }
-  };
-  const tooltip = copied
-    ? `Copied ${email}`
-    : contactName
-      ? `Copy email for ${contactName} (${email})`
-      : `Copy ${email}`;
-  return (
-    <Tooltip label={tooltip}>
-      <button
-        type="button"
-        onClick={onCopy}
-        aria-label={tooltip}
-        style={{ ...quickActionBtn, cursor: "pointer" }}
-      >
-        {copied ? "Copied!" : "Copy email"}
-      </button>
-    </Tooltip>
   );
 }
 

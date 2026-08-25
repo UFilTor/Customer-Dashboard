@@ -30,6 +30,9 @@ interface Props {
   filterLabel?: string | null;
   showAvatar?: boolean;
 
+  // Free-text account filter, threaded straight to the shared Toolbar.
+  search: string;
+  onSearchChange: (q: string) => void;
   selectedSignals: PortfolioSignalKey[];
   toggleSignal: (key: PortfolioSignalKey) => void;
   clearSignals: () => void;
@@ -134,6 +137,8 @@ export function PortfolioKanbanView(props: Props) {
           <div ref={sentinelRef} aria-hidden="true" style={{ height: 1, marginBottom: -1 }} />
           <div className={`pf-sticky${scrolled ? " scrolled" : ""}`}>
             <Toolbar
+              search={props.search}
+              onSearchChange={props.onSearchChange}
               selectedSignals={props.selectedSignals}
               toggleSignal={props.toggleSignal}
               clearSignals={props.clearSignals}

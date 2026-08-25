@@ -10,11 +10,16 @@ import { PORTFOLIO_SIGNALS, PORTFOLIO_SIGNAL_MAP } from "@/lib/signals";
 import { getSortOptions } from "@/lib/portfolio";
 import { type PortfolioShownStatuses, type PortfolioViewState } from "@/lib/portfolio-views";
 import { RefinePill } from "./RefinePill";
+import { SearchPill } from "./SearchPill";
 import { StatusFilterPill } from "./StatusFilterPill";
 import { ViewsPill } from "./ViewsPill";
 import { Caret, eyebrowStyle, ghostBtnStyle, pillTriggerStyle, useOutsideClose } from "./chrome";
 
 export interface ToolbarProps {
+  // Free-text account filter. Owned by page-client (URL param `q`) so it
+  // survives a table/board flip and a company-detail round-trip.
+  search: string;
+  onSearchChange: (q: string) => void;
   selectedSignals: PortfolioSignalKey[];
   toggleSignal: (k: PortfolioSignalKey) => void;
   clearSignals: () => void;
@@ -299,6 +304,8 @@ function SortDropdown({
 // ---------- Column headers ----------
 
 export function Toolbar({
+  search,
+  onSearchChange,
   selectedSignals,
   toggleSignal,
   clearSignals,
@@ -433,6 +440,10 @@ export function Toolbar({
         toggleStatus={toggleStatus}
         snoozedCount={snoozedCount}
       />
+
+      {/* Sits immediately before the flex spacer so expanding eats the row's
+          empty middle instead of shoving the filter pills left of it. */}
+      <SearchPill search={search} onSearchChange={onSearchChange} />
 
       <span style={{ flex: 1 }} />
 

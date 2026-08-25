@@ -11,7 +11,7 @@ import type {
 } from "@/lib/types";
 import { effectiveOwnerIds, type GlobalFilter, parseFilter, serializeFilter } from "@/lib/owners";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
-import { extractSortKey, getSortOptions, mapKindToKey } from "@/lib/portfolio";
+import { extractSortKey, getSortOptions, mapKindToKey, matchesPortfolioSearch } from "@/lib/portfolio";
 import { PORTFOLIO_SIGNAL_ORDER, PORTFOLIO_SIGNAL_MAP } from "@/lib/signals";
 import { getSnoozed, snoozeCompany, unsnoozeCompany, type SnoozedCompany } from "@/lib/snoozed";
 import {
@@ -42,6 +42,12 @@ interface Props {
   // the OWNER column hides because every row would show the same avatar.
   showAvatar?: boolean;
   onSelectCompany: (companyId: string) => void;
+  // Free-text account filter. Owned by page-client (URL param `q`) rather than
+  // this container: opening a company detail unmounts the container (see
+  // AGENTS.md "Dashboard container lifecycle"), and the term has to survive
+  // that round-trip.
+  search: string;
+  onSearchChange: (q: string) => void;
   // "board" renders PortfolioKanbanView (bypasses pagination entirely,
   // groups every filtered+sorted row into its stage column) instead of the
   // paginated table. Wiring the actual toggle is a later task; this
@@ -103,6 +109,8 @@ export function PortfolioContainer({
   filterLabel,
   showAvatar = true,
   onSelectCompany,
+  search,
+  onSearchChange,
   view = "table",
 }: Props) {
   const [data, setData] = useState<PortfolioResponse | null>(null);
@@ -259,9 +267,14 @@ export function PortfolioContainer({
       return shownStatuses[r.dealStatus] === true;
     });
 
+    // Free-text narrowing on name / domain. Runs before the signal filter so
+    // everything downstream (signal counts in view, sections, pagination,
+    // board columns) operates on the searched set.
+    const searched = statusFiltered.filter((r) => matchesPortfolioSearch(r, search));
+
     const filtered = selectedSignals.length === 0
-      ? statusFiltered
-      : statusFiltered.filter((r) => {
+      ? searched
+      : searched.filter((r) => {
           const sigs = Array.isArray(r.signals) ? r.signals : [];
           const matchedKinds = new Set<PortfolioSignalKey>();
           for (const s of sigs) {
@@ -319,7 +332,7 @@ export function PortfolioContainer({
       if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
       return ((av as number) - (bv as number)) * dir;
     });
-  }, [data, selectedSignals, stackedSignals, shownStatuses, snoozedIds, sortKey, sortDirection, refine]);
+  }, [data, search, selectedSignals, stackedSignals, shownStatuses, snoozedIds, sortKey, sortDirection, refine]);
 
   // Board mode groups the full filtered+sorted set into stage columns and
   // bypasses pagination entirely (no PAGE_SIZE slice). boardFlatRows is the
@@ -361,8 +374,9 @@ export function PortfolioContainer({
     const signalNote = selectedSignals.length > 0
       ? `, filtered to ${selectedSignals.map((k) => PORTFOLIO_SIGNAL_MAP[k]?.label ?? k).join(", ")}`
       : "";
-    announce(`${count} account${count === 1 ? "" : "s"}${signalNote}`);
-  }, [filteredSortedRows.length, selectedSignals, isFirstLoading]);
+    const searchNote = search.trim() ? ` matching "${search.trim()}"` : "";
+    announce(`${count} account${count === 1 ? "" : "s"}${searchNote}${signalNote}`);
+  }, [filteredSortedRows.length, search, selectedSignals, isFirstLoading]);
 
   // Reset to page 1 whenever filter/signal/sort context changes. Following
   // the prev-X "adjust state during render" pattern the strict react-hooks
@@ -370,7 +384,7 @@ export function PortfolioContainer({
   // page is 1 and the signature stabilizes. Kept to its pre-board-mode
   // composition (no `view`) so filter/signal/sort changes keep their
   // existing table-mode behavior untouched.
-  const pageResetSig = `${key}|${selectedSignals.join(",")}|${sortKey}|${sortDirection}`;
+  const pageResetSig = `${key}|${search}|${selectedSignals.join(",")}|${sortKey}|${sortDirection}`;
   const [prevPageResetSig, setPrevPageResetSig] = useState(pageResetSig);
   if (prevPageResetSig !== pageResetSig) {
     setPrevPageResetSig(pageResetSig);
@@ -637,11 +651,14 @@ export function PortfolioContainer({
       stuck_in_step: 0, volume_declining: 0, wish_to_churn: 0, gone_quiet: 0,
       not_on_pay: 0,
     };
-    if (selectedSignals.length === 0) {
-      // Unfiltered: the API-provided totals are the right answer.
+    // Unfiltered: the API-provided totals are the right answer. A search term
+    // narrows the set just like a signal filter does, so it has to disqualify
+    // this shortcut too - otherwise the headline reads "5 customers" while the
+    // breakdown underneath still reports the whole book's 156/130/43.
+    if (selectedSignals.length === 0 && !search.trim()) {
       return data?.totalsBySignal ?? empty;
     }
-    // Filtered: tally distinct signals across filteredSortedRows.
+    // Narrowed: tally distinct signals across filteredSortedRows.
     const counts = { ...empty };
     for (const row of filteredSortedRows) {
       const sigs = Array.isArray(row.signals) ? row.signals : [];
@@ -651,7 +668,7 @@ export function PortfolioContainer({
       }
     }
     return counts;
-  }, [data, selectedSignals, filteredSortedRows]);
+  }, [data, search, selectedSignals, filteredSortedRows]);
 
   // Stable callback so the memoized Row stays cheap. A fresh closure each
   // render would defeat React.memo on the row component.
@@ -775,6 +792,8 @@ export function PortfolioContainer({
           globalTotalsBySignal={data?.totalsBySignal ?? totalsBySignal}
           filterLabel={filterLabel}
           showAvatar={showAvatar}
+          search={search}
+          onSearchChange={onSearchChange}
           selectedSignals={selectedSignals}
           toggleSignal={toggleSignal}
           clearSignals={clearSignals}
@@ -812,6 +831,8 @@ export function PortfolioContainer({
           globalTotalsBySignal={data?.totalsBySignal ?? totalsBySignal}
           filterLabel={filterLabel}
           showAvatar={showAvatar}
+          search={search}
+          onSearchChange={onSearchChange}
           selectedSignals={selectedSignals}
           toggleSignal={toggleSignal}
           clearSignals={clearSignals}

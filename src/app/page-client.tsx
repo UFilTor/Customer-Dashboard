@@ -110,7 +110,41 @@ function readUrlState(): Partial<UrlState> {
   return out;
 }
 
-function writeUrlState(state: UrlState): void {
+// readUrlState returns only the params that are present. Anything the URL
+// omits means "the default", since writeUrlState drops d=portfolio, v=briefing
+// and friends on purpose. So anything reading a history entry back (popstate)
+// has to resolve a FULL state, never a partial one. Keep these defaults in
+// sync with the omission rules in writeUrlState below.
+function resolveUrlState(p: Partial<UrlState>): UrlState {
+  return {
+    dashboard: p.dashboard ?? "portfolio",
+    variant: p.variant ?? "briefing",
+    filter: p.filter ?? ALL_FILTER,
+    payFilter: p.payFilter ?? "default",
+    portfolioView: p.portfolioView ?? "table",
+    selectedCompanyId: p.selectedCompanyId ?? null,
+  };
+}
+
+function sameUrlState(a: UrlState, b: UrlState): boolean {
+  return (
+    a.dashboard === b.dashboard &&
+    a.variant === b.variant &&
+    serializeFilter(a.filter) === serializeFilter(b.filter) &&
+    a.payFilter === b.payFilter &&
+    (a.portfolioView ?? "table") === (b.portfolioView ?? "table") &&
+    a.selectedCompanyId === b.selectedCompanyId
+  );
+}
+
+// True when the entry behind the current one was pushed by this app, so
+// history.back() lands on a dashboard view instead of leaving the site.
+function canGoBackInApp(): boolean {
+  if (typeof window === "undefined") return false;
+  return (((window.history.state as { udDepth?: number } | null)?.udDepth) ?? 0) > 0;
+}
+
+function writeUrlState(state: UrlState, mode: "push" | "replace"): void {
   if (typeof window === "undefined") return;
   const sp = new URLSearchParams();
   if (state.dashboard !== "portfolio") sp.set("d", state.dashboard);
@@ -129,9 +163,26 @@ function writeUrlState(state: UrlState): void {
   if (state.selectedCompanyId) sp.set("c", state.selectedCompanyId);
   const qs = sp.toString();
   const next = qs ? `?${qs}` : window.location.pathname;
-  // Use replaceState to avoid spamming the back-button history on every nav.
-  // Pushing once per nav would also work but feels heavy for tabbed UIs.
-  window.history.replaceState(null, "", next);
+  // Carry the whole existing history state forward and only add our own key.
+  // Two reasons:
+  //  1. The depth counter lets canGoBackInApp() tell "there is an app entry
+  //     behind this one" from "this is where the user landed". Passing null
+  //     (as this used to) wipes it, which is what neutered the old
+  //     { company: true } marker one line after it got pushed.
+  //  2. Next's App Router keeps __NA and __PRIVATE_NEXTJS_INTERNALS_TREE in
+  //     history.state, and its popstate handler does a full
+  //     window.location.reload() on any entry missing __NA. Its patched
+  //     pushState copies those over for us, but only once its own mount effect
+  //     has run, and child effects (this one) run first. Copying them
+  //     ourselves makes the ordering irrelevant.
+  const current = (window.history.state ?? {}) as Record<string, unknown>;
+  const depth = typeof current.udDepth === "number" ? current.udDepth : 0;
+  const data = { ...current, udDepth: mode === "push" ? depth + 1 : depth };
+  if (mode === "push") {
+    window.history.pushState(data, "", next);
+  } else {
+    window.history.replaceState(data, "", next);
+  }
 }
 
 interface DashboardClientProps {
@@ -277,6 +328,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   // hydration-mismatch guard. Resolution order: URL → pinned default → last
   // used → defaults.
   const didMountRef = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     if (didMountRef.current) return;
     didMountRef.current = true;
@@ -333,11 +385,19 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       setPortfolioView("board");
     }
     if (fromUrl.selectedCompanyId) {
-      const dash = fromUrl.dashboard ?? "status";
+      // Default to "portfolio", not "status": writeUrlState omits d=portfolio,
+      // so a link with ?c= and no ?d= means Portfolio, whose selection lives
+      // in the "_other" slot.
+      const dash = fromUrl.dashboard ?? "portfolio";
       const scope: SelectionScope =
         dash === "status" ? (fromUrl.variant ?? "briefing") : "_other";
       setSelectionByScope((prev) => ({ ...prev, [scope]: fromUrl.selectedCompanyId! }));
     }
+    // Gate the URL-sync effect below until this seed has landed in state.
+    // Both effects run in the same first commit, so without the gate the sync
+    // effect would fire once with the pre-seed defaults and then again with the
+    // real state, which now reads as a navigation and pushes a bogus entry.
+    setHydrated(true);
     // Mount-init effect intentionally runs once. The `dashboard` reference
     // inside is the initial default; we only branch on it to detect "URL
     // wants a different dashboard than the current default".
@@ -347,9 +407,10 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   // Mirror state into the URL (canonical) and localStorage (for first-load
   // restoration). Runs after the mount-init effect above, so the first sync
   // writes the seeded state back to the URL in canonical form.
+  const lastUrlRef = useRef<UrlState | null>(null);
   useEffect(() => {
-    if (!didMountRef.current) return;
-    writeUrlState({
+    if (!hydrated) return;
+    const next: UrlState = {
       dashboard,
       variant,
       filter: globalFilter,
@@ -357,7 +418,25 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
       portfolioView,
       selectedCompanyId:
         selectionByScope[dashboard === "status" ? variant : "_other"],
-    });
+    };
+    const prev = lastUrlRef.current;
+    lastUrlRef.current = next;
+    // Nothing changed: either an unrelated state slot re-ran this effect, or
+    // the state just round-tripped through popstate (which seeds lastUrlRef
+    // before applying, so back/forward never echoes a duplicate entry into
+    // history and forward keeps working).
+    if (!prev || !sameUrlState(prev, next)) {
+      // Structural navigation earns its own history entry so browser back
+      // returns to the previous dashboard / account. Filter, Pay Default/All
+      // and table/board replace in place, so a Shift+F filter sweep doesn't
+      // bury the back button under six entries.
+      const isNav =
+        prev !== null &&
+        (next.dashboard !== prev.dashboard ||
+          next.variant !== prev.variant ||
+          next.selectedCompanyId !== prev.selectedCompanyId);
+      writeUrlState(next, isNav ? "push" : "replace");
+    }
     try {
       localStorage.setItem("ud-v2-variant", variant);
       localStorage.setItem("ud-v2-dashboard", dashboard);
@@ -367,22 +446,32 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
     } catch {
       /* ignore */
     }
-  }, [variant, dashboard, globalFilter, payFilter, portfolioView, selectionByScope]);
+  }, [hydrated, variant, dashboard, globalFilter, payFilter, portfolioView, selectionByScope]);
 
-  // Honor browser back/forward — re-read URL params on popstate and apply.
+  // Honor browser back/forward. Every slot is applied unconditionally from a
+  // RESOLVED state. Applying only the params present in the URL left the old
+  // filter / view in place when the user backed into an entry that doesn't
+  // carry them (writeUrlState omits defaults).
+  const dashboardRef = useRef(dashboard);
+  useEffect(() => {
+    dashboardRef.current = dashboard;
+  });
   useEffect(() => {
     function onPop() {
-      const s = readUrlState();
-      if (s.dashboard) setDashboard(s.dashboard);
-      if (s.variant) setVariant(s.variant);
-      if (s.filter) setGlobalFilter(s.filter);
-      if (s.payFilter) setPayFilter(s.payFilter);
-      if (s.portfolioView) setPortfolioView(s.portfolioView);
-      // Selection: drop into the matching scope.
-      const popDash = s.dashboard ?? "status";
-      const scope: SelectionScope =
-        popDash === "status" ? (s.variant ?? "briefing") : "_other";
-      setSelectionByScope((prev) => ({ ...prev, [scope]: s.selectedCompanyId ?? null }));
+      const s = resolveUrlState(readUrlState());
+      // Seed the sync effect's snapshot BEFORE applying, so the write it
+      // schedules sees no diff and stays out of history.
+      lastUrlRef.current = s;
+      // The adjust-during-render guard above wipes selectionByScope on any
+      // dashboard change, which would clear the very company we're restoring.
+      if (s.dashboard !== dashboardRef.current) setSkipNextDashboardWipe(true);
+      setDashboard(s.dashboard);
+      setVariant(s.variant);
+      setGlobalFilter(s.filter);
+      setPayFilter(s.payFilter);
+      setPortfolioView(s.portfolioView ?? "table");
+      const scope: SelectionScope = s.dashboard === "status" ? s.variant : "_other";
+      setSelectionByScope((prev) => ({ ...prev, [scope]: s.selectedCompanyId }));
     }
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -489,22 +578,20 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
 
   function selectCompany(id: string) {
     if (selectedCompanyId === id) return;
-    // Push history only on the first transition from list → detail. Switching
-    // between accounts (split view prev/next, palette pick while a company is
-    // open) replaces in place so browser back always returns to the list.
-    if (selectedCompanyId == null) {
-      window.history.pushState({ company: true }, "");
-    }
+    // No pushState here: the URL-sync effect pushes on every
+    // selectedCompanyId change, so doing it here too would double up.
     setSelectedCompanyId(id);
   }
 
   function back() {
-    if (selectedCompanyId) {
-      if (window.history.state?.company) {
-        window.history.back();
-      } else {
-        setSelectedCompanyId(null);
-      }
+    if (!selectedCompanyId) return;
+    // Prefer a real history step so we don't strand a forward entry. Depth 0
+    // means the user landed straight on a ?c= link and going back would leave
+    // the app, so close by state and let the sync effect push the list.
+    if (canGoBackInApp()) {
+      window.history.back();
+    } else {
+      setSelectedCompanyId(null);
     }
   }
 
@@ -622,7 +709,7 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
           return;
         }
         if (s.selectedCompanyId) {
-          if (window.history.state?.company) window.history.back();
+          if (canGoBackInApp()) window.history.back();
           else setSelectedCompanyIdRef.current(null);
         }
         return;
@@ -891,9 +978,6 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
               : (curIdx + 1) % list.length;
         const next = list[nextIdx];
         if (!next || next.id === s.selectedCompanyId) return;
-        if (s.selectedCompanyId == null) {
-          window.history.pushState({ company: true }, "");
-        }
         setSelectedCompanyIdRef.current(next.id);
         return;
       }

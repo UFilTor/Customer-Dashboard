@@ -18,7 +18,6 @@ export type DashboardKey =
 interface DashboardDef {
   key: DashboardKey;
   label: string;
-  sub: string;
   /** Second key of the "g" chord that jumps to this dashboard (g + chord).
    *  The keyboard handler in page-client and the shortcut cheat sheet both
    *  derive from this, so hiding a dashboard disables its chord and
@@ -28,21 +27,20 @@ interface DashboardDef {
    *  picker as disabled "coming soon" rows (e.g. Bloom). */
   available: boolean;
   /** Removes the entry from the picker entirely (and disables its "g"
-   *  chord) while keeping the route + code paths reachable via URL. Use
-   *  for legacy dashboards we want to preserve as a fallback (e.g. Status
-   *  after Portfolio replaced it). */
+   *  chord) while keeping the route + code paths reachable via URL. Use for
+   *  a working feature we don't want on the main path yet (e.g. Lookup). */
   hidden?: boolean;
 }
 
 export const DASHBOARDS: DashboardDef[] = [
-  { key: "portfolio",     label: "Portfolio",     sub: "Every account, every signal", chord: "p", available: true  },
-  { key: "meeting_prep",  label: "Meeting prep",  sub: "Today's meetings, prep ready", chord: "m", available: true },
-  { key: "pay_migration", label: "Understory Pay", sub: "Migration progress by CS owner", chord: "u", available: true },
-  { key: "bloom",         label: "Bloom",         sub: "Marketing candidates to pitch", chord: "b", available: false },
+  { key: "portfolio",     label: "Portfolio",     chord: "p", available: true  },
+  { key: "meeting_prep",  label: "Meeting prep",  chord: "m", available: true },
+  { key: "pay_migration", label: "Understory Pay", chord: "u", available: true },
+  { key: "bloom",         label: "Bloom",         chord: "b", available: false },
   // Lookup is hidden from the picker (feature kept; URL `?d=search` still
   // resolves). Flip `hidden` off to bring back the picker row and the
   // `g l` chord together.
-  { key: "search",        label: "Lookup",        sub: "Ask anything in plain English", chord: "l", available: true, hidden: true },
+  { key: "search",        label: "Lookup",        chord: "l", available: true, hidden: true },
 ];
 
 interface VariantPickerProps {
@@ -233,7 +231,9 @@ export function DashboardPicker({
             position: "absolute",
             top: "calc(100% + 6px)",
             right: 0,
-            minWidth: 320,
+            // Sizes to the longest label now that the descriptions are gone;
+            // 320 left a wide empty gutter to the right of every name.
+            minWidth: 190,
             background: "var(--light-grey)",
             border: "1px solid var(--beige-gray)",
             borderRadius: 12,
@@ -260,7 +260,8 @@ export function DashboardPicker({
                 style={{
                   display: "block",
                   width: "100%",
-                  padding: "10px 12px",
+                  padding: "8px 12px",
+                  whiteSpace: "nowrap",
                   borderRadius: 8,
                   textAlign: "left",
                   background: isActive ? "var(--beige-new)" : "transparent",
@@ -313,17 +314,6 @@ export function DashboardPicker({
                       Soon
                     </span>
                   )}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11.5,
-                    color: "var(--green-100)",
-                    fontFamily: "var(--font-editorial)",
-                    fontStyle: "italic",
-                    marginTop: 2,
-                  }}
-                >
-                  {d.sub}
                 </div>
               </button>
             );

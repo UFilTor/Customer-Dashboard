@@ -37,7 +37,7 @@ interface DashboardDef {
 export const DASHBOARDS: DashboardDef[] = [
   { key: "portfolio",     label: "Portfolio",     sub: "Every account, every signal", chord: "p", available: true  },
   { key: "meeting_prep",  label: "Meeting prep",  sub: "Today's meetings, prep ready", chord: "m", available: true },
-  { key: "pay_migration", label: "Understory Pay Migration", sub: "Moving accounts to Understory Pay", chord: "u", available: true },
+  { key: "pay_migration", label: "Understory Pay", sub: "Migration progress by CS owner", chord: "u", available: true },
   { key: "bloom",         label: "Bloom",         sub: "Marketing candidates to pitch", chord: "b", available: false },
   // Lookup is hidden from the picker (feature kept; URL `?d=search` still
   // resolves). Flip `hidden` off to bring back the picker row and the

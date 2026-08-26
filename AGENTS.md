@@ -125,6 +125,24 @@ Fires the exact frame the strip pins, no scroll listener, no rAF. Pattern lives 
 
 - All view state (`dashboard / variant / filter / payFilter / onboardingSubview / selectedCompanyId`) lives in URL search params via `history.replaceState`, with localStorage as fallback for first visit. Read happens in a mount-only `useEffect`, NOT lazy `useState` init — lazy init breaks SSR hydration because `window.location` is undefined on server. Browser back/forward via `popstate` listener.
 
+## globals.css edits can serve stale in dev
+
+Turbopack will keep serving a previously compiled `globals.css` after you edit
+it. Symptom: a new custom property reads as `(undefined)` via
+`getComputedStyle(document.documentElement)`, or a rule you just changed still
+shows its old value. Restarting `npm run dev` is NOT enough, and neither is
+deleting `.next/static/chunks` - only `rm -rf .next` clears it.
+
+Confirm before you debug the CSS itself:
+
+```bash
+css=$(curl -s http://localhost:3000/ | grep -oE 'href="/_next/static/chunks/[^"]*\.css"' | head -1 | sed 's/href="//;s/"//')
+curl -s "http://localhost:3000$css" | grep -c "your-new-token"
+```
+
+0 means the served bundle predates your edit. JSX/TSX changes hot-reload fine;
+this is specific to the global stylesheet.
+
 ## Inline styles, not Tailwind
 
 - Tailwind 4 is configured but only powers layout primitives in `globals.css`. The design system uses inline `style={{...}}` with CSS custom properties (`var(--moss)`, `var(--citrus)`, etc.). Match that — don't sprinkle Tailwind utility classes inside a component that uses inline styles.

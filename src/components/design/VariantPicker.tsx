@@ -189,19 +189,10 @@ export function DashboardPicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls="ud-dashboard-picker-listbox"
+        // The visible "Dashboard" eyebrow is gone (it clashed optically with
+        // the 14px name), so the accessible name has to carry that context.
+        aria-label={`Dashboard: ${current.label}`}
       >
-        <span
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 9.5,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            color: "var(--citrus)",
-          }}
-        >
-          Dashboard
-        </span>
         <span
           style={{
             fontFamily: "var(--font-display)",

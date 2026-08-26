@@ -338,18 +338,10 @@ function FilterTypePill({ filter, setFilter, isDefault, setAsDefault, clearDefau
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button onClick={() => setOpen((o) => !o)} title={`Filter type: ${label}`} style={pillStyle(isFiltered)}>
-        <span
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 9.5,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            color: "var(--inverse-text)",
-          }}
-        >
-          Filter
-        </span>
+        {/* Same size and weight as the value it labels - the old 9.5px
+            letterspaced caps sat at a different x-height and read as a
+            separate line. Colour alone carries the label/value distinction. */}
+        <span style={{ color: "var(--inverse-text)" }}>Filter</span>
         <span style={{ fontWeight: 700 }}>{label}</span>
         <Caret open={open} />
       </button>

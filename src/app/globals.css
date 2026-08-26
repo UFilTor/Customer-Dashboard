@@ -6,9 +6,9 @@
      the same size. */
   --control-h: 35px;
   /* The dashboard selector is a fixed width so the pill doesn't resize when
-     you switch dashboards (labels range from "Portfolio" to "Understory Pay",
-     a 36px swing). Sized to the longest label; its dropdown matches it. */
-  --dashboard-picker-w: 213px;
+     you switch dashboards. Sized to the longest label ("Understory Pay") plus
+     the caret; its dropdown matches it from the same token. */
+  --dashboard-picker-w: 150px;
 
   /* Understory Brand Tokens */
   --moss: #022C12;

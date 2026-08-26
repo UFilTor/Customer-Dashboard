@@ -659,11 +659,14 @@ export function PortfolioContainer({
       stuck_in_step: 0, volume_declining: 0, wish_to_churn: 0, gone_quiet: 0,
       not_on_pay: 0,
     };
-    // Unfiltered: the API-provided totals are the right answer. A search term
-    // narrows the set just like a signal filter does, so it has to disqualify
-    // this shortcut too - otherwise the headline reads "5 customers" while the
-    // breakdown underneath still reports the whole book's 156/130/43.
-    if (selectedSignals.length === 0 && !search.trim()) {
+    // Unfiltered: the API-provided totals are the right answer. Anything that
+    // narrows the set client-side has to disqualify this shortcut, or the
+    // headline reads "8 customers" while the breakdown underneath still
+    // reports the whole book's 147/130/42. That is true of a search term, and
+    // of a country-scoped filter (a territory owner or Spain), whose payload
+    // is deliberately the unscoped one.
+    const narrowsClientSide = search.trim() !== "" || effectiveCountries(filter) !== null;
+    if (selectedSignals.length === 0 && !narrowsClientSide) {
       return data?.totalsBySignal ?? empty;
     }
     // Narrowed: tally distinct signals across filteredSortedRows.
@@ -676,7 +679,7 @@ export function PortfolioContainer({
       }
     }
     return counts;
-  }, [data, search, selectedSignals, filteredSortedRows]);
+  }, [data, filter, search, selectedSignals, filteredSortedRows]);
 
   // Stable callback so the memoized Row stays cheap. A fresh closure each
   // render would defeat React.memo on the row component.

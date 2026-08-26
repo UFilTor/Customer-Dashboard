@@ -48,7 +48,9 @@ import {
   parseFilter,
   serializeFilter,
   ALL_FILTER,
+  REGIONS,
   scopeHasMixedOwners,
+  type RegionKey,
   OWNERS,
   type GlobalFilter,
 } from "@/lib/owners";
@@ -84,8 +86,8 @@ function readUrlState(): Partial<UrlState> {
     out.dashboard = d;
   const fk = sp.get("f");
   const fv = sp.get("fv");
-  if (fk === "region" && (fv === "DK" || fv === "SE" || fv === "IT")) {
-    out.filter = { kind: "region", region: fv };
+  if (fk === "region" && REGIONS.some((r) => r.key === fv)) {
+    out.filter = { kind: "region", region: fv as RegionKey };
   } else if (fk === "person" && fv) {
     out.filter = { kind: "person", ownerId: fv };
   } else if (fk === "all") {
@@ -862,13 +864,14 @@ export default function DashboardClient() {
           const current = s.filter;
           let next: GlobalFilter;
           if (current.kind === "all") {
-            next = { kind: "region", region: "DK" };
+            next = { kind: "region", region: REGIONS[0].key };
           } else if (current.kind === "region") {
-            // First time landing on region from cycle: DK. Within region,
-            // cycle DK → SE → IT → person.
-            if (current.region === "DK") next = { kind: "region", region: "SE" };
-            else if (current.region === "SE") next = { kind: "region", region: "IT" };
-            else next = { kind: "person", ownerId: OWNERS[0].id };
+            // Walk the regions in REGIONS order, then hand over to the people.
+            const i = REGIONS.findIndex((r) => r.key === current.region);
+            next =
+              i >= 0 && i < REGIONS.length - 1
+                ? { kind: "region", region: REGIONS[i + 1].key }
+                : { kind: "person", ownerId: OWNERS[0].id };
           } else {
             // person — cycle through OWNERS, then back to all.
             const idx = OWNERS.findIndex((o) => o.id === current.ownerId);

@@ -20,7 +20,7 @@ export interface Owner {
   countries?: readonly string[];
 }
 
-export type RegionKey = "DK" | "SE" | "IT";
+export type RegionKey = "DK" | "SE" | "IT" | "ES";
 
 export type GlobalFilter =
   | { kind: "all" }
@@ -34,9 +34,6 @@ export const OWNERS: Owner[] = [
   { id: "962517007", name: "Anders", region: "DK", color: "#D1BEE7", initial: "An" },
   { id: "559364799", name: "Cecilia", region: "SE", color: "#CFE8FF" },
   { id: "1939229547", name: "Filip", region: "SE", color: "#D5DFCA" },
-  { id: "44912650", name: "Marc", region: "DK", color: "#F1F97E" },
-  { id: "34100332", name: "Nicoletta", region: "IT", color: "#E8D5F0" },
-  { id: "90324081", name: "Vlad", region: "IT", color: "#F4C4A0" },
   // Nordic coverage, started 2026-08-26. No home region and no owned deals:
   // her book is the territory below, which deliberately overlaps the Danish
   // and Swedish owners'. GL and FO are in it because they sit in the book and
@@ -47,16 +44,35 @@ export const OWNERS: Owner[] = [
     color: "#BEE3D9",
     countries: ["DK", "SE", "NO", "FI", "GL", "FO"],
   },
+  { id: "44912650", name: "Marc", region: "DK", color: "#F1F97E" },
+  { id: "34100332", name: "Nicoletta", region: "IT", color: "#E8D5F0" },
+  { id: "90324081", name: "Vlad", region: "IT", color: "#F4C4A0" },
 ];
 
 export const OWNER_MAP: Record<string, Owner> = Object.fromEntries(
   OWNERS.map((o) => [o.id, o])
 );
 
-export const REGIONS: { key: RegionKey; label: string }[] = [
+/**
+ * A region normally resolves to the CS owners who sit in it. Spain has no CS
+ * owner yet, so it declares `countries` and resolves by company country
+ * instead - the only definition that returns anything. Note this makes Spain
+ * mean "accounts in Spain" while DK/SE/IT still mean "accounts owned by that
+ * region's reps"; the two differ by ~60 accounts each (reps hold accounts
+ * outside their own country). Worth unifying, but that would move a couple of
+ * hundred accounts between filters, so it is a deliberate decision, not a
+ * detail to change in passing.
+ */
+export const REGIONS: { key: RegionKey; label: string; countries?: readonly string[] }[] = [
   { key: "DK", label: "Denmark" },
   { key: "SE", label: "Sweden" },
   { key: "IT", label: "Italy" },
+  // Spanish CS reps are being hired later this year. When they land, give them
+  // region: "ES" and delete `countries` here to put Spain on the same
+  // owner-based footing as its siblings - it is deliberately explicit rather
+  // than "owners if any, else countries", so the switch is a visible decision
+  // and not a silent change the first time someone is added.
+  { key: "ES", label: "Spain", countries: ["ES"] },
 ];
 
 // Map a global filter to the set of owner IDs that should pass.
@@ -69,6 +85,11 @@ export function effectiveOwnerIds(filter: GlobalFilter): Set<string> | null {
     if (OWNER_MAP[filter.ownerId]?.countries) return null;
     return new Set([filter.ownerId]);
   }
+  // A country-scoped region has no owners to scope by; fetch the whole book
+  // and let effectiveCountries narrow it, exactly as for a territory owner.
+  // Without this the empty owner set would serialise to "", which the API
+  // reads as "no filter" and answers with the entire book.
+  if (REGIONS.find((r) => r.key === filter.region)?.countries) return null;
   const ids = OWNERS.filter((o) => o.region === filter.region).map((o) => o.id);
   return new Set(ids);
 }
@@ -78,6 +99,10 @@ export function effectiveOwnerIds(filter: GlobalFilter): Set<string> | null {
  * narrow by country. Applied client-side by the dashboard containers.
  */
 export function effectiveCountries(filter: GlobalFilter): Set<string> | null {
+  if (filter.kind === "region") {
+    const countries = REGIONS.find((r) => r.key === filter.region)?.countries;
+    return countries ? new Set(countries) : null;
+  }
   if (filter.kind !== "person") return null;
   const countries = OWNER_MAP[filter.ownerId]?.countries;
   return countries ? new Set(countries) : null;
@@ -119,7 +144,7 @@ export function parseFilter(raw: string | null): GlobalFilter | null {
     if (v?.kind === "all") return { kind: "all" };
     if (
       v?.kind === "region" &&
-      (v.region === "DK" || v.region === "SE" || v.region === "IT")
+      REGIONS.some((r) => r.key === v.region)
     ) {
       return { kind: "region", region: v.region };
     }

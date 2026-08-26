@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { classifyPortfolioStage, isSignalApplicable, extractSortKey, getSortOptions, buildRow, matchesPortfolioSearch, __test } from "./portfolio";
 import type { PortfolioRow } from "./types";
-import { effectiveCountries, effectiveOwnerIds, scopeHasMixedOwners } from "./owners";
+import { OWNERS, REGIONS, effectiveCountries, effectiveOwnerIds, scopeHasMixedOwners } from "./owners";
 
 function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
   return {
@@ -453,6 +453,36 @@ describe("territory owners (country-scoped books)", () => {
   it("leaves a territory owner out of every region grouping", () => {
     for (const region of ["DK", "SE", "IT"] as const) {
       expect([...effectiveOwnerIds({ kind: "region", region })!]).not.toContain(JANNE);
+    }
+  });
+});
+
+describe("owner and region lists", () => {
+  it("lists people alphabetically - the picker, the Shift+F cycle and the LLM directory all read this order", () => {
+    const names = OWNERS.map((o) => o.name);
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it("scopes Spain by country, since it has no CS reps to scope by", () => {
+    // An owner-based Spain would resolve to an empty id set, which serialises
+    // to "" and reads server-side as "no filter" - i.e. the entire book.
+    expect(effectiveOwnerIds({ kind: "region", region: "ES" })).toBeNull();
+    expect([...effectiveCountries({ kind: "region", region: "ES" })!]).toEqual(["ES"]);
+  });
+
+  it("leaves the staffed regions owner-scoped", () => {
+    for (const region of ["DK", "SE", "IT"] as const) {
+      expect(effectiveCountries({ kind: "region", region })).toBeNull();
+      expect(effectiveOwnerIds({ kind: "region", region })!.size).toBeGreaterThan(0);
+    }
+  });
+
+  it("never lets a region resolve to an empty owner set", () => {
+    // The combination that produces the whole-book bug: owner-scoped with no
+    // owners. Every region must be either staffed or country-scoped.
+    for (const r of REGIONS) {
+      const ids = effectiveOwnerIds({ kind: "region", region: r.key });
+      expect(ids === null || ids.size > 0).toBe(true);
     }
   });
 });

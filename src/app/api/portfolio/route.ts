@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildPortfolioPayload, getCachedPortfolio } from "@/lib/portfolio";
 import { createSpans, logSpans, serverTimingHeader, withTiming } from "@/lib/perf";
 
-// Edge runtime, same rationale as /api/attention. Per-edge-instance cache
+// Edge runtime. Per-edge-instance cache
 // is warmed by the 14-min cron, with s-maxage=840 covering cross-instance.
 export const runtime = "edge";
 

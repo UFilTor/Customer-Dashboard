@@ -1,55 +1,33 @@
 "use client";
 
 import { ReactNode, useState } from "react";
-import type { Variant, DashboardKey } from "./VariantPicker";
+import type { DashboardKey } from "./VariantPicker";
 
-const VARIANT_ORDER: Variant[] = ["briefing", "split"];
-
-type AnimMode = "none" | "fade" | "slide-from-right" | "slide-from-left";
-
-function classFor(mode: AnimMode): string {
-  switch (mode) {
-    case "fade": return "view-fade";
-    case "slide-from-right": return "view-slide-from-right";
-    case "slide-from-left": return "view-slide-from-left";
-    default: return "";
-  }
-}
-
+// Wraps the main content and crossfades on dashboard change. First render is a
+// no-op so initial paint stays snappy.
+//
+// This used to also slide directionally on a *variant* change, following the
+// segmented control's left-to-right order. Variants only ever existed for the
+// Status dashboard (Daily briefing / Split view); with Status gone there is
+// nothing to slide between, so only the crossfade remains.
 interface Props {
   dashboard: DashboardKey;
-  variant: Variant;
   children: ReactNode;
 }
 
-// Wraps the main content. On dashboard change → opacity crossfade. On variant
-// change within a dashboard → directional slide that follows the segmented
-// control's left-to-right order. First render is a no-op so initial paint
-// stays snappy.
-export function ViewTransition({ dashboard, variant, children }: Props) {
+export function ViewTransition({ dashboard, children }: Props) {
   // Track the previous render's identity in state and adjust it during
-  // render — React's recommended pattern for "react to a prop change without
-  // useEffect". Computes the animation mode in the same pass.
-  const [prev, setPrev] = useState<{ dashboard: DashboardKey; variant: Variant } | null>(null);
+  // render - React's recommended pattern for "react to a prop change without
+  // useEffect".
+  const [prev, setPrev] = useState<DashboardKey | null>(null);
 
-  let mode: AnimMode = "none";
-  if (prev) {
-    if (prev.dashboard !== dashboard) {
-      mode = "fade";
-    } else if (prev.variant !== variant) {
-      const a = VARIANT_ORDER.indexOf(prev.variant);
-      const b = VARIANT_ORDER.indexOf(variant);
-      mode = a !== -1 && b !== -1 ? (b > a ? "slide-from-right" : "slide-from-left") : "fade";
-    }
-  }
+  const mode = prev && prev !== dashboard ? "view-fade" : "";
 
-  // Convergent — only fires when the inputs actually changed.
-  if (!prev || prev.dashboard !== dashboard || prev.variant !== variant) {
-    setPrev({ dashboard, variant });
-  }
+  // Convergent - only fires when the input actually changed.
+  if (prev !== dashboard) setPrev(dashboard);
 
   return (
-    <div key={`${dashboard}/${variant}`} className={classFor(mode)}>
+    <div key={dashboard} className={mode}>
       {children}
     </div>
   );

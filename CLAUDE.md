@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Customer-success dashboard for Understory's CS team. Pulls live data from HubSpot CRM and surfaces:
 
-- **Portfolio** — the primary dashboard: every account, every signal. Replaced the old Status dashboard as the default view. Status still exists (`?d=status`) but is hidden from the dashboard picker — legacy fallback only, not part of day-to-day use.
+- **Portfolio** — the primary dashboard and the default view: every account, every signal. It superseded the old Status dashboard, which has since been deleted (see git history if you need it back).
 - **Meeting prep** (`?d=meeting_prep`, sometimes called "Onboarding") — meeting prep for the next 5 working days + accounts stuck past their expected step duration.
 - **Pay Migration** — progress moving deals onto Understory Pay, broken down by CS owner.
 - **Lookup** (`?d=search`) — natural-language search over HubSpot data.
@@ -27,7 +27,7 @@ Filtering is global (left pill = kind: All / Region / Person, right pill = value
 ## Architecture
 
 ```
-HubSpot API ──► src/lib/{hubspot,onboarding,pay-migration,attention}.ts
+HubSpot API ──► src/lib/{hubspot,onboarding,pay-migration,portfolio}.ts
                         │
                         ▼
                src/app/api/<route>/route.ts   (TTL cache per filter / per day)
@@ -39,7 +39,7 @@ HubSpot API ──► src/lib/{hubspot,onboarding,pay-migration,attention}.ts
                <View>.tsx                      (presentation only)
 ```
 
-- `src/lib/hubspot-api.ts` is the REST primitive layer; the per-domain libs (`onboarding.ts`, `pay-migration.ts`, `attention.ts`, `hubspot.ts`) build view-shaped payloads from it.
+- `src/lib/hubspot-api.ts` is the REST primitive layer; the per-domain libs (`onboarding.ts`, `pay-migration.ts`, `portfolio.ts`, `hubspot.ts`) build view-shaped payloads from it.
 - `src/lib/cache.ts` is a 15-min TTL in-memory cache used by every API route. **Cache keys include the filter** (e.g. `onboarding:${ownerIds}`) — don't share a key across filter scopes.
 - `src/app/page.tsx` is the single client root. It owns dashboard + variant selection, global filter, per-variant selection memory (`selectionByScope`), the keyboard handler, and both palettes.
 - `src/components/design/` is the active v2 design system. The older `src/components/*.tsx` files (SessionWrapper, ShortcutCheatSheet) are auxiliary — the dashboard renders entirely from `design/`.
@@ -90,17 +90,13 @@ Same rule applies inside `onMouseEnter` / `onMouseLeave` handlers that mutate `s
 
 `page.tsx` has a single capture-phase keydown listener. It reads current view state from `stateRef` and dispatches custom events; views subscribe and own their own focused-index state. Common events:
 
-- `ud-list-nav` / `ud-list-open` — Briefing, Split, By signal, Needs attention
+- `ud-list-nav` / `ud-list-open` — Portfolio
 - `ud-onboarding-day-shift` / `ud-onboarding-meeting-nav` / `ud-onboarding-history-*`
 - `ud-filter-type-open` / `ud-filter-value-open` / `ud-filter-close-all`
 - `ud-refresh-dashboard` — Onboarding + Pay containers subscribe and refetch
 - `ud-filter-pill-state` / `ud-meeting-focused-state` / `ud-history-focused-state` — pages mirror these into refs to gate other shortcuts
 
 When adding a new shortcut, dispatch from `page.tsx` and subscribe in the relevant view rather than threading callbacks through props.
-
-### Per-variant selection memory
-
-Each Status variant (briefing / split) has its own selection slot in `selectionByScope`; non-Status dashboards share `_other`. Switching between variants brings back what was last selected there — including `null`.
 
 ## Deploy
 

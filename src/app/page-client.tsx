@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type {
-  AttentionResponse,
   CompanyDetail as CompanyDetailData,
   CompanySearchResult,
   OwnerMap,
@@ -13,13 +12,12 @@ import { TopBar } from "@/components/design/TopBar";
 import {
   VariantPicker,
   DASHBOARDS,
-  type Variant,
   type DashboardKey,
 } from "@/components/design/VariantPicker";
 import { CommandPalette, type PaletteAction } from "@/components/design/CommandPalette";
 import { ViewTransition } from "@/components/design/ViewTransition";
 import { CompanyDetail } from "@/components/design/CompanyDetail";
-// Heavy variant containers — code-split so the Status dashboard's first paint
+// Heavy dashboard containers — code-split so the default dashboard's first paint
 // doesn't pay the cost of PortfolioView + PayMigrationView (1.3k lines).
 // They load on first navigation to their respective dashboard.
 const PayMigrationContainer = dynamic(
@@ -42,23 +40,10 @@ const SearchContainer = dynamic(
     import("@/components/design/views/SearchContainer").then((m) => m.SearchContainer),
   { ssr: false }
 );
-// Status's two views (1.1k lines combined). Status is hidden from the picker,
-// so keeping these eagerly imported put them in every user's initial bundle
-// for a dashboard almost nobody opens.
-const BriefingView = dynamic(
-  () => import("@/components/design/views/BriefingView").then((m) => m.BriefingView),
-  { ssr: false }
-);
-const SplitView = dynamic(
-  () => import("@/components/design/views/SplitView").then((m) => m.SplitView),
-  { ssr: false }
-);
 import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
 import { LiveRegion } from "@/components/LiveRegion";
 import { EditorialEmpty } from "@/components/design/EditorialEmpty";
-import { flattenGroups, SECTION_ORDER, sortBySignal, type FlatCompany } from "@/lib/signals";
 import {
-  effectiveOwnerIds,
   filterLabel as buildFilterLabel,
   parseFilter,
   serializeFilter,
@@ -68,18 +53,15 @@ import {
 } from "@/lib/owners";
 import { addRecentCompany, computeRevenueFromDetail } from "@/lib/recent-companies";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
-import { reportFreshness } from "@/lib/freshness";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 
 type DetailData = CompanyDetailData & { owners: OwnerMap; stages: StageMap };
 
 // URL ↔ state helpers. Keeping the URL canonical for view state means back /
 // forward / refresh / share-link all work. localStorage stays as a fallback
-// for the very first visit (and for the per-variant selection memory map,
-// which is too noisy for the URL).
+// for the very first visit.
 type UrlState = {
   dashboard: DashboardKey;
-  variant: Variant;
   filter: GlobalFilter;
   payFilter: "default" | "all";
   portfolioView?: "table" | "board";
@@ -93,15 +75,12 @@ function readUrlState(): Partial<UrlState> {
   const out: Partial<UrlState> = {};
   const d = sp.get("d");
   if (
-    d === "status" ||
     d === "meeting_prep" ||
     d === "portfolio" ||
     d === "pay_migration" ||
     d === "search"
   )
     out.dashboard = d;
-  const v = sp.get("v");
-  if (v === "briefing" || v === "split") out.variant = v;
   const fk = sp.get("f");
   const fv = sp.get("fv");
   if (fk === "region" && (fv === "DK" || fv === "SE" || fv === "IT")) {
@@ -126,14 +105,13 @@ function readUrlState(): Partial<UrlState> {
 }
 
 // readUrlState returns only the params that are present. Anything the URL
-// omits means "the default", since writeUrlState drops d=portfolio, v=briefing
-// and friends on purpose. So anything reading a history entry back (popstate)
+// omits means "the default", since writeUrlState drops d=portfolio and friends
+// on purpose. So anything reading a history entry back (popstate)
 // has to resolve a FULL state, never a partial one. Keep these defaults in
 // sync with the omission rules in writeUrlState below.
 function resolveUrlState(p: Partial<UrlState>): UrlState {
   return {
     dashboard: p.dashboard ?? "portfolio",
-    variant: p.variant ?? "briefing",
     filter: p.filter ?? ALL_FILTER,
     payFilter: p.payFilter ?? "default",
     portfolioView: p.portfolioView ?? "table",
@@ -145,7 +123,6 @@ function resolveUrlState(p: Partial<UrlState>): UrlState {
 function sameUrlState(a: UrlState, b: UrlState): boolean {
   return (
     a.dashboard === b.dashboard &&
-    a.variant === b.variant &&
     serializeFilter(a.filter) === serializeFilter(b.filter) &&
     a.payFilter === b.payFilter &&
     (a.portfolioView ?? "table") === (b.portfolioView ?? "table") &&
@@ -165,7 +142,6 @@ function writeUrlState(state: UrlState, mode: "push" | "replace"): void {
   if (typeof window === "undefined") return;
   const sp = new URLSearchParams();
   if (state.dashboard !== "portfolio") sp.set("d", state.dashboard);
-  if (state.dashboard === "status" && state.variant !== "briefing") sp.set("v", state.variant);
   if (state.filter.kind !== "all") {
     sp.set("f", state.filter.kind);
     if (state.filter.kind === "region") sp.set("fv", state.filter.region);
@@ -211,7 +187,6 @@ export default function DashboardClient() {
   // params and localStorage after mount and applies them, so a deep link
   // like /?d=portfolio lands on Portfolio within a frame of hydration.
   const [dashboard, setDashboard] = useState<DashboardKey>("portfolio");
-  const [variant, setVariant] = useState<Variant>("briefing");
   const [globalFilter, setGlobalFilter] = useState<GlobalFilter>(ALL_FILTER);
   const [defaultFilter, setDefaultFilter] = useState<GlobalFilter | null>(null);
   const [payFilter, setPayFilter] = useState<"default" | "all">("default");
@@ -223,45 +198,12 @@ export default function DashboardClient() {
   // a fresh visit would silently hide rows with no visible cause.
   const [portfolioSearch, setPortfolioSearch] = useState("");
 
-  // Status data. Fetched lazily on arrival at ?d=status (see the effect below),
-  // so no seed here. isLoadingAttention starts true meaning "not fetched yet",
-  // which makes the Status branch render its skeleton on arrival instead of
-  // flashing the empty state for a frame before the fetch starts.
-  const [attention, setAttention] = useState<AttentionResponse | null>(null);
-  const [isLoadingAttention, setIsLoadingAttention] = useState(true);
-  const [errorAttention, setErrorAttention] = useState<string | null>(null);
-
-  // Report the Status payload's build time so the TopBar freshness label
-  // can show data age. Covers both the SSR-seeded payload and refetches.
-  useEffect(() => {
-    reportFreshness("status", attention?.generatedAt);
-  }, [attention]);
-
-  // Selection state. Each Status-dashboard variant (briefing/split) owns
-  // its own slot — switching variants brings back what was selected there last,
-  // so a detail view in split doesn't bleed over into briefing or vice versa.
-  // Other dashboards share the `_other` slot.
-  type SelectionScope = Variant | "_other";
-  const [selectionByScope, setSelectionByScope] = useState<Record<SelectionScope, string | null>>({
-    briefing: null,
-    split: null,
-    _other: null,
-  });
-  const selectionScope: SelectionScope =
-    dashboard === "status" ? variant : "_other";
-  const selectedCompanyId = selectionByScope[selectionScope];
-  const setSelectedCompanyId = useCallback(
-    (id: string | null) => {
-      setSelectionByScope((prev) =>
-        prev[selectionScope] === id ? prev : { ...prev, [selectionScope]: id }
-      );
-    },
-    [selectionScope]
-  );
-  // Mirror the latest setter into a ref so the keyboard listener (attached
-  // once on mount) always writes to the current variant's selection slot.
-  // Without this, switching from briefing → split kept the listener pointed
-  // at the briefing slot and arrow keys silently no-op'd.
+  // Selection state. This used to be a per-scope map because each Status
+  // variant (briefing/split) owned its own slot; with Status gone there is a
+  // single selection shared by every dashboard.
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  // Mirror the setter into a ref so the keyboard listener, attached once on
+  // mount, always calls the current one.
   const setSelectedCompanyIdRef = useRef(setSelectedCompanyId);
   setSelectedCompanyIdRef.current = setSelectedCompanyId;
   const [companyData, setCompanyData] = useState<DetailData | null>(null);
@@ -275,7 +217,7 @@ export default function DashboardClient() {
   //
   // Exception: the very first dashboard transition can be URL-driven (a deep
   // link like /?d=meeting_prep&c=<id>). The mount-init effect sets dashboard
-  // and selectionByScope from URL in the same batch; without this gate, the
+  // and the selection from URL in the same batch; without this gate, the
   // adjust-during-render block would wipe the just-set selection. The mount-
   // init effect sets `skipNextDashboardWipe = true` whenever it changes the
   // dashboard from URL state, and we consume the flag here.
@@ -286,7 +228,7 @@ export default function DashboardClient() {
     if (skipNextDashboardWipe) {
       setSkipNextDashboardWipe(false);
     } else {
-      setSelectionByScope({ briefing: null, split: null, _other: null });
+      setSelectedCompanyId(null);
       setCompanyData(null);
       setDetailError(null);
     }
@@ -379,11 +321,6 @@ export default function DashboardClient() {
         setDashboard(d);
       }
     }
-    if (fromUrl.variant) {
-      setVariant(fromUrl.variant);
-    } else if (ls("ud-v2-variant") === "split") {
-      setVariant("split");
-    }
     const pinned = parseFilter(ls("ud-v2-filter-default"));
     if (pinned) setDefaultFilter(pinned);
     if (fromUrl.filter) {
@@ -404,15 +341,7 @@ export default function DashboardClient() {
       setPortfolioView("board");
     }
     if (fromUrl.portfolioSearch) setPortfolioSearch(fromUrl.portfolioSearch);
-    if (fromUrl.selectedCompanyId) {
-      // Default to "portfolio", not "status": writeUrlState omits d=portfolio,
-      // so a link with ?c= and no ?d= means Portfolio, whose selection lives
-      // in the "_other" slot.
-      const dash = fromUrl.dashboard ?? "portfolio";
-      const scope: SelectionScope =
-        dash === "status" ? (fromUrl.variant ?? "briefing") : "_other";
-      setSelectionByScope((prev) => ({ ...prev, [scope]: fromUrl.selectedCompanyId! }));
-    }
+    if (fromUrl.selectedCompanyId) setSelectedCompanyId(fromUrl.selectedCompanyId);
     // Gate the URL-sync effect below until this seed has landed in state.
     // Both effects run in the same first commit, so without the gate the sync
     // effect would fire once with the pre-seed defaults and then again with the
@@ -432,13 +361,11 @@ export default function DashboardClient() {
     if (!hydrated) return;
     const next: UrlState = {
       dashboard,
-      variant,
       filter: globalFilter,
       payFilter,
       portfolioView,
       portfolioSearch,
-      selectedCompanyId:
-        selectionByScope[dashboard === "status" ? variant : "_other"],
+      selectedCompanyId,
     };
     const prev = lastUrlRef.current;
     lastUrlRef.current = next;
@@ -454,12 +381,10 @@ export default function DashboardClient() {
       const isNav =
         prev !== null &&
         (next.dashboard !== prev.dashboard ||
-          next.variant !== prev.variant ||
           next.selectedCompanyId !== prev.selectedCompanyId);
       writeUrlState(next, isNav ? "push" : "replace");
     }
     try {
-      localStorage.setItem("ud-v2-variant", variant);
       localStorage.setItem("ud-v2-dashboard", dashboard);
       localStorage.setItem("ud-v2-filter", serializeFilter(globalFilter));
       localStorage.setItem("ud-v2-pay-filter", payFilter);
@@ -467,7 +392,7 @@ export default function DashboardClient() {
     } catch {
       /* ignore */
     }
-  }, [hydrated, variant, dashboard, globalFilter, payFilter, portfolioView, portfolioSearch, selectionByScope]);
+  }, [hydrated, dashboard, globalFilter, payFilter, portfolioView, portfolioSearch, selectedCompanyId]);
 
   // Honor browser back/forward. Every slot is applied unconditionally from a
   // RESOLVED state. Applying only the params present in the URL left the old
@@ -483,17 +408,15 @@ export default function DashboardClient() {
       // Seed the sync effect's snapshot BEFORE applying, so the write it
       // schedules sees no diff and stays out of history.
       lastUrlRef.current = s;
-      // The adjust-during-render guard above wipes selectionByScope on any
+      // The adjust-during-render guard above wipes the selection on any
       // dashboard change, which would clear the very company we're restoring.
       if (s.dashboard !== dashboardRef.current) setSkipNextDashboardWipe(true);
       setDashboard(s.dashboard);
-      setVariant(s.variant);
       setGlobalFilter(s.filter);
       setPayFilter(s.payFilter);
       setPortfolioView(s.portfolioView ?? "table");
       setPortfolioSearch(s.portfolioSearch ?? "");
-      const scope: SelectionScope = s.dashboard === "status" ? s.variant : "_other";
-      setSelectionByScope((prev) => ({ ...prev, [scope]: s.selectedCompanyId }));
+      setSelectedCompanyId(s.selectedCompanyId);
     }
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -516,36 +439,6 @@ export default function DashboardClient() {
     (defaultFilter.kind === "all"
       || (defaultFilter.kind === "region" && globalFilter.kind === "region" && defaultFilter.region === globalFilter.region)
       || (defaultFilter.kind === "person" && globalFilter.kind === "person" && defaultFilter.ownerId === globalFilter.ownerId));
-
-  // Fetch attention data
-  const loadAttention = useCallback(async () => {
-    setIsLoadingAttention(true);
-    setErrorAttention(null);
-    try {
-      const res = await apiFetch("/api/attention");
-      if (!res.ok) {
-        setErrorAttention(friendlyErrorMessage(null, res.status));
-        return;
-      }
-      const json: AttentionResponse = await res.json();
-      setAttention(json);
-    } catch (err) {
-      setErrorAttention(friendlyErrorMessage(err));
-    } finally {
-      setIsLoadingAttention(false);
-    }
-  }, []);
-
-  // Status is hidden from the dashboard picker (see DASHBOARDS in
-  // VariantPicker), so its payload is only worth fetching if the user actually
-  // navigates to ?d=status. Fetch once, on arrival. Tab-focus refresh, the R
-  // key and the Retry button still call loadAttention directly afterwards.
-  const attentionRequestedRef = useRef(false);
-  useEffect(() => {
-    if (dashboard !== "status" || attentionRequestedRef.current) return;
-    attentionRequestedRef.current = true;
-    loadAttention();
-  }, [dashboard, loadAttention]);
 
   // Fetch company detail when selectedCompanyId changes
   useEffect(() => {
@@ -615,29 +508,8 @@ export default function DashboardClient() {
     }
   }
 
-  // Derived: filtered, flat company list
-  const allCompanies: FlatCompany[] = useMemo(
-    () => (attention ? flattenGroups(attention.groups) : []),
-    [attention]
-  );
-  const filteredCompanies: FlatCompany[] = useMemo(() => {
-    const ids = effectiveOwnerIds(globalFilter);
-    if (!ids) return allCompanies;
-    return allCompanies.filter((c) => (c.ownerId ? ids.has(c.ownerId) : false));
-  }, [allCompanies, globalFilter]);
-
-  // Same sort order as the visible Brief / Split sections so keyboard nav
-  // tracks what the user is looking at instead of the raw API order.
-  const orderedCompanies: FlatCompany[] = useMemo(() => {
-    const out: FlatCompany[] = [];
-    for (const sig of SECTION_ORDER) {
-      out.push(...sortBySignal(sig, filteredCompanies.filter((c) => c.signal === sig)));
-    }
-    return out;
-  }, [filteredCompanies]);
-
-  // Human-readable label for the active filter, shown in the briefing header so
-  // a sticky filter never silently hides results.
+  // Human-readable label for the active filter, shown in the dashboard header
+  // so a sticky filter never silently hides results.
   const filterLabel = buildFilterLabel(globalFilter);
 
   // Toast helper
@@ -652,14 +524,14 @@ export default function DashboardClient() {
   // runs in the capture phase so any noisy bubble-phase shortcuts from other
   // libraries / browser extensions can't swallow keys before us.
   const stateRef = useRef({
-    cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, orderedCompanies,
+    cmdkOpen, showHelp, selectedCompanyId, dashboard,
     filter: globalFilter, portfolioView,
   });
   // Mirror the latest values via an effect (no deps) so the ref update
   // happens after render commits, satisfying react-hooks/refs.
   useEffect(() => {
     stateRef.current = {
-      cmdkOpen, showHelp, selectedCompanyId, dashboard, variant, orderedCompanies,
+      cmdkOpen, showHelp, selectedCompanyId, dashboard,
       filter: globalFilter, portfolioView,
     };
   });
@@ -761,7 +633,7 @@ export default function DashboardClient() {
         }
         // Unknown second key — close the picker and swallow the keystroke.
         // Without the early return, the second key (e.g. r, ?, f, 1, 2) would
-        // fall through to refresh / help / filter / variant handlers, which
+        // fall through to refresh / help / filter handlers, which
         // is not what the user expected from the chord.
         e.preventDefault();
         window.dispatchEvent(new Event("ud-dashboard-picker-close"));
@@ -782,23 +654,6 @@ export default function DashboardClient() {
           }
         }, GO_PREFIX_TIMEOUT_MS + 50);
         return;
-      }
-
-      // Layout variants 1/2/3 — Status dashboard, any state.
-      // Switching variant within the Status dashboard. Each variant owns its
-      // own selection (per-scope memory), so the destination variant snaps
-      // back to whatever was selected there last — including null.
-      if (s.dashboard === "status") {
-        if (e.key === "1") {
-          e.preventDefault();
-          setVariant("briefing");
-          return;
-        }
-        if (e.key === "2") {
-          e.preventDefault();
-          setVariant("split");
-          return;
-        }
       }
 
       // Pay Migration filter: 1 = Default, 2 = All. Skip when a company
@@ -933,14 +788,11 @@ export default function DashboardClient() {
         return;
       }
 
-      // List navigation in full-page views (Briefing, Portfolio).
+      // List navigation in full-page views (currently Portfolio only).
       // The active view subscribes to ud-list-nav / ud-list-open
       // and manages its own focused state. When the Portfolio Signals or
       // Sort popup is open, ↑/↓/Enter belong to the popup, not the list.
-      const inListView =
-        !s.selectedCompanyId &&
-        ((s.dashboard === "status" && s.variant === "briefing") ||
-          s.dashboard === "portfolio");
+      const inListView = !s.selectedCompanyId && s.dashboard === "portfolio";
       const portfolioPopupActive =
         s.dashboard === "portfolio" && portfolioPopupOpenRef.current;
       if (inListView && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
@@ -988,28 +840,6 @@ export default function DashboardClient() {
         return;
       }
 
-      // Up / Down: cycle the queue in Split view (Overview tab path).
-      if (
-        s.dashboard === "status" &&
-        s.variant === "split" &&
-        (e.key === "ArrowUp" || e.key === "ArrowDown")
-      ) {
-        e.preventDefault();
-        const list = s.orderedCompanies;
-        if (list.length === 0) return;
-        const curIdx = list.findIndex((c) => c.id === s.selectedCompanyId);
-        const nextIdx =
-          curIdx === -1
-            ? 0
-            : e.key === "ArrowUp"
-              ? (curIdx - 1 + list.length) % list.length
-              : (curIdx + 1) % list.length;
-        const next = list[nextIdx];
-        if (!next || next.id === s.selectedCompanyId) return;
-        setSelectedCompanyIdRef.current(next.id);
-        return;
-      }
-
       // Left / Right — switch detail tabs when a company is open
       if (s.selectedCompanyId && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
         e.preventDefault();
@@ -1054,16 +884,11 @@ export default function DashboardClient() {
         return;
       }
 
-      // R — refresh the active dashboard's data. Status is fetched here at
-      // the page level; Portfolio + Meeting prep + Pay Migration containers
-      // subscribe to ud-refresh-dashboard and refetch themselves.
+      // R — refresh the active dashboard's data. Every container subscribes
+      // to ud-refresh-dashboard and refetches itself.
       if (e.key.toLowerCase() === "r") {
         e.preventDefault();
-        if (s.dashboard === "status") {
-          loadAttention();
-        } else {
-          window.dispatchEvent(new Event("ud-refresh-dashboard"));
-        }
+        window.dispatchEvent(new Event("ud-refresh-dashboard"));
         showToast("Refreshing…");
         return;
       }
@@ -1075,7 +900,7 @@ export default function DashboardClient() {
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [showToast, loadAttention]);
+  }, [showToast]);
 
   // Refetch on tab refocus — when the user comes back to the tab after >5min,
   // pull fresh data so they don't stare at stale invoices/health scores. The
@@ -1087,22 +912,17 @@ export default function DashboardClient() {
       const elapsed = Date.now() - lastRefreshAtRef.current;
       if (elapsed < 5 * 60 * 1000) return;
       lastRefreshAtRef.current = Date.now();
-      const s = stateRef.current;
-      if (s.dashboard === "status") {
-        loadAttention();
-      } else {
-        window.dispatchEvent(new Event("ud-refresh-dashboard"));
-      }
+      window.dispatchEvent(new Event("ud-refresh-dashboard"));
     }
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [loadAttention]);
+  }, []);
 
   // Palette actions
   function handlePaletteAction(action: PaletteAction) {
     switch (action) {
       case "refresh":
-        loadAttention();
+        window.dispatchEvent(new Event("ud-refresh-dashboard"));
         showToast("Refreshing…");
         return;
       case "open-company-in-hubspot": {
@@ -1133,19 +953,8 @@ export default function DashboardClient() {
 
   if (selectedCompanyId) {
     // Detail flow: shared across every dashboard.
-    // Status + Split is the only layout that keeps the queue visible alongside the detail.
     const detailNode =
-      dashboard === "status" && variant === "split" ? (
-        <SplitView
-          companies={filteredCompanies}
-          selectedId={selectedCompanyId}
-          detailData={companyData}
-          isLoadingDetail={isLoadingDetail}
-          onSelect={(c) => selectCompany(c.id)}
-          updatedAt={attention?.updatedAt || null}
-          showAvatar={globalFilter.kind !== "person"}
-        />
-      ) : companyData && !isLoadingDetail ? (
+      companyData && !isLoadingDetail ? (
         <CompanyDetail companyId={selectedCompanyId} data={companyData} />
       ) : detailError ? (
         <EditorialEmpty
@@ -1186,18 +995,6 @@ export default function DashboardClient() {
         onSelectCompany={(c) => selectCompany(c.id)}
       />
     );
-  } else if (dashboard === "portfolio") {
-    body = (
-      <PortfolioContainer
-        filter={globalFilter}
-        filterLabel={filterLabel}
-        showAvatar={globalFilter.kind !== "person"}
-        onSelectCompany={(id) => selectCompany(id)}
-        search={portfolioSearch}
-        onSearchChange={setPortfolioSearch}
-        view={portfolioView}
-      />
-    );
   } else if (dashboard === "meeting_prep") {
     body = (
       <MeetingPrepContainer
@@ -1214,54 +1011,19 @@ export default function DashboardClient() {
       />
     );
   } else {
-    // Status list views
-    body = (() => {
-      if (isLoadingAttention) return <ListLoading />;
-      if (errorAttention) {
-        return (
-          <EditorialEmpty
-            tone="error"
-            headline="Could not load the attention queue."
-            caption={errorAttention}
-            action={
-              <button
-                onClick={loadAttention}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 10,
-                  background: "var(--moss)",
-                  color: "var(--text-on-moss)",
-                  cursor: "pointer",
-                }}
-              >
-                Retry
-              </button>
-            }
-          />
-        );
-      }
-      if (variant === "briefing") {
-        return (
-          <BriefingView
-            companies={filteredCompanies}
-            onSelect={(c) => selectCompany(c.id)}
-            filterLabel={filterLabel}
-            showAvatar={globalFilter.kind !== "person"}
-          />
-        );
-      }
-      return (
-        <SplitView
-          companies={filteredCompanies}
-          selectedId={null}
-          detailData={null}
-          isLoadingDetail={false}
-          onSelect={(c) => selectCompany(c.id)}
-          updatedAt={attention?.updatedAt || null}
-          showAvatar={globalFilter.kind !== "person"}
-        />
-      );
-    })();
+    // Portfolio is the default dashboard and the fallback for any key that
+    // somehow reaches here (e.g. Bloom, which is not yet wired up).
+    body = (
+      <PortfolioContainer
+        filter={globalFilter}
+        filterLabel={filterLabel}
+        showAvatar={globalFilter.kind !== "person"}
+        onSelectCompany={(id) => selectCompany(id)}
+        search={portfolioSearch}
+        onSearchChange={setPortfolioSearch}
+        view={portfolioView}
+      />
+    );
   }
 
   return (
@@ -1280,8 +1042,6 @@ export default function DashboardClient() {
           setDashboard={setDashboard}
         />
         <VariantPicker
-          variant={variant}
-          setVariant={(v) => { setVariant(v); }}
           dashboard={dashboard}
           payFilter={payFilter}
           setPayFilter={setPayFilter}
@@ -1289,7 +1049,7 @@ export default function DashboardClient() {
           setPortfolioView={setPortfolioView}
         />
         <main>
-          <ViewTransition dashboard={dashboard} variant={variant}>
+          <ViewTransition dashboard={dashboard}>
             {body}
           </ViewTransition>
         </main>
@@ -1308,7 +1068,6 @@ export default function DashboardClient() {
         isOpen={showHelp}
         onClose={() => setShowHelp(false)}
         dashboard={dashboard}
-        variant={variant}
         hasSelectedCompany={!!selectedCompanyId}
       />
 
@@ -1335,25 +1094,6 @@ export default function DashboardClient() {
         </div>
       )}
     </>
-  );
-}
-
-function ListLoading() {
-  return (
-    <div className="animate-pulse page-shell" style={{ paddingTop: 32, paddingBottom: 32 }}>
-      <div style={{ height: 200, background: "var(--hairline)", borderRadius: 20, marginBottom: 28 }} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 32 }}>
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} style={{ height: 96, background: "var(--hairline)", borderRadius: 14 }} />
-        ))}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 28 }}>
-        {[0, 1, 2].map((i) => (
-          <div key={i} style={{ height: 180, background: "var(--hairline)", borderRadius: 16 }} />
-        ))}
-      </div>
-      <div style={{ height: 320, background: "var(--hairline)", borderRadius: 14 }} />
-    </div>
   );
 }
 

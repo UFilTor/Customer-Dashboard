@@ -167,9 +167,9 @@ export const Row = memo(function Row({
         <div
           style={{
             fontSize: 14,
-            // Match the peer convention (BriefingView, SplitView): 500 by
-            // default, 600 only when the row is focused/active. Painting every
-            // row at 600 makes the table read as if every row is selected.
+            // 500 by default, 600 only when the row is focused/active.
+            // Painting every row at 600 makes the table read as if every row
+            // is selected.
             fontWeight: focused ? 600 : 500,
             color: "var(--moss)",
             letterSpacing: "-0.005em",

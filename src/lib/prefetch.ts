@@ -28,10 +28,6 @@ export function prefetchCompany(id: string): void {
   fire(`/api/companies/${id}`);
 }
 
-export function prefetchAttention(): void {
-  fire("/api/attention");
-}
-
 export function prefetchPortfolio(ownerIdsCsv?: string | null): void {
   const url =
     ownerIdsCsv && ownerIdsCsv !== "all"

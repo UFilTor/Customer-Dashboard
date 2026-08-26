@@ -18,9 +18,9 @@ export const maxDuration = 300;
 // Schedule: see vercel.json. Runs every 14 min so it stays just inside the
 // 15-min in-memory TTL and the 14-min edge `s-maxage`.
 
-// Per-region ownerIds for `/api/meeting-prep` and `/api/portfolio`. The other
-// routes (`/api/attention`, `/api/pay-migration`) cache a single global scope
-// and filter client-side, so they don't need region warms.
+// Per-region ownerIds for `/api/meeting-prep` and `/api/portfolio`.
+// `/api/pay-migration` caches a single global scope and filters client-side,
+// so it doesn't need region warms.
 function ownerIdsForRegion(region: "DK" | "SE" | "IT"): string {
   return [...OWNERS.filter((o) => o.region === region).map((o) => o.id)]
     .sort()
@@ -47,11 +47,6 @@ export async function GET(request: NextRequest) {
 
   const origin = request.nextUrl.origin;
   const targets: string[] = [
-    // No /api/attention warm: Status is hidden from the dashboard picker and
-    // page-client only fetches its payload on arrival at ?d=status. Warming it
-    // every 14 min was ~103 HubSpot round-trips a day for a dashboard almost
-    // nobody opens. The owner-directory cache it used to keep warm as a side
-    // effect is populated by the portfolio / meeting-prep warms below anyway.
     "/api/pay-migration?refresh=true",
     "/api/meeting-prep?refresh=true",
     // Per-region meeting-prep + portfolio scopes — the only routes whose

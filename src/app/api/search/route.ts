@@ -4,7 +4,7 @@ import { createSpans, logSpans, serverTimingHeader, withTiming } from "@/lib/per
 import type { GlobalFilter } from "@/lib/owners";
 import type { SearchSpec } from "@/lib/types";
 
-// Edge runtime — same rationale as /api/attention. Anthropic SDK + HubSpot
+// Edge runtime — same rationale as /api/portfolio. Anthropic SDK + HubSpot
 // fetch calls are both edge-safe. The in-memory cache in search-payload.ts
 // is per-edge-instance, which is fine because each query is distinct anyway
 // (the cache mostly serves to dedupe two concurrent identical requests).

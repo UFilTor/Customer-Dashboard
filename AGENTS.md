@@ -21,11 +21,11 @@ These are non-obvious conventions and footguns we've run into while working on t
 - 15-min in-memory `Cache` (`src/lib/cache.ts`) on each route, with `getOrBuild` for in-flight dedupe (multiple parallel requests for the same key share one HubSpot fetch).
 - Cache keys include the filter scope (e.g. `onboarding:${ownerIds}`) so different filter views get their own window. Bounded LRU at 64 keys to prevent unbounded growth from unknown ownerIds.
 - API routes also send `Cache-Control: s-maxage=840, stale-while-revalidate=60` so Vercel's edge CDN caches identical responses for 14 min.
-- A Vercel cron at `*/14 * * * *` (`/api/cron/warm`, gated by `CRON_SECRET`) refreshes the live bulk routes proactively so users almost never see cold builds. `/api/attention` is deliberately NOT warmed - Status is hidden from the picker and fetches lazily (see below).
+- A Vercel cron at `*/14 * * * *` (`/api/cron/warm`, gated by `CRON_SECRET`) refreshes the bulk routes proactively so users almost never see cold builds.
 
 ## Nothing is fetched server-side
 
-`src/app/page.tsx` is a thin shell that fetches nothing. It used to server-render the Status attention payload; that was ~181 KB of the HTML response (85% of it) and a ~4.5s cold block on every page load, including Portfolio, which never reads it. Each dashboard's container now owns its own fetch, and Status's payload is fetched client-side only on arrival at `?d=status` (`attentionRequestedRef` in page-client). If you add a new dashboard, follow that: no SSR fetch, fetch on arrival.
+`src/app/page.tsx` is a thin shell that fetches nothing, and it must stay that way. It used to server-render the (now-deleted) Status dashboard's payload; that was ~181 KB of the HTML response, about 85% of it, plus a ~4.5s cold block on every page load including Portfolio, which never read it. Every dashboard container owns its own client-side fetch. If you add a new dashboard, follow that: no SSR fetch, fetch on arrival.
 - **New payload fields must tolerate `undefined` in client code.** The edge cache means that for up to 14 min after a deploy, the new client can receive pre-deploy cached payloads that lack newly added fields, even when the TS type says the field is required. Normalize with `?? null` / `== null` in every derivation that consumes a new field, or the UI renders literals like "Next: undefined" during the window. This shipped-adjacent bug was caught twice in review; write the undefined-tolerance test alongside the field.
 
 ## Cross-call shared state

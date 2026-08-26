@@ -24,7 +24,7 @@ interface ActionItem {
 }
 
 const ALL_ACTIONS: ActionItem[] = [
-  { key: "refresh", label: "Refresh attention data", icon: <Icon.Refresh /> },
+  { key: "refresh", label: "Refresh dashboard data", icon: <Icon.Refresh /> },
   { key: "open-company-in-hubspot", label: "Open company in HubSpot", icon: <Icon.External />, needsCompany: true },
   { key: "open-deal-in-hubspot", label: "Open deal in HubSpot", icon: <Icon.External />, needsCompany: true },
 ];

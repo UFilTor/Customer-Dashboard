@@ -130,60 +130,6 @@ export interface Recap {
   error?: boolean;
 }
 
-export interface AttentionCompany {
-  id: string;
-  name: string;
-  detail: string;
-  ownerId?: string;
-  mrr?: string;
-  currency?: string;
-  country?: string;
-  daysOverdue?: number;
-  previousCategory?: string;
-  categoryChangedAt?: string;
-  daysSilent?: number;
-  enteredGroupAt?: string;
-  healthScore?: string;
-  volume12m?: number;
-  volume3m?: number;
-  volume6m?: number;
-  payStatus?: string;
-  plan?: string;
-  lastContactedAt?: string;
-  /** When the customer last *created* an event in their booking system —
-   *  surfaced in the No Future Events row pill so the user knows how
-   *  long ago they actually used the product, not just when CS reached
-   *  out. Pulled from `understory_latest_event`. */
-  latestEventAt?: string;
-  revenue?: number;
-  // Outstanding invoice amount aggregated across every open-invoice deal on the
-  // company. `outstandingLocal` + `outstandingCurrency` are populated only when
-  // every deal shares one currency (typical case); for mixed-currency companies
-  // both are null and the EUR total is the only comparable figure.
-  outstandingLocal?: number;
-  outstandingCurrency?: string;
-  outstandingEur?: number;
-  // Sum of `number_of_open_invoices` across the company's open-invoice deals.
-  openInvoiceCount?: number;
-}
-
-export type AttentionSignal = "overdue_invoices" | "open_invoices" | "health_score" | "no_future_events";
-
-export interface AttentionGroup {
-  signal: AttentionSignal;
-  label: string;
-  companies: AttentionCompany[];
-}
-
-export interface AttentionResponse {
-  groups: AttentionGroup[];
-  updatedAt: string;
-  // Set when the payload is BUILT (not served from cache) so the client
-  // can show data age. Optional: payloads cached before this field shipped
-  // will not have it.
-  generatedAt?: string;
-}
-
 // Pay Migration Dashboard
 
 export type PayStage =
@@ -732,7 +678,7 @@ export type PortfolioStage =
 // existing `WatchOutSignalKind` (used by Onboarding/Retention briefs) for
 // two reasons:
 //   - WatchOutSignalKind uses singular forms ("overdue_invoice"); this uses
-//     plural ("overdue_invoices") to match `AttentionSignal` and the spec.
+//     plural ("overdue_invoices").
 //   - This adds `open_invoices`, which has no WatchOutSignal equivalent.
 // Translation between the two happens in the Portfolio container/view layer.
 export type PortfolioSignalKey =

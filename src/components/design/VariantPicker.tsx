@@ -2,16 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  prefetchAttention,
   prefetchMeetingPrep,
   prefetchPayMigration,
   prefetchPortfolio,
   prefetchSearch,
 } from "@/lib/prefetch";
 
-export type Variant = "briefing" | "split";
 export type DashboardKey =
-  | "status"
   | "portfolio"
   | "meeting_prep"
   | "pay_migration"
@@ -39,10 +36,6 @@ interface DashboardDef {
 
 export const DASHBOARDS: DashboardDef[] = [
   { key: "portfolio",     label: "Portfolio",     sub: "Every account, every signal", chord: "p", available: true  },
-  // Status is the legacy dashboard. Hidden from the picker now that Portfolio
-  // covers the same surface; URL `?d=status` still resolves so we can flip
-  // back to visible if we ever need to re-expose it.
-  { key: "status",        label: "Status",        sub: "Needs attention today (legacy)", chord: "s", available: true, hidden: true },
   { key: "meeting_prep",  label: "Meeting prep",  sub: "Today's meetings, prep ready", chord: "m", available: true },
   { key: "pay_migration", label: "Understory Pay Migration", sub: "Moving accounts to Understory Pay", chord: "u", available: true },
   { key: "bloom",         label: "Bloom",         sub: "Marketing candidates to pitch", chord: "b", available: false },
@@ -53,8 +46,6 @@ export const DASHBOARDS: DashboardDef[] = [
 ];
 
 interface VariantPickerProps {
-  variant: Variant;
-  setVariant: (v: Variant) => void;
   dashboard: DashboardKey;
   payFilter?: "default" | "all";
   setPayFilter?: (v: "default" | "all") => void;
@@ -62,29 +53,21 @@ interface VariantPickerProps {
   setPortfolioView?: (v: "table" | "board") => void;
 }
 
-const VARIANTS: { key: Variant; label: string }[] = [
-  { key: "briefing", label: "Daily briefing" },
-  { key: "split", label: "Split view" },
-];
-
 export function VariantPicker({
-  variant,
-  setVariant,
   dashboard,
   payFilter,
   setPayFilter,
   portfolioView,
   setPortfolioView,
 }: VariantPickerProps) {
-  const showLayout = dashboard === "status";
   const showPayFilter = dashboard === "pay_migration" && setPayFilter && payFilter;
   const showPortfolioView =
     dashboard === "portfolio" && setPortfolioView && portfolioView;
 
-  // Dashboards without variant tabs (Meeting Prep, Lookup) skip the sub-bar
+  // Dashboards without a sub-bar control (Meeting Prep, Lookup) skip it
   // entirely. DashboardPicker in the TopBar already names the current
   // dashboard, so a second bar with no controls was empty chrome.
-  if (!showLayout && !showPayFilter && !showPortfolioView) return null;
+  if (!showPayFilter && !showPortfolioView) return null;
 
   return (
     <div
@@ -102,21 +85,7 @@ export function VariantPicker({
           flexWrap: "wrap",
         }}
       >
-        {showLayout ? (
-          <SegLight label="Status view">
-            {VARIANTS.map((v) => (
-              <button
-                key={v.key}
-                role="tab"
-                aria-selected={variant === v.key}
-                onClick={() => setVariant(v.key)}
-                className={variant === v.key ? "seg-light-btn active" : "seg-light-btn"}
-              >
-                {v.label}
-              </button>
-            ))}
-          </SegLight>
-        ) : showPortfolioView ? (
+        {showPortfolioView ? (
           <SegLight label="Portfolio layout">
             {([
               { key: "table", label: "Table" },
@@ -304,8 +273,7 @@ export function DashboardPicker({
                     e.currentTarget.style.background = "var(--beige-new)";
                     // Prefetch the bulk endpoint + dynamic chunk so the click
                     // resolves with both code and data already in flight.
-                    if (d.key === "status") prefetchAttention();
-                    else if (d.key === "portfolio") prefetchPortfolio();
+                    if (d.key === "portfolio") prefetchPortfolio();
                     else if (d.key === "pay_migration") prefetchPayMigration();
                     else if (d.key === "meeting_prep") prefetchMeetingPrep();
                     else if (d.key === "search") prefetchSearch();

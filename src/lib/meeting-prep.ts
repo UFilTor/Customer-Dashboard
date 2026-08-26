@@ -50,8 +50,7 @@ import type {
   WatchOutSignal,
 } from "./types";
 
-// Customer Retention pipeline. Same constant lives in attention.ts (where
-// it's the scope for churn-risk signals). Keep them in sync.
+// Customer Retention pipeline.
 export const RETENTION_PIPELINE = "1072518362";
 
 // Expansion pipeline (HubSpot label: "Expansion Pipeline") — upsell deals

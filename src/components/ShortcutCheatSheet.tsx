@@ -7,13 +7,11 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   dashboard:
-    | "status"
     | "portfolio"
     | "meeting_prep"
     | "pay_migration"
     | "bloom"
     | "search";
-  variant: "briefing" | "split";
   hasSelectedCompany: boolean;
 }
 
@@ -24,7 +22,6 @@ interface ShortcutGroup {
 
 interface Context {
   dashboard: Props["dashboard"];
-  variant: Props["variant"];
   hasSelectedCompany: boolean;
 }
 
@@ -68,32 +65,7 @@ function groups(modLabel: string, ctx: Context): ShortcutGroup[] {
     return out;
   }
 
-  if (ctx.dashboard === "status") {
-    out.push({
-      heading: "Status layouts",
-      rows: [
-        { label: "Daily briefing", keys: "1" },
-        { label: "Split view", keys: "2" },
-      ],
-    });
-    if (ctx.variant === "briefing") {
-      out.push({
-        heading: "Briefing",
-        rows: [
-          { label: "Previous / next account", keys: "↑ / ↓" },
-          { label: "Open focused account", keys: "Enter" },
-          { label: "Return to top from first row", keys: "↑ at first row" },
-        ],
-      });
-    } else if (ctx.variant === "split") {
-      out.push({
-        heading: "Split view",
-        rows: [
-          { label: "Previous / next account (auto-opens)", keys: "↑ / ↓" },
-        ],
-      });
-    }
-  } else if (ctx.dashboard === "portfolio") {
+  if (ctx.dashboard === "portfolio") {
     out.push({
       heading: "Portfolio",
       rows: [
@@ -151,7 +123,6 @@ export default function ShortcutCheatSheet({
   isOpen,
   onClose,
   dashboard,
-  variant,
   hasSelectedCompany,
 }: Props) {
   // Default to Cmd so SSR markup matches the most common case (Mac).
@@ -219,7 +190,7 @@ export default function ShortcutCheatSheet({
           shortcuts
         </h3>
 
-        {groups(modLabel, { dashboard, variant, hasSelectedCompany }).map((g) => (
+        {groups(modLabel, { dashboard, hasSelectedCompany }).map((g) => (
           <div key={g.heading} style={{ marginBottom: 18 }}>
             <div
               style={{

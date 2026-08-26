@@ -47,7 +47,11 @@ export async function GET(request: NextRequest) {
 
   const origin = request.nextUrl.origin;
   const targets: string[] = [
-    "/api/attention?refresh=true",
+    // No /api/attention warm: Status is hidden from the dashboard picker and
+    // page-client only fetches its payload on arrival at ?d=status. Warming it
+    // every 14 min was ~103 HubSpot round-trips a day for a dashboard almost
+    // nobody opens. The owner-directory cache it used to keep warm as a side
+    // effect is populated by the portfolio / meeting-prep warms below anyway.
     "/api/pay-migration?refresh=true",
     "/api/meeting-prep?refresh=true",
     // Per-region meeting-prep + portfolio scopes — the only routes whose

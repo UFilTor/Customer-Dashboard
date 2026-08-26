@@ -1,25 +1,18 @@
-import { buildAttentionPayload } from "@/lib/attention-payload";
 import DashboardClient from "./page-client";
 
-// Server Component — fetches the Status landing payload server-side so the
-// first HTML response already carries the attention rows. The client
-// component skips its first `/api/attention` fetch when this prop is
-// non-null. On error (HubSpot down, missing token), pass null and let the
-// client fall back to its normal fetch + error state.
+// Server Component — a thin shell. It deliberately fetches nothing.
 //
-// Edge runtime keeps the in-memory cache shared with the API route at
-// `/api/attention` so cross-instance warming (cron + s-maxage) covers both.
+// This used to server-render the Status dashboard's attention payload so the
+// first HTML already carried its rows. That stopped paying for itself when
+// Portfolio replaced Status as the default: the payload is ~181 KB (about half
+// the HTML response), takes ~4.5s to build cold, and is read by nothing except
+// Status - which is now hidden from the dashboard picker. Every Portfolio load
+// blocked on data it never used. page-client fetches it on arrival at
+// ?d=status instead.
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
-export default async function Page() {
-  let initialAttention = null;
-  try {
-    initialAttention = await buildAttentionPayload();
-  } catch {
-    // Fall through with null — the client will surface the friendly error
-    // via its own `loadAttention` retry path.
-  }
-  return <DashboardClient initialAttention={initialAttention} />;
+export default function Page() {
+  return <DashboardClient />;
 }

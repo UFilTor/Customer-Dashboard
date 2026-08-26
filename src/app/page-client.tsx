@@ -18,8 +18,6 @@ import {
 } from "@/components/design/VariantPicker";
 import { CommandPalette, type PaletteAction } from "@/components/design/CommandPalette";
 import { ViewTransition } from "@/components/design/ViewTransition";
-import { BriefingView } from "@/components/design/views/BriefingView";
-import { SplitView } from "@/components/design/views/SplitView";
 import { CompanyDetail } from "@/components/design/CompanyDetail";
 // Heavy variant containers — code-split so the Status dashboard's first paint
 // doesn't pay the cost of PortfolioView + PayMigrationView (1.3k lines).
@@ -42,6 +40,17 @@ const MeetingPrepContainer = dynamic(
 const SearchContainer = dynamic(
   () =>
     import("@/components/design/views/SearchContainer").then((m) => m.SearchContainer),
+  { ssr: false }
+);
+// Status's two views (1.1k lines combined). Status is hidden from the picker,
+// so keeping these eagerly imported put them in every user's initial bundle
+// for a dashboard almost nobody opens.
+const BriefingView = dynamic(
+  () => import("@/components/design/views/BriefingView").then((m) => m.BriefingView),
+  { ssr: false }
+);
+const SplitView = dynamic(
+  () => import("@/components/design/views/SplitView").then((m) => m.SplitView),
   { ssr: false }
 );
 import ShortcutCheatSheet from "@/components/ShortcutCheatSheet";
@@ -196,15 +205,7 @@ function writeUrlState(state: UrlState, mode: "push" | "replace"): void {
   }
 }
 
-interface DashboardClientProps {
-  // Server-rendered initial attention payload. When provided, the client
-  // skips the first `/api/attention` fetch — first paint already has the
-  // rows. Tab-focus refetch / R-key refresh / filter changes still fire
-  // through the API route as usual.
-  initialAttention: AttentionResponse | null;
-}
-
-export default function DashboardClient({ initialAttention }: DashboardClientProps) {
+export default function DashboardClient() {
   // View state — start with hardcoded defaults so server and client first
   // render agree (no hydration mismatch). The `useEffect` below reads URL
   // params and localStorage after mount and applies them, so a deep link
@@ -222,11 +223,12 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
   // a fresh visit would silently hide rows with no visible cause.
   const [portfolioSearch, setPortfolioSearch] = useState("");
 
-  // Data state — seed from server-rendered payload when available so the
-  // first paint already has the attention rows. Without it (refresh during
-  // a server outage, or a client-only navigation), `loadAttention` fills in.
-  const [attention, setAttention] = useState<AttentionResponse | null>(initialAttention);
-  const [isLoadingAttention, setIsLoadingAttention] = useState(initialAttention === null);
+  // Status data. Fetched lazily on arrival at ?d=status (see the effect below),
+  // so no seed here. isLoadingAttention starts true meaning "not fetched yet",
+  // which makes the Status branch render its skeleton on arrival instead of
+  // flashing the empty state for a frame before the fetch starts.
+  const [attention, setAttention] = useState<AttentionResponse | null>(null);
+  const [isLoadingAttention, setIsLoadingAttention] = useState(true);
   const [errorAttention, setErrorAttention] = useState<string | null>(null);
 
   // Report the Status payload's build time so the TopBar freshness label
@@ -534,18 +536,16 @@ export default function DashboardClient({ initialAttention }: DashboardClientPro
     }
   }, []);
 
-  // Skip the first auto-fetch when the server already supplied the payload —
-  // otherwise we'd refetch immediately after hydration and waste the work.
-  // After this initial mount, loadAttention is what tab-focus / R-key /
-  // filter changes invoke, so the ref-based skip is a one-shot.
-  const skipInitialAttentionFetchRef = useRef(initialAttention !== null);
+  // Status is hidden from the dashboard picker (see DASHBOARDS in
+  // VariantPicker), so its payload is only worth fetching if the user actually
+  // navigates to ?d=status. Fetch once, on arrival. Tab-focus refresh, the R
+  // key and the Retry button still call loadAttention directly afterwards.
+  const attentionRequestedRef = useRef(false);
   useEffect(() => {
-    if (skipInitialAttentionFetchRef.current) {
-      skipInitialAttentionFetchRef.current = false;
-      return;
-    }
+    if (dashboard !== "status" || attentionRequestedRef.current) return;
+    attentionRequestedRef.current = true;
     loadAttention();
-  }, [loadAttention]);
+  }, [dashboard, loadAttention]);
 
   // Fetch company detail when selectedCompanyId changes
   useEffect(() => {

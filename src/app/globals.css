@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
 :root {
+  /* Height shared by the dashboard selector and the page-option segmented
+     controls (Table/Board, Default/All) so every option control on screen is
+     the same size. */
+  --control-h: 35px;
+  /* The dashboard selector is a fixed width so the pill doesn't resize when
+     you switch dashboards (labels range from "Portfolio" to "Understory Pay",
+     a 36px swing). Sized to the longest label; its dropdown matches it. */
+  --dashboard-picker-w: 213px;
+
   /* Understory Brand Tokens */
   --moss: #022C12;
   --dark-moss: #1D261F;
@@ -454,7 +463,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    trips on shorthand props (padding, transition, background) — the browser
    normalises them to longhand and the diff fails. */
 .seg-light-btn {
-  padding: 5px 12px;
+  /* No vertical padding: the button stretches to fill the track (see the
+     tablist wrapper) so the active chip scales with --control-h instead of
+     sitting at a fixed 28px inside a taller track. */
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
   border-radius: 7px;
   font-size: 12px;
   font-weight: 500;
@@ -545,6 +559,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   gap: 10px;
   padding: 6px 12px 6px 14px;
   border-radius: 10px;
+  /* Fixed box: the pill must not resize as the selected dashboard changes. */
+  width: var(--dashboard-picker-w);
+  height: var(--control-h);
   /* Same citrus outline + faint tint as the active filter pills so the
      selector reads as interactive on the dark TopBar instead of blending
      into the moss background. */

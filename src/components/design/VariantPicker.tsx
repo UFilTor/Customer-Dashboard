@@ -136,10 +136,12 @@ function SegLight({
       aria-label={label}
       style={{
         display: "inline-flex",
+        alignItems: "stretch",
+        height: "var(--control-h)",
         background: "var(--beige-new)",
         border: "1px solid var(--beige-gray)",
         borderRadius: 10,
-        padding: 3,
+        padding: 2,
         gap: 2,
       }}
     >
@@ -216,7 +218,12 @@ export function DashboardPicker({
           height={10}
           viewBox="0 0 10 10"
           fill="none"
-          style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}
+          style={{
+            marginLeft: "auto",
+            flexShrink: 0,
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform 0.2s",
+          }}
         >
           <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -231,9 +238,9 @@ export function DashboardPicker({
             position: "absolute",
             top: "calc(100% + 6px)",
             right: 0,
-            // Sizes to the longest label now that the descriptions are gone;
-            // 320 left a wide empty gutter to the right of every name.
-            minWidth: 190,
+            // Same width as the trigger, from the same token, so the panel can
+            // never drift out of alignment with the pill above it.
+            width: "var(--dashboard-picker-w)",
             background: "var(--light-grey)",
             border: "1px solid var(--beige-gray)",
             borderRadius: 12,

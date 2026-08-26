@@ -4,11 +4,20 @@
 export interface Owner {
   id: string;
   name: string;
-  region: RegionKey;
+  /** Home region. Absent for territory owners, whose book spans several. */
+  region?: RegionKey;
   color: string;
   // Optional override for the avatar initial. Defaults to name[0].
   // Used to disambiguate owners who share a first letter (e.g. Anders vs Alessandro).
   initial?: string;
+  /**
+   * Company-country ISO-2 codes this owner covers. When set, the owner's book
+   * is a TERRITORY: every account in these countries, whoever owns it in
+   * HubSpot. That has to be filtered client-side on the company country,
+   * because the bulk routes scope by owner id and a territory owner owns none
+   * of the accounts they cover.
+   */
+  countries?: readonly string[];
 }
 
 export type RegionKey = "DK" | "SE" | "IT";
@@ -28,6 +37,16 @@ export const OWNERS: Owner[] = [
   { id: "44912650", name: "Marc", region: "DK", color: "#F1F97E" },
   { id: "34100332", name: "Nicoletta", region: "IT", color: "#E8D5F0" },
   { id: "90324081", name: "Vlad", region: "IT", color: "#F4C4A0" },
+  // Nordic coverage, started 2026-08-26. No home region and no owned deals:
+  // her book is the territory below, which deliberately overlaps the Danish
+  // and Swedish owners'. GL and FO are in it because they sit in the book and
+  // belong to no one else's patch.
+  {
+    id: "37173812",
+    name: "Janne",
+    color: "#BEE3D9",
+    countries: ["DK", "SE", "NO", "FI", "GL", "FO"],
+  },
 ];
 
 export const OWNER_MAP: Record<string, Owner> = Object.fromEntries(
@@ -44,9 +63,35 @@ export const REGIONS: { key: RegionKey; label: string }[] = [
 // Returns null when no owner-id-based filtering should apply (i.e. "All").
 export function effectiveOwnerIds(filter: GlobalFilter): Set<string> | null {
   if (filter.kind === "all") return null;
-  if (filter.kind === "person") return new Set([filter.ownerId]);
+  if (filter.kind === "person") {
+    // A territory owner has no owner scope to send - the accounts are owned by
+    // other people. Fetch the whole book and let effectiveCountries narrow it.
+    if (OWNER_MAP[filter.ownerId]?.countries) return null;
+    return new Set([filter.ownerId]);
+  }
   const ids = OWNERS.filter((o) => o.region === filter.region).map((o) => o.id);
   return new Set(ids);
+}
+
+/**
+ * ISO-2 company countries the filter narrows to, or null when it does not
+ * narrow by country. Applied client-side by the dashboard containers.
+ */
+export function effectiveCountries(filter: GlobalFilter): Set<string> | null {
+  if (filter.kind !== "person") return null;
+  const countries = OWNER_MAP[filter.ownerId]?.countries;
+  return countries ? new Set(countries) : null;
+}
+
+/**
+ * Whether the current scope can hold accounts owned by different people. False
+ * only for a normal person filter, where every row would show the same avatar
+ * and the OWNER column is dead weight. A territory owner's rows have many
+ * different owners, so the column earns its place.
+ */
+export function scopeHasMixedOwners(filter: GlobalFilter): boolean {
+  if (filter.kind !== "person") return true;
+  return Boolean(OWNER_MAP[filter.ownerId]?.countries);
 }
 
 // Human-readable label for the active filter (shown in headers so a sticky

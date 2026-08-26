@@ -10,7 +10,13 @@ import { MeetingPrepBrief } from "./MeetingPrepBrief";
 interface Props {
   // Pool counts for the eyebrow + KPI tiles. Server-computed so we don't
   // have to ship the full deals[] array just to render two numbers.
-  dealsTotal: number;
+  /**
+   * Accounts in the current scope. Null when the scope can't be counted: a
+   * territory filter narrows by company country client-side, but the payload
+   * ships only meetings plus scalars, so the pool behind those scalars is the
+   * whole book. Better to say nothing than to state the book's number as hers.
+   */
+  dealsTotal: number | null;
   lifecycleDealsTotal: number;
   retentionDealsTotal: number;
   meetings: MeetingPrepMeetingEntry[];
@@ -284,9 +290,13 @@ function MeetingsPanel({
       <DashboardBanner
         eyebrow="Meeting prep"
         headline={
-          <>
-            {total} {total === 1 ? "customer" : "customers"} in scope.
-          </>
+          total === null ? (
+            <>Meetings ahead.</>
+          ) : (
+            <>
+              {total} {total === 1 ? "customer" : "customers"} in scope.
+            </>
+          )
         }
         detail={
           <>

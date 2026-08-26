@@ -7,7 +7,7 @@ import type {
   MeetingPrepResponse,
   OnboardingHistoryEntry,
 } from "@/lib/types";
-import { effectiveOwnerIds, type GlobalFilter } from "@/lib/owners";
+import { effectiveCountries, effectiveOwnerIds, type GlobalFilter } from "@/lib/owners";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { reportFreshness } from "@/lib/freshness";
 import { MeetingPrepView } from "./MeetingPrepView";
@@ -234,8 +234,13 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
   }>(() => {
     if (!data) return { meetings: [] };
     const ids = effectiveOwnerIds(filter);
-    const matches = (d: MeetingPrepDeal) =>
-      ids ? (d.ownerId ? ids.has(d.ownerId) : false) : true;
+    // A territory owner covers accounts by country, not by ownership, so the
+    // owner set is null for them and this country test does the narrowing.
+    const countries = effectiveCountries(filter);
+    const matches = (d: MeetingPrepDeal) => {
+      if (countries) return d.country ? countries.has(d.country) : false;
+      return ids ? (d.ownerId ? ids.has(d.ownerId) : false) : true;
+    };
     return {
       meetings: data.meetings.filter((entry) => matches(entry.deal)),
     };
@@ -288,7 +293,8 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
   return (
     <div className={isRevalidating ? "is-revalidating" : undefined}>
       <MeetingPrepView
-        dealsTotal={data?.dealsTotal ?? 0}
+        // Null for a territory filter: see the prop's note in MeetingPrepView.
+        dealsTotal={effectiveCountries(filter) ? null : (data?.dealsTotal ?? 0)}
         lifecycleDealsTotal={data?.lifecycleDealsTotal ?? 0}
         retentionDealsTotal={data?.retentionDealsTotal ?? 0}
         meetings={filtered.meetings}

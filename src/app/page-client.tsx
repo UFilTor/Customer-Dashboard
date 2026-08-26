@@ -48,6 +48,7 @@ import {
   parseFilter,
   serializeFilter,
   ALL_FILTER,
+  scopeHasMixedOwners,
   OWNERS,
   type GlobalFilter,
 } from "@/lib/owners";
@@ -1017,7 +1018,7 @@ export default function DashboardClient() {
       <PortfolioContainer
         filter={globalFilter}
         filterLabel={filterLabel}
-        showAvatar={globalFilter.kind !== "person"}
+        showAvatar={scopeHasMixedOwners(globalFilter)}
         onSelectCompany={(id) => selectCompany(id)}
         search={portfolioSearch}
         onSearchChange={setPortfolioSearch}

@@ -127,7 +127,13 @@ const OPERATORS = [
 ];
 
 function ownerDirectoryBlock(): string {
-  return OWNERS.map((o) => `  ${o.name} (${o.region}) → ownerId "${o.id}"`).join("\n");
+  return OWNERS.map((o) =>
+    o.countries
+      // Territory owners own no deals in HubSpot, so scoping a query to their
+      // ownerId would return nothing. Describe the patch instead.
+      ? `  ${o.name} (covers ${o.countries.join("/")}, owns no deals directly) → ownerId "${o.id}"`
+      : `  ${o.name} (${o.region}) → ownerId "${o.id}"`
+  ).join("\n");
 }
 
 function entityFieldsBlock(): string {

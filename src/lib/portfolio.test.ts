@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { classifyPortfolioStage, isSignalApplicable, extractSortKey, getSortOptions, buildRow, matchesPortfolioSearch, __test } from "./portfolio";
 import type { PortfolioRow } from "./types";
+import { effectiveCountries, effectiveOwnerIds, scopeHasMixedOwners } from "./owners";
 
 function row(overrides: Partial<PortfolioRow> = {}): PortfolioRow {
   return {
@@ -410,5 +411,48 @@ describe("matchesPortfolioSearch", () => {
     expect(() => matchesPortfolioSearch(stale, "kajak")).not.toThrow();
     expect(matchesPortfolioSearch(stale, "kajak")).toBe(false);
     expect(matchesPortfolioSearch(stale, "")).toBe(true);
+  });
+});
+
+describe("territory owners (country-scoped books)", () => {
+  const JANNE = "37173812";
+
+  it("sends no owner scope for a territory owner, so the whole book is fetched", () => {
+    // Her accounts are owned by other people; scoping the request to her own
+    // ownerId would return nothing.
+    expect(effectiveOwnerIds({ kind: "person", ownerId: JANNE })).toBeNull();
+  });
+
+  it("still scopes a normal person filter to that one owner", () => {
+    const ids = effectiveOwnerIds({ kind: "person", ownerId: "1939229547" });
+    expect(ids).not.toBeNull();
+    expect([...ids!]).toEqual(["1939229547"]);
+  });
+
+  it("exposes the territory as the country set to narrow by", () => {
+    const c = effectiveCountries({ kind: "person", ownerId: JANNE });
+    expect(c).not.toBeNull();
+    expect([...c!].sort()).toEqual(["DK", "FI", "FO", "GL", "NO", "SE"]);
+  });
+
+  it("returns no country scope for filters that don't narrow by country", () => {
+    expect(effectiveCountries({ kind: "all" })).toBeNull();
+    expect(effectiveCountries({ kind: "region", region: "DK" })).toBeNull();
+    expect(effectiveCountries({ kind: "person", ownerId: "1939229547" })).toBeNull();
+  });
+
+  it("keeps the OWNER column only where a scope can span owners", () => {
+    expect(scopeHasMixedOwners({ kind: "all" })).toBe(true);
+    expect(scopeHasMixedOwners({ kind: "region", region: "DK" })).toBe(true);
+    // A territory owner's rows are owned by many different people.
+    expect(scopeHasMixedOwners({ kind: "person", ownerId: JANNE })).toBe(true);
+    // A normal person filter would show the same avatar on every row.
+    expect(scopeHasMixedOwners({ kind: "person", ownerId: "1939229547" })).toBe(false);
+  });
+
+  it("leaves a territory owner out of every region grouping", () => {
+    for (const region of ["DK", "SE", "IT"] as const) {
+      expect([...effectiveOwnerIds({ kind: "region", region })!]).not.toContain(JANNE);
+    }
   });
 });

@@ -9,7 +9,7 @@ import type {
   PortfolioSignalKey,
   PortfolioSortKey,
 } from "@/lib/types";
-import { effectiveOwnerIds, type GlobalFilter, parseFilter, serializeFilter } from "@/lib/owners";
+import { effectiveCountries, effectiveOwnerIds, type GlobalFilter, parseFilter, serializeFilter } from "@/lib/owners";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { extractSortKey, getSortOptions, mapKindToKey, matchesPortfolioSearch } from "@/lib/portfolio";
 import { PORTFOLIO_SIGNAL_ORDER, PORTFOLIO_SIGNAL_MAP } from "@/lib/signals";
@@ -267,10 +267,18 @@ export function PortfolioContainer({
       return shownStatuses[r.dealStatus] === true;
     });
 
+    // Territory scope. A territory owner's book is defined by company country
+    // rather than ownership, so the fetch is unscoped and the narrowing happens
+    // here. Rows with no country recorded fall outside every territory.
+    const countries = effectiveCountries(filter);
+    const inScope = countries
+      ? statusFiltered.filter((r) => (r.companyCountry ? countries.has(r.companyCountry) : false))
+      : statusFiltered;
+
     // Free-text narrowing on name / domain. Runs before the signal filter so
     // everything downstream (signal counts in view, sections, pagination,
     // board columns) operates on the searched set.
-    const searched = statusFiltered.filter((r) => matchesPortfolioSearch(r, search));
+    const searched = inScope.filter((r) => matchesPortfolioSearch(r, search));
 
     const filtered = selectedSignals.length === 0
       ? searched
@@ -332,7 +340,7 @@ export function PortfolioContainer({
       if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
       return ((av as number) - (bv as number)) * dir;
     });
-  }, [data, search, selectedSignals, stackedSignals, shownStatuses, snoozedIds, sortKey, sortDirection, refine]);
+  }, [data, filter, search, selectedSignals, stackedSignals, shownStatuses, snoozedIds, sortKey, sortDirection, refine]);
 
   // Board mode groups the full filtered+sorted set into stage columns and
   // bypasses pagination entirely (no PAGE_SIZE slice). boardFlatRows is the

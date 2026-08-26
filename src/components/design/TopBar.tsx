@@ -114,7 +114,7 @@ export function TopBar({
                 minWidth: 0,
               }}
             >
-              Search companies, run commands…
+              Search companies…
             </span>
             <span
               style={{

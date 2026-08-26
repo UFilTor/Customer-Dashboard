@@ -52,12 +52,14 @@ export function TopBar({
 
   return (
     <nav className="topbar-nav">
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
         <div
           style={{
             display: "flex",
             alignItems: "center",
             gap: 10,
+            flexShrink: 0,
+            whiteSpace: "nowrap",
             fontFamily: "var(--font-display)",
             textTransform: "uppercase",
             fontWeight: 700,
@@ -81,46 +83,55 @@ export function TopBar({
             <span>Back</span>
           </button>
         )}
-      </div>
-
-      <div className="topbar-search-wrap">
-        <button
-          onClick={onOpenCmdk}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 10,
-            background: "var(--inverse-surface)",
-            border: "1px solid var(--inverse-border)",
-            color: "var(--inverse-text)",
-            padding: "7px 12px",
-            borderRadius: 10,
-            fontSize: 13,
-            width: "100%",
-            minWidth: 0,
-            maxWidth: 360,
-            cursor: "pointer",
-            transition: "background 160ms ease",
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--inverse-surface-hover)"; e.currentTarget.style.color = "var(--inverse-text-strong)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--inverse-surface)"; e.currentTarget.style.color = "var(--inverse-text)"; }}
-        >
-          <Icon.Search />
-          <span>Search companies, run commands…</span>
-          <span
+        <div className="topbar-search-wrap">
+          <button
+            onClick={onOpenCmdk}
             style={{
-              marginLeft: "auto",
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              background: "var(--inverse-surface-hover)",
-              padding: "2px 6px",
-              borderRadius: 4,
-              color: "var(--inverse-text-strong)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+              background: "var(--inverse-surface)",
+              border: "1px solid var(--inverse-border)",
+              color: "var(--inverse-text)",
+              padding: "7px 12px",
+              borderRadius: 10,
+              fontSize: 13,
+              width: "100%",
+              minWidth: 0,
+              maxWidth: 360,
+              cursor: "pointer",
+              transition: "background 160ms ease",
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--inverse-surface-hover)"; e.currentTarget.style.color = "var(--inverse-text-strong)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "var(--inverse-surface)"; e.currentTarget.style.color = "var(--inverse-text)"; }}
           >
-            {cmdLabel}
-          </span>
-        </button>
+            <Icon.Search style={{ flexShrink: 0 }} />
+            <span
+              style={{
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                minWidth: 0,
+              }}
+            >
+              Search companies, run commands…
+            </span>
+            <span
+              style={{
+                marginLeft: "auto",
+                flexShrink: 0,
+                fontFamily: "var(--font-mono)",
+                fontSize: 11,
+                background: "var(--inverse-surface-hover)",
+                padding: "2px 6px",
+                borderRadius: 4,
+                color: "var(--inverse-text-strong)",
+              }}
+            >
+              {cmdLabel}
+            </span>
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>

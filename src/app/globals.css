@@ -483,13 +483,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .topbar-nav {
   background: var(--moss);
   color: var(--text-on-moss);
-  /* Logo on the left, pill cluster on the right, search in the middle column.
-     A real 3-column grid (not absolute-centering) means the columns can never
-     overlap: the search cell shrinks with the viewport instead of the side
-     clusters growing underneath it. Was absolute + flex space-between, which
-     collided with the right cluster at 1280px and below. */
+  /* Two columns: logo + search on the left, pill cluster on the right. The
+     left column is the flexible one, so the search shrinks with the viewport
+     instead of the right cluster growing underneath it (the search used to be
+     a centered third column; it now sits next to the wordmark). */
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
   padding: 10px var(--page-gutter);
@@ -524,11 +523,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 .topbar-search-wrap {
-  justify-self: center;
+  /* Takes up to 360px next to the wordmark and shrinks below that rather than
+     pushing the right-hand pill cluster off the bar. */
+  flex: 0 1 360px;
   min-width: 0;
-  width: 100%;
   display: flex;
-  justify-content: center;
 }
 
 /* Below ~1200px the side clusters (filter pills + dashboard picker) are
@@ -555,4 +554,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.8, 0.24, 0.16, 1);
   font-family: inherit;
+  /* Never wrap the dashboard name: "Meeting prep" and "Understory Pay
+     Migration" both broke onto a second line once the bar got tight, which
+     grew the whole TopBar. The pill keeps its width and the search column
+     gives up space instead. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }

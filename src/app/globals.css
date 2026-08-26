@@ -5,6 +5,9 @@
      controls (Table/Board, Default/All) so every option control on screen is
      the same size. */
   --control-h: 35px;
+  /* The filter selector is fixed too, so its dropdown can be exactly as wide
+     as the trigger. Sized for the longest owner name plus the avatar. */
+  --filter-pill-w: 200px;
   /* The dashboard selector is a fixed width so the pill doesn't resize when
      you switch dashboards. Sized to the longest label ("Understory Pay") plus
      the caret; its dropdown matches it from the same token. */

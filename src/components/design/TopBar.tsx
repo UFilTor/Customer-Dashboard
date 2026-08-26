@@ -8,7 +8,6 @@ import {
   OWNER_MAP,
   REGIONS,
   type GlobalFilter,
-  type RegionKey,
 } from "@/lib/owners";
 import { DashboardPicker, type DashboardKey } from "./VariantPicker";
 import {
@@ -136,22 +135,13 @@ export function TopBar({
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
         <FreshnessLabel dashboard={dashboard} />
-        <FilterTypePill
+        <FilterPill
           filter={filter}
           setFilter={setFilter}
           isDefault={isDefault}
           setAsDefault={setAsDefault}
           clearDefault={clearDefault}
         />
-        {filter.kind !== "all" && (
-          <FilterValuePill
-            filter={filter}
-            setFilter={setFilter}
-            isDefault={isDefault}
-            setAsDefault={setAsDefault}
-            clearDefault={clearDefault}
-          />
-        )}
         <span aria-hidden="true" style={{ width: 1, height: 20, background: "var(--inverse-border)" }} />
         <DashboardPicker dashboard={dashboard} setDashboard={setDashboard} />
       </div>
@@ -249,335 +239,320 @@ function useDropdownDismiss(open: boolean, setOpen: (v: boolean) => void) {
 }
 
 const TYPE_OPTIONS = ["all", "region", "person"] as const;
+type FilterKind = (typeof TYPE_OPTIONS)[number];
+const KIND_LABEL: Record<FilterKind, string> = { all: "All", region: "Region", person: "Person" };
 
-function FilterTypePill({ filter, setFilter, isDefault, setAsDefault, clearDefault }: PillProps) {
+interface FilterOption {
+  key: string;
+  label: string;
+  /** Avatar swatch. Regions render without one. */
+  color?: string;
+  initial?: string;
+  value: GlobalFilter;
+}
+
+// The options behind each tab. "All" is a single terminal choice rather than a
+// category with members, which is why its tab applies immediately (see below)
+// while Region and Person only switch which list you are looking at.
+function optionsFor(kind: FilterKind): FilterOption[] {
+  if (kind === "all") {
+    return [{ key: "all", label: "All accounts", value: { kind: "all" } }];
+  }
+  if (kind === "region") {
+    return REGIONS.map((r) => ({
+      key: r.key,
+      label: r.label,
+      value: { kind: "region", region: r.key },
+    }));
+  }
+  return OWNERS.map((o) => ({
+    key: o.id,
+    label: o.name,
+    color: o.color,
+    initial: o.initial || o.name[0],
+    value: { kind: "person", ownerId: o.id },
+  }));
+}
+
+function isActiveOption(filter: GlobalFilter, o: FilterOption): boolean {
+  if (filter.kind !== o.value.kind) return false;
+  if (filter.kind === "region" && o.value.kind === "region") return filter.region === o.value.region;
+  if (filter.kind === "person" && o.value.kind === "person") return filter.ownerId === o.value.ownerId;
+  return true;
+}
+
+// One selector for all filter states, replacing the old type + value pill pair
+// that handed off to each other. The tab strip keeps the panel short: it never
+// shows more rows than the largest single group, which matters as the CS team
+// grows - a flat list of every state would grow without bound.
+function FilterPill({ filter, setFilter, isDefault, setAsDefault, clearDefault }: PillProps) {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<FilterKind>(filter.kind);
   const [focusedIdx, setFocusedIdx] = useState(0);
   const ref = useDropdownDismiss(open, setOpen);
 
-  const label = filter.kind === "all" ? "All" : filter.kind === "region" ? "Region" : "Person";
   const isFiltered = filter.kind !== "all";
+  const options = optionsFor(tab);
 
-  // Broadcast open state so page.tsx knows to suppress its own keyboard
-  // shortcuts while a pill dropdown is up.
+  // Trigger shows the resolved selection, not the kind: "Denmark" and "Filip"
+  // already say which axis they are.
+  const owner = filter.kind === "person" ? OWNER_MAP[filter.ownerId] : null;
+  const valueLabel =
+    filter.kind === "all"
+      ? "All"
+      : filter.kind === "region"
+        ? REGIONS.find((r) => r.key === filter.region)?.label ?? filter.region
+        : owner?.name ?? "Pick";
+
+  // Broadcast open state so page-client suppresses its own shortcuts while the
+  // panel is up.
   useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("ud-filter-pill-state", { detail: open })
-    );
+    window.dispatchEvent(new CustomEvent("ud-filter-pill-state", { detail: open }));
   }, [open]);
 
-  // External open trigger (F key) and global close. Initial focus lands on
-  // whichever option matches the active filter so the user can step away
-  // from it without an extra keypress.
+  // External open (F key) and global close.
   useEffect(() => {
-    function onOpenEvt() {
-      setOpen(true);
-    }
+    function onOpenEvt() { setOpen(true); }
     function onCloseAll() { setOpen(false); }
-    window.addEventListener("ud-filter-type-open", onOpenEvt);
+    window.addEventListener("ud-filter-open", onOpenEvt);
     window.addEventListener("ud-filter-close-all", onCloseAll);
     return () => {
-      window.removeEventListener("ud-filter-type-open", onOpenEvt);
+      window.removeEventListener("ud-filter-open", onOpenEvt);
       window.removeEventListener("ud-filter-close-all", onCloseAll);
     };
   }, []);
 
-  // Sync focus to the active option whenever the dropdown opens.
+  // Opening lands on the active filter's own tab and row, so the panel always
+  // opens showing where you already are.
   useEffect(() => {
     if (!open) return;
-    const i = TYPE_OPTIONS.indexOf(filter.kind);
+    setTab(filter.kind);
+    const i = optionsFor(filter.kind).findIndex((o) => isActiveOption(filter, o));
     setFocusedIdx(i >= 0 ? i : 0);
-  }, [open, filter.kind]);
+  }, [open, filter]);
 
-  // Keyboard navigation while the dropdown is open. The ref mirrors
-  // focusedIdx so the once-attached keydown listener always reads the
-  // latest selection without re-binding on every change.
+  const apply = (o: FilterOption) => {
+    setFilter(o.value);
+    setOpen(false);
+  };
+
+  // Left/right walks the tab strip, up/down the list under it. Mirrors the
+  // panel's own layout so the keys match what you see.
+  const tabRef = useRef(tab);
+  useEffect(() => { tabRef.current = tab; });
   const focusedRef = useRef(focusedIdx);
-  useEffect(() => {
-    focusedRef.current = focusedIdx;
-  });
+  useEffect(() => { focusedRef.current = focusedIdx; });
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "ArrowDown") {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        setFocusedIdx((i) => Math.min(TYPE_OPTIONS.length - 1, i + 1));
-      } else if (e.key === "ArrowUp") {
+        const len = optionsFor(tabRef.current).length;
+        setFocusedIdx((i) =>
+          e.key === "ArrowDown" ? Math.min(len - 1, i + 1) : Math.max(0, i - 1)
+        );
+      } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         e.preventDefault();
-        setFocusedIdx((i) => Math.max(0, i - 1));
+        const i = TYPE_OPTIONS.indexOf(tabRef.current);
+        const next = TYPE_OPTIONS[
+          e.key === "ArrowRight"
+            ? Math.min(TYPE_OPTIONS.length - 1, i + 1)
+            : Math.max(0, i - 1)
+        ];
+        pickTab(next);
       } else if (e.key === "Enter") {
         e.preventDefault();
-        pickType(TYPE_OPTIONS[focusedRef.current]);
+        const o = optionsFor(tabRef.current)[focusedRef.current];
+        if (o) apply(o);
       }
     }
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  function pickType(kind: "all" | "region" | "person") {
-    if (kind === "all") setFilter({ kind: "all" });
-    else if (kind === "region") {
-      // Default to the user's current region if already filtering by region, else first region.
-      const region: RegionKey = filter.kind === "region" ? filter.region : "DK";
-      setFilter({ kind: "region", region });
-    } else {
-      const ownerId = filter.kind === "person" ? filter.ownerId : OWNERS[0].id;
-      setFilter({ kind: "person", ownerId });
-    }
-    setOpen(false);
-    // Chain to the value pill if there's a value to pick.
-    if (kind !== "all") {
-      // Defer so the value pill mounts (it's conditional on filter.kind != "all").
-      setTimeout(() => {
-        window.dispatchEvent(new Event("ud-filter-value-open"));
-      }, 30);
-    }
+  // Region and Person only switch the visible list. "All" has no sub-choice,
+  // so its tab applies straight away rather than making you click a lone row.
+  function pickTab(next: FilterKind) {
+    setTab(next);
+    setFocusedIdx(0);
+    if (next === "all") setFilter({ kind: "all" });
   }
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <button onClick={() => setOpen((o) => !o)} title={`Filter type: ${label}`} style={pillStyle(isFiltered)}>
-        {/* Same size and weight as the value it labels - the old 9.5px
-            letterspaced caps sat at a different x-height and read as a
-            separate line. Colour alone carries the label/value distinction. */}
-        <span style={{ color: "var(--inverse-text)" }}>Filter</span>
-        <span style={{ fontWeight: 700 }}>{label}</span>
-        <Caret open={open} />
-      </button>
-
-      {open && (
-        <Dropdown header="Filter scope" sub="Applies across every dashboard">
-          <DropdownOption
-            label="All accounts"
-            sub="No filter applied"
-            icon="★"
-            active={filter.kind === "all"}
-            focused={focusedIdx === 0}
-            onClick={() => pickType("all")}
-          />
-          <DropdownOption
-            label="Region"
-            sub="Group by country"
-            icon="◎"
-            active={filter.kind === "region"}
-            focused={focusedIdx === 1}
-            onClick={() => pickType("region")}
-          />
-          <DropdownOption
-            label="Person"
-            sub="Filter by individual owner"
-            icon="●"
-            active={filter.kind === "person"}
-            focused={focusedIdx === 2}
-            onClick={() => pickType("person")}
-          />
-          <DefaultPinFooter
-            isDefault={isDefault}
-            setAsDefault={setAsDefault}
-            clearDefault={clearDefault}
-          />
-        </Dropdown>
-      )}
-    </div>
-  );
-}
-
-function FilterValuePill({ filter, setFilter, isDefault, setAsDefault, clearDefault }: PillProps) {
-  const [open, setOpen] = useState(false);
-  const [focusedIdx, setFocusedIdx] = useState(0);
-  const ref = useDropdownDismiss(open, setOpen);
-
-  // Broadcast open state so page.tsx can suppress its own shortcuts.
-  useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("ud-filter-pill-state", { detail: open })
-    );
-  }, [open]);
-
-  // External open trigger (chain from kind pill) and global close.
-  useEffect(() => {
-    function onOpenEvt() { setOpen(true); }
-    function onCloseAll() { setOpen(false); }
-    window.addEventListener("ud-filter-value-open", onOpenEvt);
-    window.addEventListener("ud-filter-close-all", onCloseAll);
-    return () => {
-      window.removeEventListener("ud-filter-value-open", onOpenEvt);
-      window.removeEventListener("ud-filter-close-all", onCloseAll);
-    };
-  }, []);
-
-  // Number of visible options depends on the kind. Computed lazily inside the
-  // keyboard effect so we don't break hooks order on filter.kind changes.
-  const optionsLength = filter.kind === "region" ? REGIONS.length : filter.kind === "person" ? OWNERS.length : 0;
-
-  // Sync focus to active option on open. Adjust-during-render (using a
-  // composite key of open + filter identity) avoids a setState-in-effect.
-  const syncKey = open
-    ? filter.kind === "region"
-      ? `r:${filter.region}`
-      : filter.kind === "person"
-        ? `p:${filter.ownerId}`
-        : "all"
-    : null;
-  const [prevSyncKey, setPrevSyncKey] = useState<string | null>(null);
-  if (prevSyncKey !== syncKey) {
-    setPrevSyncKey(syncKey);
-    if (open) {
-      if (filter.kind === "region") {
-        const i = REGIONS.findIndex((r) => r.key === filter.region);
-        setFocusedIdx(i >= 0 ? i : 0);
-      } else if (filter.kind === "person") {
-        const i = OWNERS.findIndex((o) => o.id === filter.ownerId);
-        setFocusedIdx(i >= 0 ? i : 0);
-      } else {
-        setFocusedIdx(0);
-      }
-    }
-  }
-
-  // Keyboard nav while the dropdown is open. Refs mirror focusedIdx +
-  // filter so the once-attached keydown listener reads fresh values.
-  const focusedRef = useRef(focusedIdx);
-  const filterRef = useRef(filter);
-  useEffect(() => {
-    focusedRef.current = focusedIdx;
-    filterRef.current = filter;
-  });
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setFocusedIdx((i) => Math.min(optionsLength - 1, i + 1));
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setFocusedIdx((i) => Math.max(0, i - 1));
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const f = filterRef.current;
-        const idx = focusedRef.current;
-        if (f.kind === "region" && REGIONS[idx]) {
-          setFilter({ kind: "region", region: REGIONS[idx].key });
-        } else if (f.kind === "person" && OWNERS[idx]) {
-          setFilter({ kind: "person", ownerId: OWNERS[idx].id });
-        }
-        setOpen(false);
-      }
-    }
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [open, optionsLength, setFilter]);
-
-  // Memoised display values for the pill. The "all" case is filtered out by
-  // the parent before this component renders, but we still narrow defensively.
-  if (filter.kind === "all") return null;
-
-  if (filter.kind === "region") {
-    const r = REGIONS.find((x) => x.key === filter.region);
-    return (
-      <div ref={ref} style={{ position: "relative" }}>
-        <button onClick={() => setOpen((o) => !o)} title={`Region: ${r?.label || filter.region}`} style={pillStyle(true)}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title={`Filter: ${valueLabel}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        style={{ ...pillStyle(isFiltered), width: "var(--filter-pill-w)" }}
+      >
+        <span style={{ color: "var(--inverse-text)", flexShrink: 0 }}>Filter</span>
+        {owner && (
           <span
+            aria-hidden="true"
             style={{
-              width: 22,
-              height: 22,
+              width: 20,
+              height: 20,
               borderRadius: "50%",
-              background: "var(--citrus)",
+              background: owner.color || "var(--citrus)",
               color: "var(--moss)",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
               fontSize: 10,
               fontWeight: 700,
-              letterSpacing: "0.04em",
+              flexShrink: 0,
             }}
           >
-            {filter.region}
+            {owner.initial || owner.name[0]}
           </span>
-          <span>{r?.label || filter.region}</span>
-          <Caret open={open} />
-        </button>
-
-        {open && (
-          <Dropdown header="Region" sub="Filter dashboards by country">
-            {REGIONS.map((opt, i) => (
-              <DropdownOption
-                key={opt.key}
-                label={opt.label}
-                sub={opt.key}
-                icon={opt.key}
-                active={filter.region === opt.key}
-                focused={focusedIdx === i}
-                onClick={() => {
-                  setFilter({ kind: "region", region: opt.key });
-                  setOpen(false);
-                }}
-              />
-            ))}
-            <DefaultPinFooter
-              isDefault={isDefault}
-              setAsDefault={setAsDefault}
-              clearDefault={clearDefault}
-            />
-          </Dropdown>
         )}
-      </div>
-    );
-  }
-
-  // person
-  const owner = OWNER_MAP[filter.ownerId];
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        title={owner ? `Viewing as ${owner.name}` : "Pick a person"}
-        style={pillStyle(true)}
-      >
         <span
           style={{
-            width: 20,
-            height: 20,
-            borderRadius: "50%",
-            background: owner?.color || "var(--citrus)",
-            color: "var(--moss)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 10,
             fontWeight: 700,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
-          {owner ? (owner.initial || owner.name[0]) : "?"}
+          {valueLabel}
         </span>
-        <span>{owner?.name || "Pick"}</span>
-        <Caret open={open} />
+        <span style={{ marginLeft: "auto", display: "inline-flex", flexShrink: 0 }}>
+          <Caret open={open} />
+        </span>
       </button>
 
       {open && (
-        <Dropdown header="Person" sub="Filter dashboards by owner">
-          {OWNERS.map((o, i) => (
-            <DropdownOption
-              key={o.id}
-              label={o.name}
-              sub={o.region}
-              icon={o.initial || o.name[0]}
-              color={o.color}
-              active={filter.ownerId === o.id}
-              focused={focusedIdx === i}
-              onClick={() => {
-                setFilter({ kind: "person", ownerId: o.id });
-                setOpen(false);
-              }}
-            />
-          ))}
+        <div
+          role="listbox"
+          aria-label="Filter scope"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            right: 0,
+            // Same token as the trigger, so the panel lines up with the pill
+            // edge-to-edge instead of hanging wider than it.
+            width: "var(--filter-pill-w)",
+            background: "var(--card-bg)",
+            border: "1px solid var(--beige-gray)",
+            borderRadius: 14,
+            boxShadow: "var(--shadow-modal)",
+            zIndex: 100,
+            overflow: "hidden",
+            color: "var(--moss)",
+          }}
+        >
+          {/* Tab strip fills the panel: three equal columns rather than
+              content-width buttons floating in a wider box. */}
+          <div
+            role="tablist"
+            aria-label="Filter by"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 2,
+              margin: 6,
+              padding: 2,
+              background: "var(--beige-new)",
+              border: "1px solid var(--beige-gray)",
+              borderRadius: 10,
+            }}
+          >
+            {TYPE_OPTIONS.map((k) => (
+              <button
+                key={k}
+                role="tab"
+                aria-selected={tab === k}
+                onClick={() => pickTab(k)}
+                className={tab === k ? "seg-light-btn active" : "seg-light-btn"}
+                style={{ justifyContent: "center", padding: "5px 4px" }}
+              >
+                {KIND_LABEL[k]}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ padding: "0 6px 6px", maxHeight: 420, overflowY: "auto" }}>
+            {options.map((o, i) => {
+              const active = isActiveOption(filter, o);
+              const focused = focusedIdx === i;
+              return (
+                <button
+                  key={o.key}
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => apply(o)}
+                  onMouseEnter={() => setFocusedIdx(i)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "7px 10px",
+                    borderRadius: 8,
+                    background: focused
+                      ? "var(--light-grey)"
+                      : active
+                        ? "var(--beige-new)"
+                        : "transparent",
+                    boxShadow: focused ? "inset 3px 0 0 var(--moss)" : "none",
+                    color: "var(--moss)",
+                    fontSize: 13,
+                    fontWeight: active ? 700 : 600,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    transition: "background 0.12s, box-shadow 0.12s",
+                  }}
+                >
+                  {o.color && (
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: "50%",
+                        background: o.color,
+                        color: "var(--moss)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {o.initial}
+                    </span>
+                  )}
+                  <span
+                    style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {o.label}
+                  </span>
+                  {active && (
+                    <span style={{ marginLeft: "auto", flexShrink: 0, color: "var(--green-100)" }}>
+                      ✓
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
           <DefaultPinFooter
             isDefault={isDefault}
             setAsDefault={setAsDefault}
             clearDefault={clearDefault}
           />
-        </Dropdown>
+        </div>
       )}
     </div>
   );
@@ -656,146 +631,5 @@ function DefaultPinFooter({
         </span>
       </button>
     </div>
-  );
-}
-
-function Dropdown({
-  header,
-  sub,
-  children,
-}: {
-  header: string;
-  sub: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: "calc(100% + 8px)",
-        right: 0,
-        background: "var(--card-bg)",
-        borderRadius: 14,
-        border: "1px solid var(--beige-gray)",
-        boxShadow: "var(--shadow-modal)",
-        minWidth: 260,
-        zIndex: 100,
-        overflow: "hidden",
-        color: "var(--moss)",
-      }}
-    >
-      <div style={{ padding: "12px 16px 8px", borderBottom: "1px solid var(--hairline)" }}>
-        <div
-          style={{
-            fontFamily: "var(--font-display)",
-            textTransform: "uppercase",
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: "0.08em",
-            color: "var(--green-100)",
-          }}
-        >
-          {header}
-        </div>
-        <div
-          style={{
-            fontSize: 11.5,
-            color: "var(--green-100)",
-            fontStyle: "italic",
-            fontFamily: "var(--font-editorial)",
-            marginTop: 3,
-          }}
-        >
-          {sub}
-        </div>
-      </div>
-      <div style={{ padding: 6, maxHeight: 560, overflowY: "auto" }}>{children}</div>
-    </div>
-  );
-}
-
-function DropdownOption({
-  label,
-  sub,
-  icon,
-  color,
-  active,
-  focused,
-  onClick,
-}: {
-  label: string;
-  sub: string;
-  icon: string;
-  color?: string;
-  active: boolean;
-  focused?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 10px",
-        borderRadius: 8,
-        background: focused ? "var(--light-grey)" : active ? "var(--beige-new)" : "transparent",
-        boxShadow: focused ? "inset 3px 0 0 var(--moss)" : "none",
-        color: "var(--moss)",
-        textAlign: "left",
-        cursor: "pointer",
-        transition: "background 0.12s, box-shadow 0.12s",
-      }}
-      onMouseEnter={(e) => {
-        if (!active && !focused) e.currentTarget.style.background = "var(--light-grey)";
-      }}
-      onMouseLeave={(e) => {
-        if (!active && !focused) e.currentTarget.style.background = "transparent";
-      }}
-    >
-      <span
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: "50%",
-          background: color || "var(--citrus)",
-          color: "var(--moss)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "var(--font-display)",
-          fontSize: 12,
-          fontWeight: 700,
-          flexShrink: 0,
-        }}
-      >
-        {icon}
-      </span>
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--moss)" }}>{label}</div>
-        <div style={{ fontSize: 11, color: "var(--green-100)", fontStyle: "italic", fontFamily: "var(--font-editorial)" }}>
-          {sub}
-        </div>
-      </span>
-      {active && (
-        <span
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 9.5,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            color: "var(--moss)",
-            background: "var(--citrus)",
-            padding: "2px 6px",
-            borderRadius: 4,
-          }}
-        >
-          Active
-        </span>
-      )}
-    </button>
   );
 }

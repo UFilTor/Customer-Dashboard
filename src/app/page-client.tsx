@@ -880,7 +880,7 @@ export default function DashboardClient() {
           showToast(`Filter: ${buildFilterLabel(next) ?? "All"}`);
           return;
         }
-        window.dispatchEvent(new Event("ud-filter-type-open"));
+        window.dispatchEvent(new Event("ud-filter-open"));
         return;
       }
 

@@ -432,10 +432,11 @@ function FilterPill({ filter, setFilter, isDefault, setAsDefault, clearDefault }
           style={{
             position: "absolute",
             top: "calc(100% + 8px)",
-            right: 0,
-            // Same token as the trigger, so the panel lines up with the pill
-            // edge-to-edge instead of hanging wider than it.
-            width: "var(--filter-pill-w)",
+            // Centred on the trigger so the extra width the tab strip needs
+            // overhangs evenly left and right.
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "var(--filter-panel-w)",
             background: "var(--card-bg)",
             border: "1px solid var(--beige-gray)",
             borderRadius: 14,
@@ -613,21 +614,10 @@ function DefaultPinFooter({
         <span style={{ fontSize: 14, lineHeight: 1, color: isDefault ? "var(--citrus-deep, #C0C950)" : "var(--green-100)" }}>
           {isDefault ? "★" : "☆"}
         </span>
-        <span style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600 }}>
-            {isDefault ? "Pinned as your default" : "Set as default for this device"}
-          </div>
-          <div
-            style={{
-              fontSize: 10.5,
-              color: "var(--green-100)",
-              fontStyle: "italic",
-              fontFamily: "var(--font-editorial)",
-              marginTop: 2,
-            }}
-          >
-            {isDefault ? "Click to unpin" : "Loads on every refresh from this browser"}
-          </div>
+        {/* Action labels, not state descriptions: with the explanatory line
+            gone the label has to say what the click does. */}
+        <span style={{ flex: 1, minWidth: 0, fontWeight: 600 }}>
+          {isDefault ? "Remove as default" : "Set as default"}
         </span>
       </button>
     </div>

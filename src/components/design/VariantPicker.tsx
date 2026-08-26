@@ -36,7 +36,7 @@ export const DASHBOARDS: DashboardDef[] = [
   { key: "portfolio",     label: "Portfolio",     chord: "p", available: true  },
   { key: "meeting_prep",  label: "Meeting prep",  chord: "m", available: true },
   { key: "pay_migration", label: "Understory Pay", chord: "u", available: true },
-  { key: "bloom",         label: "Bloom",         chord: "b", available: false },
+  { key: "bloom",         label: "Expansion",     chord: "b", available: false },
   // Lookup is hidden from the picker (feature kept; URL `?d=search` still
   // resolves). Flip `hidden` off to bring back the picker row and the
   // `g l` chord together.

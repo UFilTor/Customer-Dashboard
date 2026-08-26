@@ -238,9 +238,9 @@ function useDropdownDismiss(open: boolean, setOpen: (v: boolean) => void) {
   return ref;
 }
 
-const TYPE_OPTIONS = ["all", "region", "person"] as const;
+const TYPE_OPTIONS = ["region", "person"] as const;
 type FilterKind = (typeof TYPE_OPTIONS)[number];
-const KIND_LABEL: Record<FilterKind, string> = { all: "All", region: "Region", person: "Person" };
+const KIND_LABEL: Record<FilterKind, string> = { region: "Region", person: "Person" };
 
 interface FilterOption {
   key: string;
@@ -251,13 +251,14 @@ interface FilterOption {
   value: GlobalFilter;
 }
 
-// The options behind each tab. "All" is a single terminal choice rather than a
-// category with members, which is why its tab applies immediately (see below)
-// while Region and Person only switch which list you are looking at.
+// "All" is not a category with members - it spans regions and people both -
+// so it sits above the tab strip as a permanent row rather than inside either
+// tab. That leaves both tabs behaving identically: they switch which list you
+// are looking at, and nothing more.
+const ALL_OPTION: FilterOption = { key: "all", label: "All accounts", value: { kind: "all" } };
+
+// The options behind each tab.
 function optionsFor(kind: FilterKind): FilterOption[] {
-  if (kind === "all") {
-    return [{ key: "all", label: "All accounts", value: { kind: "all" } }];
-  }
   if (kind === "region") {
     return REGIONS.map((r) => ({
       key: r.key,
@@ -287,12 +288,13 @@ function isActiveOption(filter: GlobalFilter, o: FilterOption): boolean {
 // grows - a flat list of every state would grow without bound.
 function FilterPill({ filter, setFilter, isDefault, setAsDefault, clearDefault }: PillProps) {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<FilterKind>(filter.kind);
+  const [tab, setTab] = useState<FilterKind>(filter.kind === "person" ? "person" : "region");
   const [focusedIdx, setFocusedIdx] = useState(0);
   const ref = useDropdownDismiss(open, setOpen);
 
   const isFiltered = filter.kind !== "all";
-  const options = optionsFor(tab);
+  // Focus indices count the All row above the strip as 0, so arrow order
+  // matches what you see top to bottom.
 
   // Trigger shows the resolved selection, not the kind: "Denmark" and "Filip"
   // already say which axis they are.
@@ -326,9 +328,14 @@ function FilterPill({ filter, setFilter, isDefault, setAsDefault, clearDefault }
   // opens showing where you already are.
   useEffect(() => {
     if (!open) return;
-    setTab(filter.kind);
-    const i = optionsFor(filter.kind).findIndex((o) => isActiveOption(filter, o));
-    setFocusedIdx(i >= 0 ? i : 0);
+    const t: FilterKind = filter.kind === "person" ? "person" : "region";
+    setTab(t);
+    if (filter.kind === "all") {
+      setFocusedIdx(0);
+      return;
+    }
+    const i = optionsFor(t).findIndex((o) => isActiveOption(filter, o));
+    setFocusedIdx(i >= 0 ? i + 1 : 0);
   }, [open, filter]);
 
   const apply = (o: FilterOption) => {
@@ -347,7 +354,7 @@ function FilterPill({ filter, setFilter, isDefault, setAsDefault, clearDefault }
     function onKey(e: KeyboardEvent) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        const len = optionsFor(tabRef.current).length;
+        const len = optionsFor(tabRef.current).length + 1; // + the All row
         setFocusedIdx((i) =>
           e.key === "ArrowDown" ? Math.min(len - 1, i + 1) : Math.max(0, i - 1)
         );
@@ -362,7 +369,7 @@ function FilterPill({ filter, setFilter, isDefault, setAsDefault, clearDefault }
         pickTab(next);
       } else if (e.key === "Enter") {
         e.preventDefault();
-        const o = optionsFor(tabRef.current)[focusedRef.current];
+        const o = [ALL_OPTION, ...optionsFor(tabRef.current)][focusedRef.current];
         if (o) apply(o);
       }
     }
@@ -371,12 +378,10 @@ function FilterPill({ filter, setFilter, isDefault, setAsDefault, clearDefault }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Region and Person only switch the visible list. "All" has no sub-choice,
-  // so its tab applies straight away rather than making you click a lone row.
+  // Both tabs only switch the visible list; applying is always a row click.
   function pickTab(next: FilterKind) {
     setTab(next);
     setFocusedIdx(0);
-    if (next === "all") setFilter({ kind: "all" });
   }
 
   return (
@@ -446,14 +451,28 @@ function FilterPill({ filter, setFilter, isDefault, setAsDefault, clearDefault }
             color: "var(--moss)",
           }}
         >
-          {/* Tab strip fills the panel: three equal columns rather than
+          {/* "All" lives above the strip, not inside a tab: it belongs to
+              neither category, and keeping it here means clearing the filter
+              is one click from whichever tab you happen to be on. */}
+          <div style={{ padding: "6px 6px 0" }}>
+            <FilterRow
+              option={ALL_OPTION}
+              active={filter.kind === "all"}
+              focused={focusedIdx === 0}
+              onSelect={() => apply(ALL_OPTION)}
+              onHover={() => setFocusedIdx(0)}
+            />
+          </div>
+          <div style={{ height: 1, background: "var(--hairline)", margin: "6px 10px 0" }} />
+
+          {/* Tab strip fills the panel: equal columns rather than
               content-width buttons floating in a wider box. */}
           <div
             role="tablist"
             aria-label="Filter by"
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
+              gridTemplateColumns: `repeat(${TYPE_OPTIONS.length}, 1fr)`,
               gap: 2,
               margin: 6,
               padding: 2,
@@ -477,75 +496,16 @@ function FilterPill({ filter, setFilter, isDefault, setAsDefault, clearDefault }
           </div>
 
           <div style={{ padding: "0 6px 6px", maxHeight: 420, overflowY: "auto" }}>
-            {options.map((o, i) => {
-              const active = isActiveOption(filter, o);
-              const focused = focusedIdx === i;
-              return (
-                <button
-                  key={o.key}
-                  role="option"
-                  aria-selected={active}
-                  onClick={() => apply(o)}
-                  onMouseEnter={() => setFocusedIdx(i)}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "7px 10px",
-                    borderRadius: 8,
-                    background: focused
-                      ? "var(--light-grey)"
-                      : active
-                        ? "var(--beige-new)"
-                        : "transparent",
-                    boxShadow: focused ? "inset 3px 0 0 var(--moss)" : "none",
-                    color: "var(--moss)",
-                    fontSize: 13,
-                    fontWeight: active ? 700 : 600,
-                    textAlign: "left",
-                    cursor: "pointer",
-                    transition: "background 0.12s, box-shadow 0.12s",
-                  }}
-                >
-                  {o.color && (
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: "50%",
-                        background: o.color,
-                        color: "var(--moss)",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 10,
-                        fontWeight: 700,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {o.initial}
-                    </span>
-                  )}
-                  <span
-                    style={{
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {o.label}
-                  </span>
-                  {active && (
-                    <span style={{ marginLeft: "auto", flexShrink: 0, color: "var(--green-100)" }}>
-                      ✓
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+            {optionsFor(tab).map((o, i) => (
+              <FilterRow
+                key={o.key}
+                option={o}
+                active={isActiveOption(filter, o)}
+                focused={focusedIdx === i + 1}
+                onSelect={() => apply(o)}
+                onHover={() => setFocusedIdx(i + 1)}
+              />
+            ))}
           </div>
 
           <DefaultPinFooter
@@ -570,6 +530,72 @@ function Caret({ open }: { open: boolean }) {
     >
       <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+function FilterRow({
+  option,
+  active,
+  focused,
+  onSelect,
+  onHover,
+}: {
+  option: FilterOption;
+  active: boolean;
+  focused: boolean;
+  onSelect: () => void;
+  onHover: () => void;
+}) {
+  return (
+    <button
+      role="option"
+      aria-selected={active}
+      onClick={onSelect}
+      onMouseEnter={onHover}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "7px 10px",
+        borderRadius: 8,
+        background: focused ? "var(--light-grey)" : active ? "var(--beige-new)" : "transparent",
+        boxShadow: focused ? "inset 3px 0 0 var(--moss)" : "none",
+        color: "var(--moss)",
+        fontSize: 13,
+        fontWeight: active ? 700 : 600,
+        textAlign: "left",
+        cursor: "pointer",
+        transition: "background 0.12s, box-shadow 0.12s",
+      }}
+    >
+      {option.color && (
+        <span
+          aria-hidden="true"
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            background: option.color,
+            color: "var(--moss)",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 10,
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          {option.initial}
+        </span>
+      )}
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {option.label}
+      </span>
+      {active && (
+        <span style={{ marginLeft: "auto", flexShrink: 0, color: "var(--green-100)" }}>✓</span>
+      )}
+    </button>
   );
 }
 

@@ -8,6 +8,7 @@ import {
   OWNER_MAP,
   REGIONS,
   type GlobalFilter,
+  type RegionKey,
 } from "@/lib/owners";
 import { DashboardPicker, type DashboardKey } from "./VariantPicker";
 import {
@@ -394,6 +395,8 @@ function FilterPill({ filter, setFilter, isDefault, setAsDefault, clearDefault }
         style={{ ...pillStyle(isFiltered), width: "var(--filter-pill-w)" }}
       >
         <span style={{ color: "var(--inverse-text)", flexShrink: 0 }}>Filter</span>
+        {filter.kind === "all" && <AllRegionsSwatch size={18} />}
+        {filter.kind === "region" && <RegionFlag region={filter.region} size={18} />}
         {owner && (
           <span
             aria-hidden="true"
@@ -533,6 +536,76 @@ function Caret({ open }: { open: boolean }) {
   );
 }
 
+// Official flag colours. Also feeds the mixed "All" swatch below, so the two
+// can never disagree about what a market looks like.
+const REGION_FLAG: Record<RegionKey, { field: string; mark: string }> = {
+  DK: { field: "#C8102E", mark: "#FFFFFF" },
+  SE: { field: "#005293", mark: "#FECB00" },
+  IT: { field: "#008C45", mark: "#CD212A" },
+};
+
+// Drawn as SVG rather than flag emoji: Segoe UI Emoji ships no flag glyphs, so
+// on Windows an emoji flag degrades to the bare regional-indicator letters.
+function RegionFlag({ region, size = 20 }: { region: RegionKey; size?: number }) {
+  const c = REGION_FLAG[region];
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        overflow: "hidden",
+        flexShrink: 0,
+        display: "inline-flex",
+        boxShadow: "inset 0 0 0 1px rgba(2,44,18,0.14)",
+      }}
+    >
+      <svg width={size} height={size} viewBox="0 0 20 20" role="presentation">
+        {region === "IT" ? (
+          <>
+            <rect width="20" height="20" fill="#008C45" />
+            <rect x="6.67" width="6.66" height="20" fill="#F4F5F0" />
+            <rect x="13.33" width="6.67" height="20" fill="#CD212A" />
+          </>
+        ) : (
+          <>
+            {/* Nordic cross, offset left of centre as on the real flags. */}
+            <rect width="20" height="20" fill={c.field} />
+            <rect y="8" width="20" height="4" fill={c.mark} />
+            <rect x="6" width="4" height="20" fill={c.mark} />
+          </>
+        )}
+      </svg>
+    </span>
+  );
+}
+
+// "All" reads as every market at once: one conic wedge per region, in REGIONS
+// order. Derived from the list rather than hardcoded, so opening a new market
+// adds its wedge automatically.
+function AllRegionsSwatch({ size = 20 }: { size?: number }) {
+  const step = 100 / REGIONS.length;
+  const stops = REGIONS.map((r, i) => {
+    const from = (i * step).toFixed(3);
+    const to = ((i + 1) * step).toFixed(3);
+    return `${REGION_FLAG[r.key].field} ${from}% ${to}%`;
+  }).join(", ");
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        flexShrink: 0,
+        background: `conic-gradient(from -90deg, ${stops})`,
+        boxShadow: "inset 0 0 0 1px rgba(2,44,18,0.14)",
+      }}
+    />
+  );
+}
+
 function FilterRow({
   option,
   active,
@@ -569,6 +642,8 @@ function FilterRow({
         transition: "background 0.12s, box-shadow 0.12s",
       }}
     >
+      {option.value.kind === "all" && <AllRegionsSwatch />}
+      {option.value.kind === "region" && <RegionFlag region={option.value.region} />}
       {option.color && (
         <span
           aria-hidden="true"

@@ -9,7 +9,6 @@ const JANNE = "37173812";
 function entry(over: {
   meetingOwner?: string;
   attendees?: string[] | null;
-  dealOwner?: string | null;
   country?: string | null;
 }): FilterableMeetingEntry {
   return {
@@ -17,10 +16,7 @@ function entry(over: {
       ownerId: over.meetingOwner ?? ANDERS,
       attendeeOwnerIds: over.attendees === undefined ? [] : over.attendees,
     },
-    deal: {
-      ownerId: over.dealOwner === undefined ? ANDERS : over.dealOwner,
-      country: over.country === undefined ? "DK" : over.country,
-    },
+    deal: { country: over.country === undefined ? "DK" : over.country },
   };
 }
 
@@ -31,7 +27,7 @@ describe("meetingMatchesFilter — owner scope", () => {
     expect(
       meetingMatchesFilter(
         { kind: "person", ownerId: MARC },
-        entry({ meetingOwner: MARC, dealOwner: ANDERS, country: "US" })
+        entry({ meetingOwner: MARC, country: "US" })
       )
     ).toBe(true);
   });
@@ -40,25 +36,27 @@ describe("meetingMatchesFilter — owner scope", () => {
     expect(
       meetingMatchesFilter(
         { kind: "person", ownerId: MARC },
-        entry({ meetingOwner: ANDERS, attendees: [MARC], dealOwner: ANDERS })
+        entry({ meetingOwner: ANDERS, attendees: [MARC] })
       )
     ).toBe(true);
   });
 
-  it("keeps a meeting on the person's own account even when a colleague runs it", () => {
+  it("drops a meeting on the person's own account when they are not in it", () => {
+    // Owning the account is a Portfolio question, not a calendar one — Marc
+    // cannot prep a meeting Anders runs without him, even on Marc's account.
     expect(
       meetingMatchesFilter(
         { kind: "person", ownerId: MARC },
-        entry({ meetingOwner: ANDERS, attendees: [], dealOwner: MARC })
+        entry({ meetingOwner: ANDERS, attendees: [] })
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("drops a meeting the person is in no way connected to", () => {
     expect(
       meetingMatchesFilter(
         { kind: "person", ownerId: MARC },
-        entry({ meetingOwner: ALESSANDRO, attendees: [ANDERS], dealOwner: ANDERS })
+        entry({ meetingOwner: ALESSANDRO, attendees: [ANDERS] })
       )
     ).toBe(false);
   });
@@ -68,20 +66,20 @@ describe("meetingMatchesFilter — owner scope", () => {
     expect(
       meetingMatchesFilter(
         { kind: "region", region: "DK" },
-        entry({ meetingOwner: MARC, dealOwner: ANDERS })
+        entry({ meetingOwner: MARC })
       )
     ).toBe(true);
     expect(
       meetingMatchesFilter(
         { kind: "region", region: "DK" },
-        entry({ meetingOwner: ALESSANDRO, attendees: [], dealOwner: ALESSANDRO })
+        entry({ meetingOwner: ALESSANDRO, attendees: [] })
       )
     ).toBe(false);
   });
 
   it("keeps everything under the All filter", () => {
     expect(
-      meetingMatchesFilter({ kind: "all" }, entry({ dealOwner: null, country: null }))
+      meetingMatchesFilter({ kind: "all" }, entry({ country: null }))
     ).toBe(true);
   });
 });
@@ -92,13 +90,13 @@ describe("meetingMatchesFilter — undefined tolerance", () => {
     // predate the field, even though the TS type says it is required.
     const stale = {
       meeting: { ownerId: MARC },
-      deal: { ownerId: ANDERS, country: "US" },
+      deal: { country: "US" },
     } as FilterableMeetingEntry;
     expect(meetingMatchesFilter({ kind: "person", ownerId: MARC }, stale)).toBe(true);
 
     const staleNoMatch = {
       meeting: { ownerId: ALESSANDRO },
-      deal: { ownerId: ALESSANDRO, country: "IT" },
+      deal: { country: "IT" },
     } as FilterableMeetingEntry;
     expect(
       meetingMatchesFilter({ kind: "person", ownerId: MARC }, staleNoMatch)
@@ -109,7 +107,7 @@ describe("meetingMatchesFilter — undefined tolerance", () => {
     expect(
       meetingMatchesFilter(
         { kind: "person", ownerId: MARC },
-        entry({ meetingOwner: ANDERS, attendees: null, dealOwner: ANDERS })
+        entry({ meetingOwner: ANDERS, attendees: null })
       )
     ).toBe(false);
   });
@@ -123,7 +121,7 @@ describe("meetingMatchesFilter — territory owner", () => {
     expect(
       meetingMatchesFilter(
         { kind: "person", ownerId: JANNE },
-        entry({ meetingOwner: ALESSANDRO, attendees: [], dealOwner: ALESSANDRO, country: "SE" })
+        entry({ meetingOwner: ALESSANDRO, attendees: [], country: "SE" })
       )
     ).toBe(false);
   });
@@ -132,7 +130,7 @@ describe("meetingMatchesFilter — territory owner", () => {
     expect(
       meetingMatchesFilter(
         { kind: "person", ownerId: JANNE },
-        entry({ meetingOwner: JANNE, attendees: [], dealOwner: ANDERS, country: "SE" })
+        entry({ meetingOwner: JANNE, attendees: [], country: "SE" })
       )
     ).toBe(true);
   });
@@ -141,7 +139,7 @@ describe("meetingMatchesFilter — territory owner", () => {
     expect(
       meetingMatchesFilter(
         { kind: "person", ownerId: JANNE },
-        entry({ meetingOwner: ANDERS, attendees: [JANNE], dealOwner: ANDERS, country: "DK" })
+        entry({ meetingOwner: ANDERS, attendees: [JANNE], country: "DK" })
       )
     ).toBe(true);
   });
@@ -152,7 +150,7 @@ describe("meetingMatchesFilter — territory owner", () => {
     expect(
       meetingMatchesFilter(
         { kind: "person", ownerId: JANNE },
-        entry({ meetingOwner: ALESSANDRO, attendees: [JANNE], dealOwner: ALESSANDRO, country: "IT" })
+        entry({ meetingOwner: ALESSANDRO, attendees: [JANNE], country: "IT" })
       )
     ).toBe(true);
   });
@@ -161,7 +159,7 @@ describe("meetingMatchesFilter — territory owner", () => {
     expect(
       meetingMatchesFilter(
         { kind: "person", ownerId: JANNE },
-        entry({ meetingOwner: JANNE, attendees: [], dealOwner: null, country: null })
+        entry({ meetingOwner: JANNE, attendees: [], country: null })
       )
     ).toBe(true);
   });
@@ -172,7 +170,7 @@ describe("meetingMatchesFilter — country-scoped region", () => {
     expect(
       meetingMatchesFilter(
         { kind: "region", region: "ES" },
-        entry({ meetingOwner: ALESSANDRO, dealOwner: ALESSANDRO, country: "ES" })
+        entry({ meetingOwner: ALESSANDRO, country: "ES" })
       )
     ).toBe(true);
   });
@@ -181,7 +179,7 @@ describe("meetingMatchesFilter — country-scoped region", () => {
     expect(
       meetingMatchesFilter(
         { kind: "region", region: "ES" },
-        entry({ meetingOwner: ALESSANDRO, dealOwner: ALESSANDRO, country: "IT" })
+        entry({ meetingOwner: ALESSANDRO, country: "IT" })
       )
     ).toBe(false);
   });
@@ -190,7 +188,7 @@ describe("meetingMatchesFilter — country-scoped region", () => {
     expect(
       meetingMatchesFilter(
         { kind: "region", region: "ES" },
-        entry({ meetingOwner: ALESSANDRO, dealOwner: ALESSANDRO, country: null })
+        entry({ meetingOwner: ALESSANDRO, country: null })
       )
     ).toBe(false);
   });

@@ -115,37 +115,41 @@ export interface FilterableMeetingEntry {
     /** Optional: pre-deploy cached payloads predate this field. */
     attendeeOwnerIds?: string[] | null;
   };
-  deal: {
-    ownerId: string | null;
-    country: string | null;
-  };
+  /** Account location, for the country-scoped regions that have no owner yet. */
+  deal: { country: string | null };
 }
 
-/** Is any of `ids` actually in this meeting — organizer, attendee, or account owner? */
+/**
+ * Is any of `ids` actually in this meeting — as organizer or as attendee?
+ *
+ * Owning the account deliberately does NOT count. Meeting prep is a calendar:
+ * a meeting a colleague runs on your account is not yours to prep, and putting
+ * it on your day strip only crowds out the ones you have to walk into.
+ */
 function someoneIsInMeeting(ids: Set<string>, entry: FilterableMeetingEntry): boolean {
   if (entry.meeting.ownerId && ids.has(entry.meeting.ownerId)) return true;
   for (const id of entry.meeting.attendeeOwnerIds ?? []) {
     if (ids.has(id)) return true;
   }
-  return entry.deal.ownerId ? ids.has(entry.deal.ownerId) : false;
+  return false;
 }
 
 /**
  * Does this meeting belong in the filtered view?
  *
- * A person filter asks "is this person in the meeting?" — organizer OR
- * attendee OR owner of the underlying account. The API already scopes the
- * fetch to organizer-or-attendee and deliberately imposes no deal-owner
- * restriction (see buildMeetingPrepResponse), so testing the deal owner alone
- * would silently drop meetings the person is actually attending on a
- * colleague's account.
+ * A person filter asks "is this person in the meeting?" — organizer or
+ * attendee, never account owner. This is the deliberate split from Portfolio,
+ * which scopes by who owns the account (and by country for a territory owner).
+ * Both halves of that split matter:
  *
- * A territory owner is no exception, even though their Portfolio book is
- * defined by country. Meeting prep is a calendar, not a book: showing every
- * meeting on an in-territory account would fill the day strip with colleagues'
- * meetings the territory owner is not in and cannot prep for. So we test
- * attendance here and deliberately ignore `effectiveCountries` for a person,
- * which is why this can't just reuse the Portfolio scoping helpers.
+ *  - Testing the account owner would surface colleagues' meetings you cannot
+ *    prep for, and, for a territory owner, would fill the day strip with every
+ *    meeting anyone holds anywhere in the territory.
+ *  - Testing ONLY the account owner — the bug this replaced — silently dropped
+ *    meetings you organize or attend on a colleague's account.
+ *
+ * So don't reuse the Portfolio scoping helpers here; the two answer different
+ * questions on purpose.
  *
  * A region defined by countries rather than owners (Spain, until its CS reps
  * are hired) has nobody to attend anything, so location is the only test that

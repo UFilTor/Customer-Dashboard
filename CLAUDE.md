@@ -55,6 +55,14 @@ When you add new bulk fetches, follow the same pattern — return only what the 
 
 ## Patterns to know
 
+### Session start: get localhost running
+
+At the start of a session, start or attach the dev server (launch.json is set up) and state the exact URL, including the relevant view param. Filip's first move is almost always verifying something in the browser; don't wait for him to ask "open localhost".
+
+### CTA buttons are glyphs, not text
+
+Action buttons on cards, rows, and company views use the dashboard's existing glyph set, never text labels, so all options fit on one line. When adding a CTA, copy the glyphs and layout from an existing card. Sibling controls (search bar, filter dropdowns, buttons in the same row) match each other's height and width exactly, and a control keeps the same size regardless of which option is selected.
+
 ### HubSpot pagination is fragile
 
 `/crm/v3/objects/<type>/search` silently truncates pagination if you don't pass a `sorts` clause. Always include one (typically `{ propertyName: "createdate", direction: "DESCENDING" }`). And **retry transient errors (429 / 5xx)** instead of `if (!res.ok) break` — silent partial fetches get cached for 15 minutes and confuse the user. See `searchDealsPage` in `src/lib/pay-migration.ts` for the canonical retry helper.

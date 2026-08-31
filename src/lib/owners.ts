@@ -108,6 +108,65 @@ export function effectiveCountries(filter: GlobalFilter): Set<string> | null {
   return countries ? new Set(countries) : null;
 }
 
+/** Minimal shape `meetingMatchesFilter` needs — structural so tests can stub it. */
+export interface FilterableMeetingEntry {
+  meeting: {
+    ownerId: string;
+    /** Optional: pre-deploy cached payloads predate this field. */
+    attendeeOwnerIds?: string[] | null;
+  };
+  deal: {
+    ownerId: string | null;
+    country: string | null;
+  };
+}
+
+/** Is any of `ids` actually in this meeting — organizer, attendee, or account owner? */
+function someoneIsInMeeting(ids: Set<string>, entry: FilterableMeetingEntry): boolean {
+  if (entry.meeting.ownerId && ids.has(entry.meeting.ownerId)) return true;
+  for (const id of entry.meeting.attendeeOwnerIds ?? []) {
+    if (ids.has(id)) return true;
+  }
+  return entry.deal.ownerId ? ids.has(entry.deal.ownerId) : false;
+}
+
+/**
+ * Does this meeting belong in the filtered view?
+ *
+ * A person filter asks "is this person in the meeting?" — organizer OR
+ * attendee OR owner of the underlying account. The API already scopes the
+ * fetch to organizer-or-attendee and deliberately imposes no deal-owner
+ * restriction (see buildMeetingPrepResponse), so testing the deal owner alone
+ * would silently drop meetings the person is actually attending on a
+ * colleague's account.
+ *
+ * A territory owner is no exception, even though their Portfolio book is
+ * defined by country. Meeting prep is a calendar, not a book: showing every
+ * meeting on an in-territory account would fill the day strip with colleagues'
+ * meetings the territory owner is not in and cannot prep for. So we test
+ * attendance here and deliberately ignore `effectiveCountries` for a person,
+ * which is why this can't just reuse the Portfolio scoping helpers.
+ *
+ * A region defined by countries rather than owners (Spain, until its CS reps
+ * are hired) has nobody to attend anything, so location is the only test that
+ * returns results there.
+ */
+export function meetingMatchesFilter(
+  filter: GlobalFilter,
+  entry: FilterableMeetingEntry
+): boolean {
+  if (filter.kind === "person") {
+    return someoneIsInMeeting(new Set([filter.ownerId]), entry);
+  }
+  const countries = effectiveCountries(filter);
+  if (countries) {
+    return entry.deal.country ? countries.has(entry.deal.country) : false;
+  }
+  const ids = effectiveOwnerIds(filter);
+  if (!ids) return true;
+  return someoneIsInMeeting(ids, entry);
+}
+
 /**
  * Whether the current scope can hold accounts owned by different people. False
  * only for a normal person filter, where every row would show the same avatar

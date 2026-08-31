@@ -274,6 +274,16 @@ export function isOnboardingMeeting(activityType: string | null | undefined): bo
   return ONBOARDING_MEETING_TYPES.has(activityType);
 }
 
+/**
+ * hs_attendee_owner_ids is a multi-checkbox property HubSpot stores as a
+ * semicolon-delimited string ("123;456"). Empty and absent both mean "no
+ * attendee owners recorded", which is common for calendar-synced meetings.
+ */
+export function parseAttendeeOwnerIds(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw.split(";").map((s) => s.trim()).filter(Boolean);
+}
+
 const CALL_PROPS = [
   "hs_call_title",
   "hs_call_body",
@@ -726,6 +736,7 @@ async function fetchMeetingsForDeals(
         activityType: nullable(props.hs_activity_type),
         ownerId,
         ownerName: ownerId ? (ownerNames[ownerId] ?? null) : null,
+        attendeeOwnerIds: parseAttendeeOwnerIds(props.hs_attendee_owner_ids),
       });
     }
     if (meetings.length > 0) result.set(dealId, meetings);
@@ -1607,6 +1618,7 @@ export async function buildOnboardingPayload(
               activityType: nullable(m.properties.hs_activity_type),
               ownerId,
               ownerName: ownerId ? (ownerNames[ownerId] ?? null) : null,
+              attendeeOwnerIds: parseAttendeeOwnerIds(m.properties.hs_attendee_owner_ids),
             };
             return meeting;
           })

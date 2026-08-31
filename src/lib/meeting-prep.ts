@@ -22,6 +22,7 @@ import {
   formatFirstBilling,
   formatMonthlyFee,
   nullable,
+  parseAttendeeOwnerIds,
   parseEnableUnderstoryPay,
   pickSalesFallback,
   type ContactInfo,
@@ -586,6 +587,7 @@ export async function buildMeetingPrepPayload(
       activityType: raw.properties?.hs_activity_type || null,
       ownerId,
       ownerName: ownerId ? meetingOwnerNames[ownerId] ?? null : null,
+      attendeeOwnerIds: parseAttendeeOwnerIds(raw.properties?.hs_attendee_owner_ids),
     };
     if (!meetingsByDeal.has(dealId)) meetingsByDeal.set(dealId, []);
     meetingsByDeal.get(dealId)!.push(meeting);

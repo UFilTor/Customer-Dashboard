@@ -311,6 +311,14 @@ export interface OnboardingMeeting {
   activityType: string | null;
   ownerId: string;
   ownerName: string | null;
+  /**
+   * hs_attendee_owner_ids, split out of HubSpot's semicolon-delimited string.
+   * The CS person on a meeting is often an attendee rather than the organizer,
+   * so owner-scoped filters have to read this as well as ownerId. Added after
+   * the initial payload shape shipped, so client code must tolerate undefined
+   * while the edge cache still serves pre-deploy payloads.
+   */
+  attendeeOwnerIds: string[];
 }
 
 /** Unified historical engagement (meeting / call / email-thread / note) shown in the meeting brief. */

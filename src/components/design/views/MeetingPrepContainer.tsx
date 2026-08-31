@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-  MeetingPrepDeal,
   MeetingPrepMeetingEntry,
   MeetingPrepResponse,
   OnboardingHistoryEntry,
 } from "@/lib/types";
-import { effectiveCountries, effectiveOwnerIds, type GlobalFilter } from "@/lib/owners";
+import {
+  effectiveCountries,
+  effectiveOwnerIds,
+  meetingMatchesFilter,
+  type GlobalFilter,
+} from "@/lib/owners";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { reportFreshness } from "@/lib/freshness";
 import { MeetingPrepView } from "./MeetingPrepView";
@@ -233,16 +237,8 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
     meetings: MeetingPrepMeetingEntry[];
   }>(() => {
     if (!data) return { meetings: [] };
-    const ids = effectiveOwnerIds(filter);
-    // A territory owner covers accounts by country, not by ownership, so the
-    // owner set is null for them and this country test does the narrowing.
-    const countries = effectiveCountries(filter);
-    const matches = (d: MeetingPrepDeal) => {
-      if (countries) return d.country ? countries.has(d.country) : false;
-      return ids ? (d.ownerId ? ids.has(d.ownerId) : false) : true;
-    };
     return {
-      meetings: data.meetings.filter((entry) => matches(entry.deal)),
+      meetings: data.meetings.filter((entry) => meetingMatchesFilter(filter, entry)),
     };
   }, [data, filter]);
 

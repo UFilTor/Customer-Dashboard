@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Claude Code's workspace state, which is gitignored and holds full
+    // git-worktree copies of this repo under .claude/worktrees. Linting those
+    // means linting a second, stale checkout: thousands of findings that
+    // belong to another branch, drowning the real ones and failing
+    // `npm run lint` no matter what the tracked source says.
+    ".claude/**",
   ]),
 ]);
 

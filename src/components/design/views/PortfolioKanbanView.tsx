@@ -68,6 +68,11 @@ interface Props {
   collapsedStages: ReadonlySet<KanbanColumnKey>;
   toggleColumnCollapsed: (key: KanbanColumnKey) => void;
 
+  // False while a company detail is rendered on top and this view sits inside
+  // a display:none wrapper. Gates the DOM-geometry effects, same as
+  // PortfolioView.tsx.
+  active?: boolean;
+
   hasSavedDefault: boolean;
   defaultsAreCurrent: boolean;
   onResetDefaults: () => void;
@@ -75,6 +80,7 @@ interface Props {
 
 export function PortfolioKanbanView(props: Props) {
   const showAvatar = props.showAvatar ?? true;
+  const active = props.active ?? true;
   const sortOptions = getSortOptions(props.selectedSignals);
 
   const columns = useMemo(() => groupByStage(props.rows), [props.rows]);
@@ -108,6 +114,9 @@ export function PortfolioKanbanView(props: Props) {
   const [scrolled, setScrolled] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
+    // A hidden sentinel never intersects, which would flip the shadow on for
+    // no reason; it self-corrects on re-show, but skipping avoids the flicker.
+    if (!active) return;
     const node = sentinelRef.current;
     if (!node) return;
     const obs = new IntersectionObserver(
@@ -116,7 +125,7 @@ export function PortfolioKanbanView(props: Props) {
     );
     obs.observe(node);
     return () => obs.disconnect();
-  }, []);
+  }, [active]);
 
   return (
     <div style={{ background: "var(--page-bg)", minHeight: "calc(100vh - 120px)" }}>
@@ -179,6 +188,7 @@ export function PortfolioKanbanView(props: Props) {
               snoozeUntilById={props.snoozeUntilById}
               onSnooze={props.onSnoozeCompany}
               onUnsnooze={props.onUnsnoozeCompany}
+              active={active}
             />
           </div>
         </div>

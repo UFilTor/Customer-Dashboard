@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Oswald, Fraunces, JetBrains_Mono } from "next/font/google";
 import RetuneIfDev from "@/components/RetuneIfDev";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { APP_TITLE } from "@/lib/document-title";
 import "./globals.css";
 
 const inter = Inter({
@@ -29,7 +30,10 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Customer Dashboard",
+  // Server-rendered default. page-client replaces it on mount with the open
+  // company or the current view (see documentTitle), so this is what shows
+  // for the frame before hydration.
+  title: APP_TITLE,
   description: "Understory customer dashboard",
 };
 

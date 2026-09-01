@@ -86,6 +86,12 @@ interface Props {
   totalPages: number;
   pageSize: number;
   onPageChange: (next: number) => void;
+
+  // False while a company detail is rendered on top and this view sits inside
+  // a display:none wrapper (see AGENTS.md "Dashboard container lifecycle").
+  // Both effects below read live DOM geometry, which reads as zero while
+  // hidden, so they stay detached until the view is visible again.
+  active?: boolean;
 }
 
 // One item in the rendered list. Plain rows when one (or zero) signals are
@@ -97,6 +103,7 @@ type ListItem =
 
 export function PortfolioView(props: Props) {
   const showAvatar = props.showAvatar ?? true;
+  const active = props.active ?? true;
   const sortOptions = getSortOptions(props.selectedSignals);
 
   const pageRowCount = props.rows.length;
@@ -193,6 +200,9 @@ export function PortfolioView(props: Props) {
   // sentinel scrolls out, the strip is pinned → flip on the shadow. This is
   // more reliable than reading bbox.top across various layouts/topbars.
   useEffect(() => {
+    // A hidden sentinel never intersects, which would flip the shadow on for
+    // no reason; it self-corrects on re-show, but skipping avoids the flicker.
+    if (!active) return;
     const node = sentinelRef.current;
     if (!node) return;
     const obs = new IntersectionObserver(
@@ -201,13 +211,17 @@ export function PortfolioView(props: Props) {
     );
     obs.observe(node);
     return () => obs.disconnect();
-  }, []);
+  }, [active]);
 
   useEffect(() => {
     // When sectioning is off, the listener is simply not attached. The
     // render guard `selectedSignals.length >= 2 && activeSection` prevents
     // any stale state from showing, so we don't need to clear it here.
     if (selectedSignals.length < 2) return;
+    // Hidden: every getBoundingClientRect() below reads 0, so the tracker
+    // would settle on the wrong section and stay there until the next scroll
+    // after the detail closes.
+    if (!active) return;
     let raf = 0;
 
     function compute() {
@@ -254,7 +268,7 @@ export function PortfolioView(props: Props) {
       window.removeEventListener("scroll", onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [selectedSignals.length, items]);
+  }, [selectedSignals.length, items, active]);
 
   // Range labels for the results bar: "Showing 1-50 of 774 accounts".
   // First and last 1-based row positions on the current page.

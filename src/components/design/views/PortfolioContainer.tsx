@@ -53,6 +53,12 @@ interface Props {
   // paginated table. Wiring the actual toggle is a later task; this
   // container just needs to honor the prop.
   view?: "table" | "board";
+  // False while a company detail is open on top of this container: page-client
+  // keeps Portfolio mounted inside a display:none wrapper so its state
+  // survives the round-trip (see AGENTS.md "Dashboard container lifecycle").
+  // A hidden container must not answer keystrokes or measure zero-height DOM,
+  // so this gates its own window listeners and the geometry effects below it.
+  active?: boolean;
 }
 
 const DEFAULTS_KEY = "ud-v2-portfolio-default";
@@ -112,6 +118,7 @@ export function PortfolioContainer({
   search,
   onSearchChange,
   view = "table",
+  active = true,
 }: Props) {
   const [data, setData] = useState<PortfolioResponse | null>(null);
 
@@ -627,6 +634,9 @@ export function PortfolioContainer({
       // later task can repurpose them (e.g. column jump) without this
       // handler eating the keydown first.
       if (view === "board") return;
+      // A company detail is open on top of us; keys belong to it, not to the
+      // hidden list underneath.
+      if (!active) return;
       if (e.metaKey || e.ctrlKey) return;
       if (popupOpenRef.current) return;
       const target = e.target as HTMLElement | null;
@@ -648,7 +658,7 @@ export function PortfolioContainer({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [page, onPageChange, filteredSortedRows.length, view]);
+  }, [page, onPageChange, filteredSortedRows.length, view, active]);
 
   // When a filter is active, the global totalsBySignal payload (which
   // counts the entire book) misrepresents the current scope. Recompute
@@ -833,6 +843,7 @@ export function PortfolioContainer({
           onResetDefaults={onResetDefaults}
           collapsedStages={collapsedStagesSet}
           toggleColumnCollapsed={toggleColumnCollapsed}
+          active={active}
         />
       ) : (
         <PortfolioView
@@ -874,6 +885,7 @@ export function PortfolioContainer({
           totalPages={totalPages}
           pageSize={PAGE_SIZE}
           onPageChange={onPageChange}
+          active={active}
         />
       )}
       </div>

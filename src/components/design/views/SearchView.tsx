@@ -1,6 +1,8 @@
 "use client";
 
+import type { MouseEvent } from "react";
 import type { SearchDiagnostic, SearchResult, SearchTurn } from "@/lib/types";
+import { isNewTabClick, openCompanyInNewTab } from "@/lib/company-link";
 import { DashboardBanner } from "../DashboardBanner";
 
 // Pure presentation. Container owns query state + the chain; SearchView
@@ -350,8 +352,15 @@ function ResultRow({
   onSelectCompany: (companyId: string) => void;
 }) {
   const clickable = result.companyId !== null;
-  const handleClick = () => {
+  const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
     if (result.companyId) {
+      // Middle / Cmd click opens the detail in a new tab instead. Rows with no
+      // companyId already open HubSpot in one, so they need no special case.
+      if (isNewTabClick(e)) {
+        e.preventDefault();
+        openCompanyInNewTab(result.companyId);
+        return;
+      }
       onSelectCompany(result.companyId);
     } else {
       window.open(result.hubspotUrl, "_blank", "noopener,noreferrer");
@@ -360,6 +369,13 @@ function ResultRow({
   return (
     <button
       onClick={handleClick}
+      onAuxClick={(e) => {
+        if (e.button === 1) handleClick(e);
+      }}
+      onMouseDown={(e) => {
+        // Suppress Chrome's middle-click autoscroll cursor.
+        if (e.button === 1) e.preventDefault();
+      }}
       className="hrow"
       style={{
         display: "block",

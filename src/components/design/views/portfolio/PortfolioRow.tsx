@@ -4,13 +4,14 @@
 // The container (PortfolioContainer.tsx) still owns all state; these
 // components receive everything through props exactly as before.
 
-import { memo, type KeyboardEvent, type MouseEvent } from "react";
+import { memo } from "react";
 import { type PortfolioRow } from "@/lib/types";
 import { OWNER_MAP } from "@/lib/owners";
 import { Avatar } from "../../Avatar";
 import { CalmGlyph, DealStatusTag, QuickActions, SignalPill } from "./cells";
 import { COLS_GRID_NO_OWNER, COLS_GRID_WITH_OWNER, STAGE_BADGE, formatNum } from "./chrome";
 import { SnoozedTag } from "./snooze";
+import { companyOpenProps, stopRowActivation } from "../company-row-props";
 
 // Wrapped in React.memo because Portfolio renders this hundreds of times.
 // `onSelect` is taken as a stable callback (parent useCallbacks it) so the
@@ -93,31 +94,19 @@ export const Row = memo(function Row({
 
   // The row holds real <button>/<a> quick-action controls now, and those
   // can't legally nest inside a <button>. Same pattern as KanbanCard.tsx and
-  // clickableRowProps() in PayMigrationView.tsx: a role="button" div with a
-  // manual Enter/Space handler. globals.css's :focus-visible already covers
-  // [role="button"], so the focus ring is unchanged.
-  const onRowKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      onSelect(row);
-    }
-  };
-
-  // The quick-action cell's own buttons/links must not trigger the row's
-  // click-to-open behavior. Stopping propagation once on the cell covers
-  // both mouse clicks and Enter/Space presses.
-  const stopRowPropagation = {
-    onClick: (e: MouseEvent<HTMLDivElement>) => e.stopPropagation(),
-    onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => e.stopPropagation(),
-  };
+  // PayMigrationView.tsx's rows: a role="button" div with a manual
+  // Enter/Space handler, plus the middle- / Cmd-click new-tab gestures.
+  // globals.css's :focus-visible already covers [role="button"], so the focus
+  // ring is unchanged. See company-row-props.ts.
+  const openProps = companyOpenProps({
+    companyId: row.id,
+    label: rowAriaLabel,
+    onOpen: () => onSelect(row),
+  });
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onSelect(row)}
-      onKeyDown={onRowKeyDown}
-      aria-label={rowAriaLabel}
+      {...openProps}
       className={`pf-row${focused ? " focused" : ""}`}
       style={{
         position: "relative",
@@ -300,7 +289,7 @@ export const Row = memo(function Row({
           deal) still hugs the row's right edge. */}
       <div
         style={{ display: "inline-flex", gap: 5, justifySelf: "end" }}
-        {...stopRowPropagation}
+        {...stopRowActivation}
       >
         <QuickActions
           row={row}

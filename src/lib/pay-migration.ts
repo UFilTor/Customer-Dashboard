@@ -546,6 +546,14 @@ export async function fetchPayMigrationData(
 
   for (const deal of allDeals) {
     deal.zeroEvents = zeroEventDealIds.has(deal.dealId);
+    // companyId was left null at construction because the deal -> company
+    // associations only land with zeroEventPromise above. Filling it here lets
+    // a row open the company detail directly (and gives middle- / Cmd-click a
+    // real href) instead of falling back to the fuzzy company-name search in
+    // PayMigrationContainer. First association wins: a deal with two companies
+    // has no better answer, and that is what the name search resolved to
+    // anyway. Stays null when HubSpot has no association at all.
+    deal.companyId = companiesByDeal[deal.dealId]?.[0] ?? null;
   }
 
   // Compute stage breakdown

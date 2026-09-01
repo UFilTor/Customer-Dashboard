@@ -5,6 +5,7 @@ import type { PayMigrationData, PayDeal, PayOwnerSummary, PayStage, RecentStageC
 import { CountUpPct, AnimBar, Stagger } from "../Motion";
 import { DashboardBanner } from "../DashboardBanner";
 import { Kpi } from "../Kpi";
+import { companyOpenProps } from "./company-row-props";
 
 type PayFilter = "default" | "all" | string; // "default" = key owners, "all" = everyone, otherwise ownerId
 
@@ -966,7 +967,8 @@ function PathCard({
                   }}
                   {...clickableRowProps(
                     () => onDealClick(deal),
-                    `${deal.dealName}, ${deal.stage} stage`
+                    `${deal.dealName}, ${deal.stage} stage`,
+                    deal.companyId ?? null
                   )}
                 >
                   <Td muted>{n}</Td>
@@ -1131,7 +1133,11 @@ function UnwillingTable({
               <tr
                 key={d.dealId}
                 style={{ cursor: "pointer" }}
-                {...clickableRowProps(() => onDealClick(d), `${d.dealName}, unwilling`)}
+                {...clickableRowProps(
+                  () => onDealClick(d),
+                  `${d.dealName}, unwilling`,
+                  d.companyId ?? null
+                )}
               >
                 <Td>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -1260,7 +1266,11 @@ function NotEnrolledCard({
                 <tr
                   key={d.dealId}
                   style={{ cursor: "pointer" }}
-                  {...clickableRowProps(() => onDealClick(d), `${d.dealName}, not enrolled`)}
+                  {...clickableRowProps(
+                    () => onDealClick(d),
+                    `${d.dealName}, not enrolled`,
+                    d.companyId ?? null
+                  )}
                 >
                   <Td muted>{i + 1}</Td>
                   <Td>
@@ -1353,7 +1363,8 @@ function RecentStageChanges({
                   style={{ cursor: deal ? "pointer" : "default" }}
                   {...clickableRowProps(
                     deal ? () => onDealClick(deal) : undefined,
-                    `${c.dealName}, ${c.fromStage ?? "new"} to ${c.toStage}`
+                    `${c.dealName}, ${c.fromStage ?? "new"} to ${c.toStage}`,
+                    deal?.companyId ?? null
                   )}
                 >
                   <Td>
@@ -1390,20 +1401,17 @@ function RecentStageChanges({
 // so keyboard/AT access comes from role="button" + tabIndex + a manual
 // Enter/Space handler instead of Portfolio's real-<button> row pattern.
 // `[role="button"]:focus-visible` in globals.css gives it the same focus ring.
-function clickableRowProps(onActivate: (() => void) | undefined, label: string) {
-  if (!onActivate) return {};
-  return {
-    tabIndex: 0,
-    role: "button" as const,
-    "aria-label": label,
-    onClick: onActivate,
-    onKeyDown: (e: React.KeyboardEvent<HTMLTableRowElement>) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        onActivate();
-      }
-    },
-  };
+// Thin wrapper over the shared helper so all four call sites below keep their
+// existing (onActivate, label) shape. companyId is null for deals HubSpot
+// never linked to a company — those fall back to an async name search in
+// PayMigrationContainer, so there is no href to hand a new tab, and a
+// modified click just opens in place.
+function clickableRowProps(
+  onActivate: (() => void) | undefined,
+  label: string,
+  companyId: string | null = null
+) {
+  return companyOpenProps({ companyId, label, onOpen: onActivate });
 }
 
 function Th({

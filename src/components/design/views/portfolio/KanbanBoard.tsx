@@ -22,6 +22,8 @@ interface KanbanBoardProps {
   snoozeUntilById: Map<string, number>;
   onSnooze: (companyId: string, until: number) => void;
   onUnsnooze: (companyId: string) => void;
+  /** False while the board sits inside a display:none wrapper. */
+  active?: boolean;
 }
 
 // Columns never crush narrower than this: below it a card's ACV/signal
@@ -62,6 +64,7 @@ export function KanbanBoard({
   snoozeUntilById,
   onSnooze,
   onUnsnooze,
+  active = true,
 }: KanbanBoardProps) {
   const minWidth =
     columns.reduce(
@@ -88,6 +91,11 @@ export function KanbanBoard({
     if (el) setBoardTop(Math.round(el.getBoundingClientRect().top + window.scrollY));
   }, []);
   useEffect(() => {
+    // Hidden behind an open company detail: the body ResizeObserver below
+    // fires the moment the wrapper collapses, and a hidden element measures
+    // top: 0, which would leave the board sized for the wrong offset when the
+    // detail closes. Stay detached; observing again on re-show remeasures.
+    if (!active) return;
     // rAF-coalesced: resize fires ~60/s while dragging a window edge and
     // each measure is a forced layout read.
     let raf = 0;
@@ -112,7 +120,7 @@ export function KanbanBoard({
       ro.disconnect();
       if (raf !== 0) cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [active]);
 
   return (
     <div

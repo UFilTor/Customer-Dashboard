@@ -9,6 +9,7 @@ import type {
   WatchOutSignal,
 } from "@/lib/types";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
+import { isNewTabClick, openCompanyInNewTab } from "@/lib/company-link";
 import { countryName } from "@/lib/hubspot-enums";
 import { signalStyle } from "@/lib/signal-display";
 import { fmtFutureEvents, toWebUrl } from "@/lib/format-design";
@@ -214,7 +215,25 @@ export function MeetingPrepBrief({
         <div>
           {deal.companyId && onSelectCompany ? (
             <button
-              onClick={() => onSelectCompany(deal.companyId!)}
+              onClick={(e) => {
+                // Middle / Cmd click opens the detail in a new tab instead.
+                if (isNewTabClick(e)) {
+                  e.preventDefault();
+                  openCompanyInNewTab(deal.companyId!);
+                  return;
+                }
+                onSelectCompany(deal.companyId!);
+              }}
+              onAuxClick={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault();
+                  openCompanyInNewTab(deal.companyId!);
+                }
+              }}
+              onMouseDown={(e) => {
+                // Suppress Chrome's middle-click autoscroll cursor.
+                if (e.button === 1) e.preventDefault();
+              }}
               title={`Open ${deal.companyName}`}
               style={{
                 fontFamily: "var(--font-display)",

@@ -4,13 +4,14 @@
 // weight, ACV formatting, signal pills) but reshaped for a vertical card
 // instead of a grid row. Presentation only, no data fetching.
 
-import { memo, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
+import { memo, useState, type CSSProperties } from "react";
 import { type PortfolioRow } from "@/lib/types";
 import { OWNER_MAP } from "@/lib/owners";
 import { fmtEur } from "@/lib/format-design";
 import { KANBAN_COLUMNS, buildKanbanCard, type KanbanColumnKey } from "@/lib/portfolio-kanban";
 import { Avatar } from "../../Avatar";
 import { DealStatusTag, QuickActions, SignalPill } from "./cells";
+import { companyOpenProps, stopRowActivation } from "../company-row-props";
 
 interface KanbanCardProps {
   row: PortfolioRow;
@@ -87,33 +88,20 @@ export const KanbanCard = memo(function KanbanCard({
 
   // Card holds real <button>/<a> action controls now (quick-action row
   // below), and those can't legally nest inside a <button>. Same pattern as
-  // clickableRowProps() in PayMigrationView.tsx: a role="button" div with a
-  // manual Enter/Space handler. globals.css's :focus-visible already
-  // covers [role="button"], so the focus ring is unchanged.
-  const onCardKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      onClick(row);
-    }
-  };
-
-  // The quick-action row's own buttons/links must not trigger the card's
-  // click-to-open behavior. Stopping propagation once here (rather than on
-  // every individual action) covers both mouse clicks and Enter/Space
-  // presses that would otherwise bubble up to onCardKeyDown/onClick above.
-  const stopRowPropagation = {
-    onClick: (e: MouseEvent<HTMLDivElement>) => e.stopPropagation(),
-    onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => e.stopPropagation(),
-  };
+  // PortfolioRow.tsx and PayMigrationView.tsx's rows: a role="button" div
+  // with a manual Enter/Space handler, plus the middle- / Cmd-click new-tab
+  // gestures. globals.css's :focus-visible already covers [role="button"],
+  // so the focus ring is unchanged. See company-row-props.ts.
+  const openProps = companyOpenProps({
+    companyId: row.id,
+    label: ariaLabel,
+    onOpen: () => onClick(row),
+  });
 
   return (
     <div
-      role="button"
-      tabIndex={0}
+      {...openProps}
       data-row-index={flatIndex}
-      aria-label={ariaLabel}
-      onClick={() => onClick(row)}
-      onKeyDown={onCardKeyDown}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -204,7 +192,7 @@ export const KanbanCard = memo(function KanbanCard({
       )}
 
       {/* Quick-action row - shared QuickActions cluster (cells.tsx), also
-          used by the table rows. Wrapped with stopRowPropagation so clicking
+          used by the table rows. Wrapped with stopRowActivation so clicking
           or keying an action here never triggers the card's own onClick. No
           flex-wrap: the buttons always fit this row, but only because the
           cluster is shrunk here - seven table-sized 27px buttons overflow a
@@ -222,7 +210,7 @@ export const KanbanCard = memo(function KanbanCard({
           borderTop: "1px solid var(--hairline)",
           ["--qa-size" as string]: "23px",
         } as CSSProperties}
-        {...stopRowPropagation}
+        {...stopRowActivation}
       >
         <QuickActions
           row={row}

@@ -127,7 +127,8 @@ export function Tooltip({
               letterSpacing: "0.01em",
               padding: "5px 9px",
               borderRadius: 7,
-              whiteSpace: "nowrap",
+              // "pre" = nowrap that also honors "\n", for multi-line labels.
+              whiteSpace: "pre",
               overflow: "hidden",
               textOverflow: "ellipsis",
               boxShadow: "0 4px 14px rgba(2, 44, 18, 0.18)",

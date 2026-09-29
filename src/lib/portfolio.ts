@@ -28,7 +28,15 @@ import type {
   WatchOutSignal,
   WatchOutSignalKind,
 } from "./types";
-import { buildPackageFromDeal, packageProductKeys, PACKAGE_DEAL_PROPS } from "./packages";
+import { buildPackageFromDeal, packageExtraLines, packageProductKeys, PACKAGE_DEAL_PROPS, type CompanyPackage } from "./packages";
+
+function packageRowFields(pkg: CompanyPackage) {
+  return {
+    productKeys: packageProductKeys(pkg),
+    packagePlan: pkg.planName,
+    packageLines: packageExtraLines(pkg),
+  };
+}
 
 // Pipelines that source the Portfolio universe. Lifecycle (166333631) covers
 // onboarding-stage customers; Retention (1072518362) covers Adopted/Started/
@@ -368,6 +376,8 @@ interface BuildRowInput {
     nextMeetingAt: string | null;
     /** Add-on keys from the lifecycle deal's package properties. */
     productKeys?: string[];
+    packagePlan?: string | null;
+    packageLines?: string[];
     /** Raw ISO from notes_next_activity_date; parsed by the caller. */
     nextActivityAt: string | null;
     /** Mapped label from hs_notes_next_activity; parsed by the caller via nextActivityTypeLabel. */
@@ -612,6 +622,8 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     dealId: input.deal.dealId,
     nextMeetingAt: input.deal.nextMeetingAt,
     productKeys: input.deal.productKeys ?? [],
+    packagePlan: input.deal.packagePlan ?? null,
+    packageLines: input.deal.packageLines ?? [],
     contactName: input.contactName,
     contactEmail: input.contactEmail,
     contactPhone: input.contactPhone,
@@ -1037,7 +1049,7 @@ export async function fetchPortfolioRows(
         nextStep: dealProps.hs_next_step?.trim() || null,
         obMeetingAt,
         nextMeetingAt: dealProps.hs_next_meeting_start_time || null,
-        productKeys: packageProductKeys(buildPackageFromDeal(dealProps)),
+        ...packageRowFields(buildPackageFromDeal(dealProps)),
         nextActivityAt: dealProps.notes_next_activity_date || null,
         nextActivityType: nextActivityTypeLabel(dealProps.hs_notes_next_activity),
         unpaidInvoice,

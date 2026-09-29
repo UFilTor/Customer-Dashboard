@@ -77,6 +77,7 @@ export default function Loading() {
               >
                 <span style={{ height: 16, background: "var(--hairline)", borderRadius: 4 }} />
                 <span style={{ height: 12, background: "var(--hairline)", borderRadius: 4, width: "70%" }} />
+                <span style={{ height: 16, background: "var(--hairline)", borderRadius: 6, width: 56 }} />
                 <span style={{ height: 16, background: "var(--hairline)", borderRadius: 4, width: "55%" }} />
                 <span aria-hidden />
                 <span style={{ height: 12, background: "var(--hairline)", borderRadius: 4, justifySelf: "end", width: 28 }} />

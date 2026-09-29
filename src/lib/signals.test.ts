@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeWatchOutSignals } from "./signals";
+import { computeWatchOutSignals, HIDDEN_SIGNALS, PORTFOLIO_SIGNALS, PORTFOLIO_SIGNAL_MAP } from "./signals";
 
 const nowIso = "2026-05-02T00:00:00.000Z";
 
@@ -86,11 +86,16 @@ describe("computeWatchOutSignals", () => {
     expect(outNull).toEqual([]);
   });
 
-  it("flags gone_quiet as warn at 30 days, bad at 45+", () => {
-    const out30 = computeWatchOutSignals(ctx({ notesLastContacted: "2026-04-01T00:00:00.000Z" })); // 31d
-    expect(out30[0]).toMatchObject({ kind: "gone_quiet", severity: "warn" });
+  it("hides gone_quiet everywhere while it is in HIDDEN_SIGNALS", () => {
+    // Detection (warn at 30 days, bad at 45+) is kept; the switch drops it for
+    // staged and unstaged callers alike, and from the UI's signal list.
+    expect(HIDDEN_SIGNALS.has("gone_quiet")).toBe(true);
     const out46 = computeWatchOutSignals(ctx({ notesLastContacted: "2026-03-16T00:00:00.000Z" })); // 47d
-    expect(out46[0]).toMatchObject({ kind: "gone_quiet", severity: "bad" });
+    expect(out46.some((s) => s.kind === "gone_quiet")).toBe(false);
+    const staged = computeWatchOutSignals(ctx({ notesLastContacted: "2026-03-16T00:00:00.000Z", stage: "Established" }));
+    expect(staged.some((s) => s.kind === "gone_quiet")).toBe(false);
+    expect(PORTFOLIO_SIGNALS.map((s) => s.key)).not.toContain("gone_quiet");
+    expect(PORTFOLIO_SIGNAL_MAP.gone_quiet.label).toBe("Gone quiet");
   });
 
   it("flags stuck_in_step when daysInStep > expectedDaysInStep", () => {

@@ -47,9 +47,9 @@ export const COL_SORT_MAP: Partial<Record<string, PortfolioSortKey>> = {
 // px minimums reproduce the old fixed-width look at narrow viewports; below
 // ~1210px viewport the row is wider than the page and clips at the right -
 // acceptable for this desktop-first tool where real usage sits at 1280+.
-export const COLS_GRID_WITH_OWNER = "96px minmax(200px, 2fr) minmax(240px, 1.6fr) minmax(24px, 1fr) 60px 80px 50px 44px 239px";
+export const COLS_GRID_WITH_OWNER = "96px minmax(120px, 2fr) 96px minmax(240px, 1.6fr) minmax(24px, 1fr) 60px 80px 50px 44px 239px";
 
-export const COLS_GRID_NO_OWNER   = "96px minmax(200px, 2fr) minmax(240px, 1.6fr) minmax(24px, 1fr) 60px 80px 50px 239px";
+export const COLS_GRID_NO_OWNER   = "96px minmax(120px, 2fr) 96px minmax(240px, 1.6fr) minmax(24px, 1fr) 60px 80px 50px 239px";
 
 // Compact square icon-button used by the QuickActions cluster (cells.tsx)
 // and the snooze quick action (snooze.tsx). Glyph-only; each control carries

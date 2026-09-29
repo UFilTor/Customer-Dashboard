@@ -31,6 +31,8 @@ export interface CompanyPackage {
   /** "unknown" = the lifecycle deal carries no plan, add-on or one-off. */
   status: "known" | "unknown";
   plan: PackageItem | null;
+  /** Bare plan name ("Starter"), for compact labels; null with no plan. */
+  planName: string | null;
   addOns: PackageItem[];
   oneOffs: PackageItem[];
   /** `date_of_contract_signed` on the lifecycle deal. */
@@ -103,7 +105,7 @@ function blankToNull(v: string | undefined): string | null {
 /**
  * Pure: build a package from one lifecycle deal's properties.
  * - Plan = `subscription_plan` ("Current pricing plan"), falling back to
- *   `product_tier`. "Churned" means no current plan. Price = Core net price
+ *   `product_tier`. "Churned" means no current plan. Price = Booking net price
  *   (the yearly total when `billing_schedule` is Yearly).
  * - Add-on included when its EUR ARR > 0 (0 on churn, and set even when the
  *   add-on was sold on the original sales deal, where `{p}_status` can be blank).
@@ -157,10 +159,30 @@ export function buildPackageFromDeal(p: Record<string, string | null | undefined
   return {
     status: known ? "known" : "unknown",
     plan,
+    planName: plan ? planName : null,
     addOns,
     oneOffs,
     signedAt: blankToNull(get("date_of_contract_signed")),
   };
+}
+
+/** Add-ons and one-offs as display lines, for the Portfolio Package tooltip. */
+export function packageExtraLines(pkg: CompanyPackage | null | undefined): string[] {
+  if (!pkg) return [];
+  return [
+    ...pkg.addOns.map(packageItemName),
+    ...pkg.oneOffs.map((o) => `${packageItemName(o)} (one-off)`),
+  ];
+}
+
+/**
+ * Portfolio pill text: the plan name alone, or "Starter +2" where 2 is the
+ * number of add-ons / one-offs listed on hover. No plan: "+2", or "—".
+ */
+export function packagePillText(plan: string | null, extraCount: number): string {
+  const extra = extraCount > 0 ? `+${extraCount}` : "";
+  if (plan) return extra ? `${plan} ${extra}` : plan;
+  return extra || "—";
 }
 
 /** Add-on keys a package includes, for the Portfolio filter. */

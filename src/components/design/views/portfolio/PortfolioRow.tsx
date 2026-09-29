@@ -12,6 +12,8 @@ import { CalmGlyph, DealStatusTag, QuickActions, SignalPill } from "./cells";
 import { COLS_GRID_NO_OWNER, COLS_GRID_WITH_OWNER, STAGE_BADGE, formatNum } from "./chrome";
 import { SnoozedTag } from "./snooze";
 import { companyOpenProps, stopRowActivation } from "../company-row-props";
+import { Tooltip } from "../../Tooltip";
+import { packagePillText } from "@/lib/packages";
 
 // Wrapped in React.memo because Portfolio renders this hundreds of times.
 // `onSelect` is taken as a stable callback (parent useCallbacks it) so the
@@ -189,6 +191,8 @@ export const Row = memo(function Row({
         )}
       </div>
 
+      <PackagePill plan={row.packagePlan ?? null} lines={row.packageLines ?? []} />
+
       <div
         style={{
           display: "inline-flex",
@@ -303,3 +307,35 @@ export const Row = memo(function Row({
 });
 
 // ---------- Row snooze control ----------
+
+// Package column: "Starter", or "Starter +2" when there are add-ons / one-off
+// fees; hover/focus lists them (Website Premium, Google Ads Branded, ...).
+// Fields are optional because pre-deploy cached payloads lack them.
+function PackagePill({ plan, lines }: { plan: string | null; lines: string[] }) {
+  const pill = (
+    <span
+      tabIndex={lines.length > 0 ? 0 : undefined}
+      style={{
+        display: "inline-block",
+        // Never shrink: the Tooltip wrapper is inline-flex, which let the
+        // pill compress and ellipsize ("Enterpri...") on rows with add-ons.
+        flexShrink: 0,
+        padding: "3px 8px",
+        borderRadius: 6,
+        border: "1px solid var(--hairline-strong)",
+        color: plan ? "var(--moss)" : "var(--green-100)",
+        fontSize: 11,
+        fontWeight: 600,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {packagePillText(plan, lines.length)}
+    </span>
+  );
+  const label = lines.length > 0 ? lines.join("\n") : null;
+  return (
+    <div style={{ minWidth: 0 }}>
+      {label ? <Tooltip label={label}>{pill}</Tooltip> : pill}
+    </div>
+  );
+}

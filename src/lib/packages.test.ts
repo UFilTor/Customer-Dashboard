@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   buildPackageFromDeal,
   formatPackagePrice,
+  packageExtraLines,
   packageItemName,
+  packagePillText,
   packageProductKeys,
   PACKAGE_DEAL_PROPS,
   toMinor,
@@ -37,6 +39,14 @@ describe("buildPackageFromDeal", () => {
     expect(packageProductKeys(pkg)).toEqual(["website"]);
     expect(formatPackagePrice(pkg.addOns[0])).toBe("799 SEK/mo");
     expect(formatPackagePrice(pkg.oneOffs[0])).toBe("99 SEK one-off");
+  });
+
+  it("gives the Portfolio pill a bare plan name and tooltip lines", () => {
+    const pkg = buildPackageFromDeal(segelbaten);
+    expect(pkg.planName).toBe("Starter");
+    expect(packageExtraLines(pkg)).toEqual(["Website Starter", "Launch Package (one-off)"]);
+    expect(buildPackageFromDeal({ subscription_plan: "Churned" }).planName).toBeNull();
+    expect(packageExtraLines(undefined)).toEqual([]);
   });
 
   it("drops an add-on whose ARR went to 0 on churn, even with a price left on the deal", () => {
@@ -85,5 +95,14 @@ describe("toMinor", () => {
     expect(toMinor("")).toBeNull();
     expect(toMinor(undefined)).toBeNull();
     expect(toMinor("abc")).toBeNull();
+  });
+});
+
+describe("packagePillText", () => {
+  it("shows the plan alone, or the plan plus the hover count", () => {
+    expect(packagePillText("Starter", 0)).toBe("Starter");
+    expect(packagePillText("Enterprise", 2)).toBe("Enterprise +2");
+    expect(packagePillText(null, 1)).toBe("+1");
+    expect(packagePillText(null, 0)).toBe("—");
   });
 });

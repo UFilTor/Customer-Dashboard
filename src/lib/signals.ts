@@ -24,6 +24,12 @@ export const STAGE_APPLICABILITY: Record<PortfolioSignalKey, PortfolioStage[]> =
   not_on_pay:        ["Onboarding", "Adopted", "Started", "Ramp Up", "Established"],
 };
 
+// Signals switched off everywhere (Portfolio pills, filter, sections, banner
+// counts, keyboard 1-9, Meeting Prep "Watch out for", company detail). The
+// detection logic below stays intact: to bring one back, delete it from this
+// set. Hidden 2026-09-29: gone_quiet (Filip, too noisy).
+export const HIDDEN_SIGNALS: ReadonlySet<PortfolioSignalKey> = new Set<PortfolioSignalKey>(["gone_quiet"]);
+
 export function isSignalApplicable(signal: PortfolioSignalKey, stage: PortfolioStage): boolean {
   return STAGE_APPLICABILITY[signal].includes(stage);
 }
@@ -205,9 +211,11 @@ export function computeWatchOutSignals(ctx: WatchOutContext): WatchOutSignal[] {
   // Stage gating: drop signals not applicable for the deal's stage. Caller
   // must pass `stage` to opt in; legacy callers without stage receive the
   // full unfiltered list (matches pre-Option-1 behaviour).
-  const filtered = ctx.stage
+  const staged = ctx.stage
     ? out.filter((s) => isSignalApplicable(watchOutToKey(s), ctx.stage as PortfolioStage))
     : out;
+  // Hidden signals drop out for every caller, staged or not.
+  const filtered = staged.filter((s) => !HIDDEN_SIGNALS.has(watchOutToKey(s)));
 
   // Stable order: bad first, then warn, preserving insertion order within each
   // severity (matches the order of rules above).
@@ -225,7 +233,7 @@ export interface PortfolioSignalMeta {
 // 9-signal taxonomy used by the Portfolio dashboard. Sorted alphabetically by
 // label — keyboard 1-9 maps to this order, and the section grouping in the
 // row list (when 2+ signals are selected) renders sections in this order.
-export const PORTFOLIO_SIGNALS: PortfolioSignalMeta[] = [
+const ALL_PORTFOLIO_SIGNALS: PortfolioSignalMeta[] = [
   { key: "gone_quiet",         label: "Gone quiet",         short: "Quiet",       color: "var(--signal-quiet)",  severity: "warn" },
   { key: "health_dropped",     label: "Health drop",        short: "Health",      color: "var(--signal-health)", severity: "warn" },
   { key: "no_future_events",   label: "No future events",   short: "No events",   color: "var(--signal-bad)",    severity: "bad"  },
@@ -237,8 +245,14 @@ export const PORTFOLIO_SIGNALS: PortfolioSignalMeta[] = [
   { key: "wish_to_churn",      label: "Wish to churn",      short: "Wish churn",  color: "var(--signal-bad)",    severity: "bad"  },
 ];
 
+/** The signals the UI offers: every signal minus HIDDEN_SIGNALS. */
+export const PORTFOLIO_SIGNALS: PortfolioSignalMeta[] = ALL_PORTFOLIO_SIGNALS.filter(
+  (s) => !HIDDEN_SIGNALS.has(s.key)
+);
+
+// Built from the full list so label lookups still resolve for a hidden key.
 export const PORTFOLIO_SIGNAL_MAP: Record<PortfolioSignalKey, PortfolioSignalMeta> =
-  Object.fromEntries(PORTFOLIO_SIGNALS.map((s) => [s.key, s])) as Record<
+  Object.fromEntries(ALL_PORTFOLIO_SIGNALS.map((s) => [s.key, s])) as Record<
     PortfolioSignalKey,
     PortfolioSignalMeta
   >;

@@ -825,6 +825,10 @@ export interface PortfolioRow {
   /** Add-on keys on the lifecycle deal (packages.ts). Optional: pre-deploy
    *  cached payloads lack it, so read with `?? []`. */
   productKeys?: string[];
+  /** Plan name for the Package pill ("Starter"); null/absent = no plan. */
+  packagePlan?: string | null;
+  /** Add-on + one-off lines for the Package pill's tooltip. */
+  packageLines?: string[];
 }
 
 export interface PortfolioResponse {

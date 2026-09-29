@@ -72,6 +72,7 @@ export function ColumnHeaders({
     >
       {header("Stage", "stage")}
       {header("Account", "name")}
+      <span role="columnheader" style={eyebrowStyle}>Package</span>
       <span role="columnheader" style={eyebrowStyle}>Signals</span>
       {/* 1fr spacer between Signals and the right-aligned numeric cluster. */}
       <span aria-hidden="true" />

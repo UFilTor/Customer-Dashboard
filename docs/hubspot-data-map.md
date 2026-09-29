@@ -42,21 +42,21 @@ Expansion stages (no skipping, no moving back):
 5. Flow 4556430523 "Update ARR on Products" keeps each product's free ARR property equal to its calculated one on open deals, unless `exception_to_arr_calculation` is ticked for that product.
 6. The monthly tick-down (`tickdown_v8`, flow 4096059598, 1st of the month) recalculates the months left.
 
-The line-item-name → product routing (`PRODUCT_MAP`) matches the lowercased name with `includes`, and the first match wins: `implementation`/`launch package` → Launch Package; `bloom`/`meta ads` → Meta ads; `understory` → Core; `accounting`; `reviews`; `google ads`; `website launch` (checked before `websites`); `websites`. The Core tier comes from the same name via `tierMap` (starter / growth / enterprise / explore→Explorer). A product is annual when its name contains "annual".
+The line-item-name → product routing (`PRODUCT_MAP`) matches the lowercased name with `includes`, and the first match wins: `implementation`/`launch package` → Launch Package; `bloom`/`meta ads` → Meta ads; `understory` → Booking; `accounting`; `reviews`; `google ads`; `website launch` (checked before `websites`); `websites`. The Booking tier comes from the same name via `tierMap` (starter / growth / enterprise / explore→Explorer). A product is annual when its name contains "annual".
 
 ## Package properties (on the lifecycle deal)
 
-### Core plan
+### Booking plan (HubSpot's internal name: Core)
 
 | Property | Meaning |
 |---|---|
 | `subscription_plan` | "Current pricing plan", the plan the customer is on now: `Free` / `Essential` / `Advanced` / `Starter` / `Growth` / `Enterprise` / `Partner` / `Custom` / `Churned` / `Explorer`. Kept up to date by the "Current Pricing Plan" workflow. **Use this for "which plan"**. (The company-level `pricing_plan` is empty on current customers, so don't use it.) |
-| `product_tier` | Core plan: `Explorer` / `Starter` / `Growth` / `Enterprise`. Set from the Core line item name. Explorer deals quoted before 1 Sep 2026 may be blank. |
+| `product_tier` | Booking plan: `Explorer` / `Starter` / `Growth` / `Enterprise`. Set from the Booking line item name. Explorer deals quoted before 1 Sep 2026 may be blank. |
 | `plan_version` | Price list: `2025_10` ("2025 - Oct") / `2026_09` ("2026 - Sep"). Resolved from the quote template name, and closed deals were backfilled to `2025_10`. Expansion deals are never versioned. |
-| `billing_schedule` | Core billing, `Monthly` / `Yearly`. |
-| `core_net_price__local_currency` | Contracted Core price (the yearly total on annual deals). |
+| `billing_schedule` | Booking billing, `Monthly` / `Yearly`. |
+| `core_net_price__local_currency` | Contracted Booking price (the yearly total on annual deals). |
 | `core_mrr__local_currency` | Net price ÷ 12 when Yearly, otherwise the net price. |
-| `core_arr` / `core_arr__euro` | Core ARR (free, canonical property) and its EUR value. |
+| `core_arr` / `core_arr__euro` | Booking ARR (free, canonical property) and its EUR value. |
 | `confirmed_booking_fee` | Booking fee as a decimal (0.04 = 4%). |
 
 ### Add-ons
@@ -72,7 +72,7 @@ Every add-on follows the pattern `{p}_status`, `{p}_full_price__local_currency`,
 | Accounting | `accounting` | `accounting_billing_schedule` | `accounting_arr__local_currency_manual` (reversed: here `_manual` is the free one) | Workflow 4898995389 (no Paused status) |
 | Email Marketing, Studio | none | none | none | Exists only as an `expansion_products` value |
 
-Status values: `Signed` / `Implementation` / `Live` / `Paused` / `Churned`. Meta ads adds `Awaiting Core finalization` and `Ready for Bloom onboarding` (label "Awaiting Meta Ads onboarding"). A Core churn (flow 4561080510) sets every sold add-on to Churned, its months to 0 and its free ARR to 0.
+Status values: `Signed` / `Implementation` / `Live` / `Paused` / `Churned`. Meta ads adds `Awaiting Core finalization` and `Ready for Bloom onboarding` (label "Awaiting Meta Ads onboarding"). A Booking churn (flow 4561080510) sets every sold add-on to Churned, its months to 0 and its free ARR to 0.
 
 ### One-off fees (outside ARR)
 
@@ -109,8 +109,8 @@ Status values: `Signed` / `Implementation` / `Live` / `Paused` / `Churned`. Meta
 ## Pricing (Sep 2026)
 
 - `plan_version = 2026_09` also stamps `gift_card_rate_calculated` (booking fee + 0.02), `gift_card_rate`, `ota_integration_fee` (0.0175) and `invoice_payment_method_fee`. `2025_10` clears them. They are copied once to the lifecycle deal, after which Finance owns them.
-- The legacy `- 2025` Core products and the `2025_10` value are due to be archived around 1 Oct 2026.
-- EUR list prices: Core Starter annual 348 · Launch Package 299 · Meta ads 349/mo · Accounting 49/mo or 490/yr · Reviews Premium 39/mo · Google Ads Branded 89/mo, Smart 139/mo · Websites Starter 69 / Premium 199 / Ultimate 499 per month (annual = 12 × 0.9) · Website Launch 1,500.
+- The legacy `- 2025` Booking products and the `2025_10` value are due to be archived around 1 Oct 2026.
+- EUR list prices: Booking Starter annual 348 · Launch Package 299 · Meta ads 349/mo · Accounting 49/mo or 490/yr · Reviews Premium 39/mo · Google Ads Branded 89/mo, Smart 139/mo · Websites Starter 69 / Premium 199 / Ultimate 499 per month (annual = 12 × 0.9) · Website Launch 1,500.
 
 ## Customer flags, region, Pay, business volume
 

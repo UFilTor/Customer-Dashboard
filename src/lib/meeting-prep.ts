@@ -1,6 +1,7 @@
 import {
   DEFAULT_EXPECTED_DAYS,
   EXPECTED_DAYS,
+  MEETING_PREP_PAST_WEEKDAYS,
   RETENTION_EXPECTED_DAYS,
 } from "@/config/thresholds";
 import {
@@ -25,6 +26,7 @@ import {
   parseAttendeeOwnerIds,
   parseEnableUnderstoryPay,
   pickSalesFallback,
+  startOfNthPastWorkDay,
   type ContactInfo,
 } from "./onboarding";
 import { hasUnpaidInvoice, unpaidAmountLocal, unpaidInvoiceCount } from "./invoice-fields";
@@ -297,9 +299,15 @@ export async function buildMeetingPrepPayload(
   // the meetings->deals association (verified reliable against HubSpot), and
   // get pool counts from the search API's `total` field.
 
-  // 1. Meeting window setup. Default = today + next 4 work days (5 total).
+  // 1. Meeting window setup. Default = the same span the day strip renders:
+  // MEETING_PREP_PAST_WEEKDAYS back, today, and the next 4 work days. The
+  // backward reach is deliberate and unfiltered by outcome — a meeting whose
+  // HubSpot record was left on a stale date (rescheduled on the calendar but
+  // not in the CRM) only exists in the past, so scoping the fetch to "today
+  // onward" is what made it invisible.
   const meetingFromIso =
-    opts.meetingFromIso ?? new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
+    opts.meetingFromIso ??
+    startOfNthPastWorkDay(new Date(), MEETING_PREP_PAST_WEEKDAYS).toISOString();
   const meetingToIso =
     opts.meetingToIso ?? endOfNthWorkDay(new Date(), 5).toISOString();
 
@@ -371,10 +379,33 @@ export async function buildMeetingPrepPayload(
   const dealAllowed = (props: Record<string, string> | undefined): boolean =>
     inScope(props);
 
+  // Pick the best in-scope deal among candidates: lifecycle wins over
+  // retention wins over expansion (mirrors onboarding.ts's orphan-flow
+  // ranking), tie-broken by most-recently created. Applies to direct meeting
+  // links too: a meeting linked to both an onboarding lifecycle deal and a
+  // website add-on expansion deal is an onboarding, whatever order HubSpot
+  // returns the associations in.
+  const pipelineRank = (p: string | undefined) =>
+    p === LIFECYCLE_PIPELINE ? 0 : p === RETENTION_PIPELINE ? 1 : 2;
+  const pickBestDeal = (ids: string[]): string | undefined => {
+    const candidates = ids
+      .map((id) => ({ id, props: candidateProps.get(id) }))
+      .filter(
+        (c): c is { id: string; props: Record<string, string> } =>
+          c.props != null && dealAllowed(c.props)
+      );
+    candidates.sort((a, b) => {
+      const r = pipelineRank(a.props.pipeline) - pipelineRank(b.props.pipeline);
+      if (r !== 0) return r;
+      return (b.props.createdate || "").localeCompare(a.props.createdate || "");
+    });
+    return candidates[0]?.id;
+  };
+
   const meetingToDeal = new Map<string, string>();
   const surfacedDealIds = new Set<string>();
   for (const a of meetingAssocs) {
-    const match = a.toIds.find((dealId) => dealAllowed(candidateProps.get(dealId)));
+    const match = pickBestDeal(a.toIds);
     if (match) {
       meetingToDeal.set(a.fromId, match);
       surfacedDealIds.add(match);
@@ -450,26 +481,10 @@ export async function buildMeetingPrepPayload(
         );
         for (const [id, props] of newProps) candidateProps.set(id, props);
       }
-      // Pick each company's best in-scope deal: lifecycle wins over retention
-      // wins over expansion (mirrors onboarding.ts's orphan-flow ranking),
-      // tie-broken by most-recently created.
-      const pipelineRank = (p: string | undefined) =>
-        p === LIFECYCLE_PIPELINE ? 0 : p === RETENTION_PIPELINE ? 1 : 2;
       const fallbackDealByCompany = new Map<string, string>();
       for (const [companyId, companyDealIds] of companyToDealIds) {
-        const candidates = companyDealIds
-          .map((id) => ({ id, props: candidateProps.get(id) }))
-          .filter(
-            (c): c is { id: string; props: Record<string, string> } =>
-              c.props != null && dealAllowed(c.props)
-          );
-        if (candidates.length === 0) continue;
-        candidates.sort((a, b) => {
-          const r = pipelineRank(a.props.pipeline) - pipelineRank(b.props.pipeline);
-          if (r !== 0) return r;
-          return (b.props.createdate || "").localeCompare(a.props.createdate || "");
-        });
-        fallbackDealByCompany.set(companyId, candidates[0].id);
+        const best = pickBestDeal(companyDealIds);
+        if (best) fallbackDealByCompany.set(companyId, best);
       }
       for (const meetingId of unresolvedMeetingIds) {
         const companyId = meetingToCompany.get(meetingId);

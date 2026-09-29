@@ -42,6 +42,13 @@ export const DEFAULT_EXPECTED_DAYS = 30;
 // daysInStep > expected * this multiplier is "high".
 export const RISK_HIGH_MULTIPLIER = 1.5;
 
+// How many weekdays BEFORE today the Meeting Prep day strip reaches, and
+// therefore how far back its bulk meeting fetch has to start. The two must
+// agree: a day tab the strip renders but the payload doesn't cover shows no
+// count until it's clicked, which reads as "nothing happened that day" even
+// when it holds a meeting whose HubSpot record was left on a stale date.
+export const MEETING_PREP_PAST_WEEKDAYS = 4;
+
 // Gone-quiet signal cutoffs (days since last outbound contact).
 // Governs computeWatchOutSignals in src/lib/signals.ts: warn at 30+,
 // bad at 45+.

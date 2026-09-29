@@ -147,6 +147,24 @@ export function endOfNthWorkDay(start: Date, n: number): Date {
   return cursor;
 }
 
+// Start-of-day timestamp for the Nth work day BEFORE `start` (never counts
+// `start` itself, and never lands on a weekend). Mirrors endOfNthWorkDay as
+// the lower bound of the meeting window: the Meeting Prep day strip reaches
+// MEETING_PREP_PAST_WEEKDAYS back from today, so the bulk fetch has to start
+// there too or those day tabs stay unfetched — dashed, countless, and easy to
+// read as empty when they in fact hold a rescheduled or cancelled meeting.
+export function startOfNthPastWorkDay(start: Date, n: number): Date {
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  let counted = 0;
+  while (counted < n) {
+    cursor.setDate(cursor.getDate() - 1);
+    const wd = cursor.getDay();
+    if (wd !== 0 && wd !== 6) counted++;
+  }
+  return cursor;
+}
+
 export function parseEnableUnderstoryPay(v: string | undefined): boolean | null {
   if (v == null || v === "") return null;
   if (v === "true") return true;

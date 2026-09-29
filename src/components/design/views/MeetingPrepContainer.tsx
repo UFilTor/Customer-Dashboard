@@ -12,6 +12,7 @@ import {
   meetingMatchesFilter,
   type GlobalFilter,
 } from "@/lib/owners";
+import { MEETING_PREP_PAST_WEEKDAYS } from "@/config/thresholds";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { reportFreshness } from "@/lib/freshness";
 import { MeetingPrepView } from "./MeetingPrepView";
@@ -33,6 +34,32 @@ function dayKey(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * Weekday keys for the PAST portion of the day strip, most recent last. Kept
+ * in lockstep with MEETING_PREP_PAST_WEEKDAYS: the bulk payload now covers
+ * these days, so they must count as already fetched or the strip renders them
+ * dashed and empty and triggers a redundant per-day fetch on first click.
+ */
+function pastNWorkDayKeys(start: Date, n: number): string[] {
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  const keys: string[] = [];
+  while (keys.length < n) {
+    cursor.setDate(cursor.getDate() - 1);
+    const wd = cursor.getDay();
+    if (wd !== 0 && wd !== 6) keys.push(dayKey(cursor));
+  }
+  return keys.reverse();
+}
+
+/** Every day key the bulk /api/meeting-prep payload covers. */
+function seededDayKeys(now: Date): string[] {
+  return [
+    ...pastNWorkDayKeys(now, MEETING_PREP_PAST_WEEKDAYS),
+    ...nextNWorkDayKeys(now, 5),
+  ];
 }
 
 function nextNWorkDayKeys(start: Date, n: number): string[] {
@@ -68,7 +95,7 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
   const key = filterKey(filter);
 
   const [fetchedDays, setFetchedDays] = useState<Set<string>>(
-    () => new Set(nextNWorkDayKeys(new Date(), 5))
+    () => new Set(seededDayKeys(new Date()))
   );
   const [fetchingDays, setFetchingDays] = useState<Set<string>>(new Set());
 
@@ -77,7 +104,7 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
   const [prevKey, setPrevKey] = useState(key);
   if (prevKey !== key) {
     setPrevKey(key);
-    setFetchedDays(new Set(nextNWorkDayKeys(new Date(), 5)));
+    setFetchedDays(new Set(seededDayKeys(new Date())));
     setFetchingDays(new Set());
   }
 

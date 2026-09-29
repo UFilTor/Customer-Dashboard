@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
+import { MEETING_PREP_PAST_WEEKDAYS } from "@/config/thresholds";
 import type { MeetingPrepMeetingEntry } from "@/lib/types";
 import { DashboardBanner } from "../DashboardBanner";
 import { EditorialEmpty } from "../EditorialEmpty";
@@ -29,7 +30,9 @@ interface Props {
 }
 
 const VISIBLE_DAYS = 5;
-const PAST_WEEKDAYS = 4;
+// Shared with the bulk fetch window so every past tab the strip renders is
+// already covered by the payload (see MEETING_PREP_PAST_WEEKDAYS).
+const PAST_WEEKDAYS = MEETING_PREP_PAST_WEEKDAYS;
 const FUTURE_WEEKDAYS = 9;
 
 function dayKey(d: Date): string {
@@ -108,6 +111,18 @@ function MeetingsPanel({
   const selectedKey = dayKey(selectedDay);
   const meetingsTodayCount = (meetingsByDay.get(dayKey(today)) || []).length;
   const isToday = selectedKey === dayKey(today);
+
+  // The payload now reaches PAST_WEEKDAYS behind today so stale-dated meetings
+  // surface, but the banner's headline claim is explicitly forward-looking.
+  // Count from today's 00:00 onward or it silently absorbs the past days.
+  // Not memoized: `meetings` is a few dozen entries at most, and a Date-derived
+  // dep trips the compiler's preserve-manual-memoization check (same reason the
+  // day list below stays unmemoized).
+  const todayFloor = today.getTime();
+  const upcomingCount = meetings.filter((e) => {
+    const t = new Date(e.meeting.startsAt).getTime();
+    return !isNaN(t) && t >= todayFloor;
+  }).length;
 
   // Today's list shows upcoming meetings first (an in-progress meeting counts
   // as upcoming until it ends), then a divider, then the ones that already
@@ -310,7 +325,7 @@ function MeetingsPanel({
               {meetingsTodayCount} meeting{meetingsTodayCount === 1 ? "" : "s"} today
             </span>
             {firstMeetingToday && <>, first at {firstMeetingToday}</>}
-            . {meetings.length} across the next 5 work days
+            . {upcomingCount} across the next 5 work days
             {lifecycleDeals > 0 && retentionDeals > 0 && (
               <> ({lifecycleDeals} onboarding, {retentionDeals} live)</>
             )}

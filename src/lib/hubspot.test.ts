@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { searchCompanies, getOwners } from "./hubspot";
+import { searchCompanies, getOwners, pickLifecycleDeal } from "./hubspot";
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -56,5 +56,31 @@ describe("getOwners", () => {
 
     const owners = await getOwners();
     expect(owners).toEqual({ "1": "Filip K.", "2": "Anna S." });
+  });
+});
+
+const LIFECYCLE = "166333631";
+const deal = (id: string, pipeline: string, open?: string) => ({
+  id,
+  properties: { pipeline, ...(open !== undefined ? { is_open_lifecycle_deal: open } : {}) },
+});
+
+describe("pickLifecycleDeal", () => {
+  it("prefers the open lifecycle deal over an earlier churned one", () => {
+    const picked = pickLifecycleDeal(
+      [deal("sales", "81267902"), deal("old", LIFECYCLE, "0"), deal("current", LIFECYCLE, "1")],
+      [LIFECYCLE]
+    );
+    expect(picked?.id).toBe("current");
+  });
+
+  it("falls back to the first lifecycle deal when none is marked open", () => {
+    expect(pickLifecycleDeal([deal("a", LIFECYCLE), deal("b", LIFECYCLE)], [LIFECYCLE])?.id).toBe("a");
+  });
+
+  it("ignores an open flag on a deal outside the lifecycle pipelines, and handles no match", () => {
+    expect(pickLifecycleDeal([deal("x", "3687958771", "1"), deal("l", LIFECYCLE, "0")], [LIFECYCLE])?.id).toBe("l");
+    expect(pickLifecycleDeal([deal("s", "81267902")], [LIFECYCLE])).toBeUndefined();
+    expect(pickLifecycleDeal([], [LIFECYCLE])).toBeUndefined();
   });
 });

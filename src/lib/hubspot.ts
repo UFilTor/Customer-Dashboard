@@ -230,6 +230,7 @@ const DEAL_PROPERTIES = [
   "pause_start_date",
   "pause_end_date",
   ...PACKAGE_DEAL_PROPS,
+  "is_open_lifecycle_deal",
 ];
 
 // Lib-level cache so the three routes that need the detail payload
@@ -366,6 +367,20 @@ async function fetchCompany(id: string): Promise<Record<string, string>> {
   }
 }
 
+/**
+ * The company's current lifecycle deal. A customer who churned and re-signed
+ * has two lifecycle-pipeline deals, and association order is arbitrary, so
+ * prefer the one HubSpot marks open (`is_open_lifecycle_deal = 1`); fall back
+ * to the first lifecycle-pipeline deal when none is marked (older deals).
+ */
+export function pickLifecycleDeal<T extends { properties: Record<string, string | null | undefined> }>(
+  deals: T[],
+  pipelineIds: string[]
+): T | undefined {
+  const lifecycle = deals.filter((d) => pipelineIds.includes(d.properties.pipeline ?? ""));
+  return lifecycle.find((d) => d.properties.is_open_lifecycle_deal === "1") ?? lifecycle[0];
+}
+
 async function fetchLifecycleDeal(companyId: string): Promise<{ properties: Record<string, string>; dealIds: string[] } | null> {
   try {
     const assocRes = await fetch(
@@ -389,10 +404,7 @@ async function fetchLifecycleDeal(companyId: string): Promise<{ properties: Reco
     const batchData = await batchRes.json();
 
     const pipelineIds = (process.env.HUBSPOT_LIFECYCLE_PIPELINE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
-    const lifecycleDeal = batchData.results?.find(
-      (d: { properties: Record<string, string> }) =>
-        pipelineIds.includes(d.properties.pipeline)
-    );
+    const lifecycleDeal = pickLifecycleDeal<{ properties: Record<string, string> }>(batchData.results || [], pipelineIds);
 
     return {
       properties: lifecycleDeal?.properties || {},

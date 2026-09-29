@@ -8,6 +8,7 @@ import { groupByStage, flattenBoardOffsets, type KanbanColumnKey } from "@/lib/p
 import { Banner } from "./portfolio/Banner";
 import { KanbanBoard } from "./portfolio/KanbanBoard";
 import { Toolbar } from "./portfolio/Toolbar";
+import { belowTopbarRootMargin } from "../topbar-height";
 
 interface Props {
   // Full filtered+sorted rows (NOT the page slice) - board mode bypasses
@@ -121,7 +122,7 @@ export function PortfolioKanbanView(props: Props) {
     if (!node) return;
     const obs = new IntersectionObserver(
       ([entry]) => setScrolled(!entry.isIntersecting),
-      { threshold: 0 }
+      { threshold: 0, rootMargin: belowTopbarRootMargin() }
     );
     obs.observe(node);
     return () => obs.disconnect();

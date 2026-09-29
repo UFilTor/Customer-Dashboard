@@ -28,6 +28,7 @@ import type {
   WatchOutSignal,
   WatchOutSignalKind,
 } from "./types";
+import { buildPackageFromDeal, packageProductKeys, PACKAGE_DEAL_PROPS } from "./packages";
 
 // Pipelines that source the Portfolio universe. Lifecycle (166333631) covers
 // onboarding-stage customers; Retention (1072518362) covers Adopted/Started/
@@ -365,6 +366,8 @@ interface BuildRowInput {
     obMeetingAt: string | null;
     /** Raw ISO from hs_next_meeting_start_time. */
     nextMeetingAt: string | null;
+    /** Add-on keys from the lifecycle deal's package properties. */
+    productKeys?: string[];
     /** Raw ISO from notes_next_activity_date; parsed by the caller. */
     nextActivityAt: string | null;
     /** Mapped label from hs_notes_next_activity; parsed by the caller via nextActivityTypeLabel. */
@@ -608,6 +611,7 @@ export function buildRow(input: BuildRowInput): PortfolioRow {
     nextActivityType: input.deal.nextActivityType,
     dealId: input.deal.dealId,
     nextMeetingAt: input.deal.nextMeetingAt,
+    productKeys: input.deal.productKeys ?? [],
     contactName: input.contactName,
     contactEmail: input.contactEmail,
     contactPhone: input.contactPhone,
@@ -641,6 +645,7 @@ export async function buildPortfolioPayload(
 }
 
 const PORTFOLIO_DEAL_PROPS = [
+  ...PACKAGE_DEAL_PROPS,
   "customer_stage",
   "customer_substage",
   "customer_live_date",
@@ -1032,6 +1037,7 @@ export async function fetchPortfolioRows(
         nextStep: dealProps.hs_next_step?.trim() || null,
         obMeetingAt,
         nextMeetingAt: dealProps.hs_next_meeting_start_time || null,
+        productKeys: packageProductKeys(buildPackageFromDeal(dealProps)),
         nextActivityAt: dealProps.notes_next_activity_date || null,
         nextActivityType: nextActivityTypeLabel(dealProps.hs_notes_next_activity),
         unpaidInvoice,

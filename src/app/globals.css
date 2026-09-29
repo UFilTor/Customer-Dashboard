@@ -325,7 +325,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .pf-row:hover { background: var(--light-grey); }
 .pf-row.focused { background: var(--beige-new); box-shadow: inset 3px 0 0 var(--moss); }
 
-.pf-sticky { position: sticky; top: 0; z-index: 30; background: var(--page-bg); transition: box-shadow 160ms var(--ease-out); }
+.pf-sticky { position: sticky; top: var(--topbar-h, 0px); z-index: 30; background: var(--page-bg); transition: box-shadow 160ms var(--ease-out); }
 /* Once the page scrolls, the sticky strip otherwise butts flush against the
    global TopBar above. A 1px hairline + soft shadow underneath restores the
    separation between the chrome layers. */
@@ -503,6 +503,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    .seg-light-btn — the browser normalises shorthand background / padding /
    gap / border-bottom to longhand and the hydration validator flags the diff. */
 .topbar-nav {
+  /* Always visible: filters and the dashboard picker stay reachable while
+     scrolling. Sits above the per-view sticky strips (z 30), which pin below
+     it via --topbar-h (published by TopBar.tsx). */
+  position: sticky;
+  top: 0;
+  z-index: 40;
   background: var(--moss);
   color: var(--text-on-moss);
   /* Two columns: logo + search on the left, pill cluster on the right. The
@@ -586,3 +592,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+/* Keyboard scroll-into-view (block: "nearest") should not land a row under
+   the sticky TopBar. */
+html { scroll-padding-top: var(--topbar-h, 0px); }

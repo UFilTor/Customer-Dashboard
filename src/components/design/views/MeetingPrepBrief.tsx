@@ -21,6 +21,7 @@ import { ContactActions } from "../ContactActions";
 import { HistoryItem } from "./HistoryItem";
 import { WatchOutFor } from "../WatchOutFor";
 import { SinceLastTouchBlock } from "../SinceLastTouch";
+import { packageItemName } from "@/lib/packages";
 
 interface Props {
   entry: MeetingPrepMeetingEntry;
@@ -782,6 +783,24 @@ function CommercialSection({
   return (
     <div>
       <SectionHeader>Commercial</SectionHeader>
+      {deal.package != null && (
+        <Row label="Package">
+          {deal.package.status === "unknown" ? (
+            <span style={{ opacity: 0.5 }}>Unknown</span>
+          ) : (
+            [
+              ...(deal.package.plan ? [deal.package.plan] : []),
+              ...deal.package.addOns,
+              ...deal.package.oneOffs,
+            ].map((item) => (
+              <div key={`${item.kind}:${item.key}`}>
+                {packageItemName(item)}
+                {item.kind === "one_off" && <span style={{ opacity: 0.6 }}> (one-off)</span>}
+              </div>
+            ))
+          )}
+        </Row>
+      )}
       <Row label="Sales owner">
         {com.salesOwner === "missing" || !com.salesOwner ? (
           <span style={{ opacity: 0.5 }}>—</span>

@@ -19,6 +19,7 @@ import { classifyPortfolioStage } from "@/lib/portfolio";
 import { Tooltip } from "./Tooltip";
 import { ContactActions } from "./ContactActions";
 import { quickActionBtn } from "./views/portfolio/chrome";
+import { formatPackagePrice, packageItemName, type CompanyPackage } from "@/lib/packages";
 
 interface Props {
   companyId: string;
@@ -438,7 +439,7 @@ export function CompanyDetail({ companyId, data, embedded = false }: Props) {
 
       {tab === "overview" && (
         <div role="tabpanel" id="detail-panel-overview" aria-labelledby="detail-tab-overview">
-          <OverviewPanel company={company} deal={deal} owners={owners} stages={stages} />
+          <OverviewPanel company={company} deal={deal} owners={owners} stages={stages} pkg={data.package ?? null} />
         </div>
       )}
       {tab === "activity" && (
@@ -540,11 +541,13 @@ function OverviewPanel({
   deal,
   owners,
   stages,
+  pkg,
 }: {
   company: Record<string, string>;
   deal: Record<string, string> | null;
   owners: OwnerMap;
   stages: StageMap;
+  pkg: CompanyPackage | null;
 }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -559,6 +562,7 @@ function OverviewPanel({
             relevant only inside the Onboarding meeting brief, not on the
             general company detail panel. */}
         <LifecycleDealCard deal={deal} stages={stages} />
+        {pkg && <PackageCard pkg={pkg} />}
         <CompanyInfoCard company={company} owners={owners} />
       </div>
     </div>
@@ -766,6 +770,38 @@ function LifecycleDealCard({ deal, stages }: { deal: Record<string, string> | nu
       {rows.map((r) => (
         <InfoRow key={r.label} label={r.label} value={r.value} />
       ))}
+    </CardShell>
+  );
+}
+
+function PackageCard({ pkg }: { pkg: CompanyPackage }) {
+  const items = [...(pkg.plan ? [pkg.plan] : []), ...pkg.addOns, ...pkg.oneOffs];
+  const signed = pkg.signedAt ? new Date(pkg.signedAt) : null;
+  const signedLabel = signed && !isNaN(signed.getTime())
+    ? signed.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : null;
+  return (
+    <CardShell title="Package">
+      {pkg.status === "unknown" ? (
+        <p style={{ fontSize: 12, color: "var(--green-100)", padding: "4px 0 12px" }}>
+          No plan or add-ons on the lifecycle deal.
+        </p>
+      ) : (
+        <>
+          {items.map((item) => (
+            <InfoRow
+              key={`${item.kind}:${item.key}`}
+              label={packageItemName(item)}
+              value={formatPackagePrice(item) ?? "—"}
+            />
+          ))}
+          {signedLabel && (
+            <p style={{ fontSize: 11, color: "var(--green-100)", padding: "8px 0 12px" }}>
+              Contract signed {signedLabel}
+            </p>
+          )}
+        </>
+      )}
     </CardShell>
   );
 }

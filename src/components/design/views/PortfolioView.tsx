@@ -11,6 +11,7 @@ import { ColumnHeaders, SectionHeader } from "./portfolio/ColumnHeaders";
 import { Pagination } from "./portfolio/Pagination";
 import { Row } from "./portfolio/PortfolioRow";
 import { Toolbar } from "./portfolio/Toolbar";
+import { belowTopbarRootMargin, topbarHeight } from "../topbar-height";
 
 interface Props {
   // The slice of rows for the current page (already filtered + sorted by
@@ -207,7 +208,7 @@ export function PortfolioView(props: Props) {
     if (!node) return;
     const obs = new IntersectionObserver(
       ([entry]) => setScrolled(!entry.isIntersecting),
-      { threshold: 0 }
+      { threshold: 0, rootMargin: belowTopbarRootMargin() }
     );
     obs.observe(node);
     return () => obs.disconnect();
@@ -233,7 +234,8 @@ export function PortfolioView(props: Props) {
       // viewport position directly. Cursor = viewport Y just below the
       // sticky strip; a header at/above that line means its rows are
       // currently under the strip.
-      const stickyHeight = stickyRef.current?.offsetHeight ?? 200;
+      // Both the TopBar and the toolbar strip are pinned above the rows.
+      const stickyHeight = topbarHeight() + (stickyRef.current?.offsetHeight ?? 200);
       const headers = container.querySelectorAll<HTMLElement>("[data-section-header]");
       // Find the section whose ROWS are currently under the sticky strip.
       // We track the most recent section-header at/above the cursor — so as

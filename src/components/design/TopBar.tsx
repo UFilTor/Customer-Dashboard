@@ -50,8 +50,25 @@ export function TopBar({
     return /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? "⌘K" : "Ctrl+K";
   });
 
+  // Publish the bar's height as --topbar-h so other sticky strips pin below
+  // it (see topbar-height.ts). ResizeObserver covers wrapping at narrow widths.
+  const navRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const publish = () => root.style.setProperty("--topbar-h", `${el.offsetHeight}px`);
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("--topbar-h");
+    };
+  }, []);
+
   return (
-    <nav className="topbar-nav">
+    <nav className="topbar-nav" ref={navRef}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
         <div
           style={{

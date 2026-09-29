@@ -10,6 +10,8 @@ These are non-obvious conventions and footguns we've run into while working on t
 
 ## HubSpot fetch patterns
 
+- **Where the data lives: `docs/hubspot-data-map.md`.** Pipelines, stage IDs, and every plan / add-on / one-off / ARR property. A customer's package lives as properties on the open lifecycle deal (`is_open_lifecycle_deal = 1`), which the current token can read; don't reach for line items (the token has no line-items scope, by design). Read it before adding any commercial field.
+
 - **Prefer batch associations over `/deals/search`.** The `crm/v3/objects/deals/search` endpoint with `associatedWith` filters is fundamentally slow (1-3s/page, sequential pagination). Use `crm/v4/associations/{from}/{to}/batch/read` instead — ~100ms per parallel batch of 100 IDs. See `fetchSalesDealsForCompanies` (was 27s with search → 0.6s after switch) and `fetchZeroEventDealIds` (11s → 1.9s).
 - **Always pass a `sorts` clause** when calling search endpoints. Without it pagination silently truncates after a few pages and the results get cached for 15 min. Canonical retry helper: `searchDealsPage` in `src/lib/pay-migration.ts`.
 - **Parallelize independent batches.** Outer batch loops over IDs (typically 80-100 per HubSpot call) should run via `Promise.all`. Inner pagination has to stay sequential because `next-cursor` is opaque.

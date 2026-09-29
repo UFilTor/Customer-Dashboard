@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type PortfolioRefineState, type PortfolioRow, type PortfolioSignalKey } from "@/lib/types";
 import { DatePopover } from "../../DatePopover";
+import { PACKAGE_FILTER_PRODUCTS } from "@/lib/packages";
 import { Caret, eyebrowStyle, pillTriggerStyle, refineInputStyle, useOutsideClose } from "./chrome";
 
 function refineActiveCount(r: PortfolioRefineState): number {
@@ -17,6 +18,7 @@ function refineActiveCount(r: PortfolioRefineState): number {
   if (r.daysInStageMin != null) n++;
   if (r.daysInStageMax != null) n++;
   if (r.stages && r.stages.length > 0) n++;
+  if (r.products && r.products.length > 0) n++;
   if (r.adoptionAfter) n++;
   if (r.adoptionBefore) n++;
   if (r.goneQuietMinDays != null) n++;
@@ -35,13 +37,20 @@ const STAGE_OPTIONS: PortfolioRow["stage"][] = [
   "Established",
 ];
 
-function StageMultiSelect({
+const STAGE_SELECT_OPTIONS = STAGE_OPTIONS.map((s) => ({ value: s, label: s }));
+const PRODUCT_SELECT_OPTIONS = PACKAGE_FILTER_PRODUCTS.map((p) => ({ value: p.key as string, label: p.label }));
+
+function MultiSelect<T extends string>({
+  options,
+  allLabel,
   selected,
   onToggle,
   onClear,
 }: {
-  selected: PortfolioRow["stage"][];
-  onToggle: (stage: PortfolioRow["stage"]) => void;
+  options: ReadonlyArray<{ value: T; label: string }>;
+  allLabel: string;
+  selected: T[];
+  onToggle: (value: T) => void;
   onClear: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -84,11 +93,11 @@ function StageMultiSelect({
 
   const label =
     selected.length === 0
-      ? "All stages"
+      ? allLabel
       : selected.length === 1
-      ? selected[0]
-      : selected.length === STAGE_OPTIONS.length
-      ? "All stages"
+      ? options.find((o) => o.value === selected[0])?.label ?? selected[0]
+      : selected.length === options.length
+      ? allLabel
       : `${selected.length} selected`;
 
   return (
@@ -137,12 +146,12 @@ function StageMultiSelect({
           }}
         >
           <div style={{ padding: 6 }}>
-            {STAGE_OPTIONS.map((stage) => {
-              const on = selected.includes(stage);
+            {options.map(({ value, label: optionLabel }) => {
+              const on = selected.includes(value);
               return (
                 <button
-                  key={stage}
-                  onClick={() => onToggle(stage)}
+                  key={value}
+                  onClick={() => onToggle(value)}
                   className={`pf-pop-row${on ? " selected" : ""}`}
                   style={{ width: "100%" }}
                 >
@@ -159,7 +168,7 @@ function StageMultiSelect({
                       </svg>
                     )}
                   </span>
-                  <span style={{ flex: 1 }}>{stage}</span>
+                  <span style={{ flex: 1 }}>{optionLabel}</span>
                 </button>
               );
             })}
@@ -433,7 +442,9 @@ export function RefinePill({
 
             <div>
               <div style={{ ...eyebrowStyle, marginBottom: 6 }}>Stage</div>
-              <StageMultiSelect
+              <MultiSelect
+                options={STAGE_SELECT_OPTIONS}
+                allLabel="All stages"
                 selected={refine.stages ?? []}
                 onToggle={(stage) => {
                   const current = refine.stages ?? [];
@@ -444,6 +455,23 @@ export function RefinePill({
                   update("stages", next.length > 0 ? next : undefined);
                 }}
                 onClear={() => update("stages", undefined)}
+              />
+            </div>
+
+            <div>
+              <div style={{ ...eyebrowStyle, marginBottom: 6 }}>Products</div>
+              <MultiSelect
+                options={PRODUCT_SELECT_OPTIONS}
+                allLabel="Any package"
+                selected={refine.products ?? []}
+                onToggle={(product) => {
+                  const current = refine.products ?? [];
+                  const next = current.includes(product)
+                    ? current.filter((p) => p !== product)
+                    : [...current, product];
+                  update("products", next.length > 0 ? next : undefined);
+                }}
+                onClear={() => update("products", undefined)}
               />
             </div>
 

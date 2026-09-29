@@ -69,7 +69,7 @@ describe("portfolio-views", () => {
           state: {
             signals: ["overdue_invoices", "not_a_signal", 42],
             stackedSignals: "yes",
-            refine: { acvMin: "1e9", stages: ["Onboarding", "FakeStage"], adoptionAfter: "<script>" },
+            refine: { acvMin: "1e9", stages: ["Onboarding", "FakeStage"], adoptionAfter: "<script>", products: ["website", "website", "fake_product", 7] },
             shownStatuses: { paused: "true", snoozed: true },
             sortKey: "drop_tables",
             sortDirection: "sideways",
@@ -83,6 +83,7 @@ describe("portfolio-views", () => {
     expect(v.state.stackedSignals).toBe(false);
     expect(v.state.refine.acvMin).toBeUndefined();
     expect(v.state.refine.stages).toEqual(["Onboarding"]);
+    expect(v.state.refine.products).toEqual(["website"]);
     expect(v.state.refine.adoptionAfter).toBeUndefined();
     expect(v.state.shownStatuses.paused).toBe(false);
     expect(v.state.shownStatuses.snoozed).toBe(true);

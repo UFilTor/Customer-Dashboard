@@ -1,4 +1,5 @@
 import type { GlobalFilter } from "./owners";
+import type { CompanyPackage } from "./packages";
 
 export type FormatType =
   | "text"
@@ -85,6 +86,10 @@ export interface CompanyDetail {
     email: string | null;
     phone: string | null;
   } | null;
+  /** Package (plan, add-ons, one-offs) from the lifecycle deal's properties.
+   *  Optional + nullable: pre-deploy cached payloads lack it; null = no
+   *  lifecycle deal. */
+  package?: CompanyPackage | null;
 }
 
 export interface Engagement {
@@ -493,6 +498,9 @@ export interface MeetingPrepDeal {
   contactPhone: string | null;
   companyDomain: string | null;
   storefrontLink: string | null;
+  /** Package (plan, add-ons, one-offs) from the lifecycle deal. Optional:
+   *  pre-deploy cached payloads lack it; null on expansion-pipeline deals. */
+  package?: CompanyPackage | null;
 
   // Commercial block — same shape both pipelines, except first billing is
   // hidden in retention briefs (already passed long ago, not actionable).
@@ -814,6 +822,9 @@ export interface PortfolioRow {
    * national contact phone number into a WhatsApp-dialable one.
    */
   companyCountry: string | null;
+  /** Add-on keys on the lifecycle deal (packages.ts). Optional: pre-deploy
+   *  cached payloads lack it, so read with `?? []`. */
+  productKeys?: string[];
 }
 
 export interface PortfolioResponse {
@@ -854,6 +865,9 @@ export interface PortfolioRefineState {
   daysInStageMax?: number;
   /** Whitelist of stages to keep. Empty / unset means "all stages". */
   stages?: PortfolioStage[];
+  /** Package add-on keys (PACKAGE_FILTER_PRODUCTS); keeps rows whose
+   *  package includes ANY of them (row.productKeys). */
+  products?: string[];
   /** Estimated Adoption Date range — ISO yyyy-mm-dd. Either bound is optional. */
   adoptionAfter?: string;
   adoptionBefore?: string;

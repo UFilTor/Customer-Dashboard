@@ -7,6 +7,7 @@ import { DashboardBanner } from "../DashboardBanner";
 import { EditorialEmpty } from "../EditorialEmpty";
 import { Icon } from "../Icon";
 import { MeetingPrepBrief } from "./MeetingPrepBrief";
+import { belowTopbarRootMargin } from "../topbar-height";
 
 interface Props {
   // Pool counts for the eyebrow + KPI tiles. Server-computed so we don't
@@ -280,7 +281,7 @@ function MeetingsPanel({
     if (!node) return;
     const obs = new IntersectionObserver(
       ([entry]) => setDayScrolled(!entry.isIntersecting),
-      { threshold: 0 }
+      { threshold: 0, rootMargin: belowTopbarRootMargin() }
     );
     obs.observe(node);
     return () => obs.disconnect();
@@ -344,7 +345,7 @@ function MeetingsPanel({
           className={`mp-sticky${dayScrolled ? " scrolled" : ""}`}
           style={{
             position: "sticky",
-            top: 0,
+            top: "var(--topbar-h, 0px)",
             zIndex: 30,
             background: "var(--beige-new)",
             paddingTop: 4,

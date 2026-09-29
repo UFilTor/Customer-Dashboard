@@ -12,6 +12,7 @@ import type {
 } from "./types";
 import { PORTFOLIO_SIGNAL_ORDER } from "./signals";
 import { KANBAN_COLUMNS } from "./portfolio-kanban";
+import { PACKAGE_FILTER_PRODUCTS } from "./packages";
 
 const STORAGE_KEY = "ud-v2-portfolio-views";
 const DEFAULT_KEY = "ud-v2-portfolio-views-default";
@@ -92,6 +93,8 @@ function finiteOrUndef(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
 
+const VALID_PRODUCTS = new Set<string>(PACKAGE_FILTER_PRODUCTS.map((p) => p.key));
+
 function isoDateOrUndef(v: unknown): string | undefined {
   return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
 }
@@ -115,6 +118,12 @@ function sanitizeRefine(raw: unknown): PortfolioRefineState {
       .filter((s): s is PortfolioStage => typeof s === "string" && VALID_STAGES.has(s))
       .slice(0, VALID_STAGES.size);
     if (stages.length > 0) out.stages = stages;
+  }
+  if (Array.isArray(r.products)) {
+    const products = [...new Set(
+      (r.products as unknown[]).filter((p): p is string => typeof p === "string" && VALID_PRODUCTS.has(p))
+    )];
+    if (products.length > 0) out.products = products;
   }
   const adoptionAfter = isoDateOrUndef(r.adoptionAfter);
   const adoptionBefore = isoDateOrUndef(r.adoptionBefore);

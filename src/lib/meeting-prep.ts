@@ -29,6 +29,7 @@ import {
   startOfNthPastWorkDay,
   type ContactInfo,
 } from "./onboarding";
+import { buildPackageFromDeal, PACKAGE_DEAL_PROPS } from "./packages";
 import { hasUnpaidInvoice, unpaidAmountLocal, unpaidInvoiceCount } from "./invoice-fields";
 import {
   SLT_COMPANY_PROPS,
@@ -531,7 +532,6 @@ export async function buildMeetingPrepPayload(
   const salesDealsPromise = companyMapPromise.then(({ companyIds }) =>
     fetchSalesDealsForCompanies(companyIds)
   );
-
   const [companyData, contactMap, salesDealsByCompany] =
     await Promise.all([
       companyMapPromise,
@@ -572,6 +572,12 @@ export async function buildMeetingPrepPayload(
       nowIso
     )
   );
+  // Package lives on the lifecycle deal (docs/hubspot-data-map.md). An
+  // expansion-pipeline deal only records one sale, so it gets none.
+  for (const [i, d] of meetingPrepDeals.entries()) {
+    const props = allRawDeals[i].properties;
+    d.package = props.pipeline === EXPANSION_PIPELINE ? null : buildPackageFromDeal(props);
+  }
   const dealById = new Map(meetingPrepDeals.map((d) => [d.dealId, d]));
 
   // 8. Build the meeting entries (only meetings that resolved to a deal).
@@ -657,7 +663,7 @@ export async function buildMeetingPrepPayload(
 // Union of both pipelines' property lists — the meetings-first flow batch
 // reads candidate deals before knowing which pipeline they belong to.
 const ALL_MEETING_PREP_DEAL_PROPS = Array.from(
-  new Set([...LIFECYCLE_DEAL_PROPS, ...RETENTION_DEAL_PROPS])
+  new Set([...LIFECYCLE_DEAL_PROPS, ...RETENTION_DEAL_PROPS, ...PACKAGE_DEAL_PROPS])
 );
 
 /**

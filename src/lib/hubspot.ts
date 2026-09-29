@@ -4,6 +4,7 @@ import { HUBSPOT_API, hubspotHeaders as headers } from "./hubspot-api";
 import { TO_EUR } from "./fx";
 import { Cache } from "./cache";
 import { fetchPrimaryContactsForDeals } from "./onboarding";
+import { buildPackageFromDeal, PACKAGE_DEAL_PROPS } from "./packages";
 import {
   SLT_COMPANY_PROPS,
   SLT_DEAL_PROPS,
@@ -228,6 +229,7 @@ const DEAL_PROPERTIES = [
   "product_hold_expected_end_date",
   "pause_start_date",
   "pause_end_date",
+  ...PACKAGE_DEAL_PROPS,
 ];
 
 // Lib-level cache so the three routes that need the detail payload
@@ -316,6 +318,7 @@ async function buildCompanyDetail(companyId: string): Promise<CompanyDetail> {
     recap: null,
     sinceLastTouch,
     primaryContact,
+    package: dealResult ? buildPackageFromDeal(dealResult.properties) : null,
   };
 }
 

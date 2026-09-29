@@ -315,6 +315,10 @@ export function PortfolioContainer({
       if (refine.daysInStageMin != null && (r.daysInStage ?? 0) < refine.daysInStageMin) return false;
       if (refine.daysInStageMax != null && (r.daysInStage ?? 0) > refine.daysInStageMax) return false;
       if (refine.stages && refine.stages.length > 0 && !refine.stages.includes(r.stage)) return false;
+      if (refine.products && refine.products.length > 0) {
+        const owned = r.productKeys ?? [];
+        if (!refine.products.some((p) => owned.includes(p))) return false;
+      }
       if (refine.adoptionAfter && (!r.estimatedAdoptionDate || r.estimatedAdoptionDate < refine.adoptionAfter)) return false;
       if (refine.adoptionBefore && (!r.estimatedAdoptionDate || r.estimatedAdoptionDate > refine.adoptionBefore)) return false;
       if (selectedSignals.includes("gone_quiet") && refine.goneQuietMinDays != null) {

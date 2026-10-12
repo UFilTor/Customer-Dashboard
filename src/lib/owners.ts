@@ -8,7 +8,8 @@ export interface Owner {
   region?: RegionKey;
   color: string;
   // Optional override for the avatar initial. Defaults to name[0].
-  // Used to disambiguate owners who share a first letter (e.g. Anders vs Alessandro).
+  // Convention: owners who share a first letter get first-name initial +
+  // lowercase last-name initial (Janne Græsdal = "Jg", Julia Rodriguez = "Jr").
   initial?: string;
   /**
    * Company-country ISO-2 codes this owner covers. When set, the owner's book
@@ -36,11 +37,12 @@ export const OWNERS: Owner[] = [
     id: "38394178",
     name: "Adrián",
     color: "#F6D6C8",
-    initial: "Ad",
+    // "Am" from his second surname (Muñoz): "Ac" is Alessandro Crescenzo.
+    initial: "Am",
     countries: ["ES"],
   },
-  { id: "34100335", name: "Alessandro", region: "IT", color: "#FFE0B5", initial: "Al" },
-  { id: "962517007", name: "Anders", region: "DK", color: "#D1BEE7", initial: "An" },
+  { id: "34100335", name: "Alessandro", region: "IT", color: "#FFE0B5", initial: "Ac" },
+  { id: "962517007", name: "Anders", region: "DK", color: "#D1BEE7", initial: "Ah" },
   { id: "559364799", name: "Cecilia", region: "SE", color: "#CFE8FF" },
   { id: "1939229547", name: "Filip", region: "SE", color: "#D5DFCA" },
   { id: "38394153", name: "Ingrid", region: "ES", color: "#FAD9E6" },
@@ -52,14 +54,15 @@ export const OWNERS: Owner[] = [
     id: "37173812",
     name: "Janne",
     color: "#BEE3D9",
+    initial: "Jg",
     countries: ["DK", "SE", "NO", "FI", "GL", "FO"],
   },
-  { id: "38394160", name: "Julia", region: "ES", color: "#FFF1B8", initial: "Ju" },
+  { id: "38394160", name: "Julia", region: "ES", color: "#FFF1B8", initial: "Jr" },
   { id: "44912650", name: "Marc", region: "DK", color: "#F1F97E" },
   { id: "34100332", name: "Nicoletta", region: "IT", color: "#E8D5F0", initial: "Ns" },
   { id: "32409343", name: "Nicolò", region: "IT", color: "#D6E4F5", initial: "Np" },
-  { id: "38394165", name: "Veruske", region: "ES", color: "#E3F0C8", initial: "Ve" },
-  { id: "90324081", name: "Vlad", region: "IT", color: "#F4C4A0" },
+  { id: "38394165", name: "Veruske", region: "ES", color: "#E3F0C8", initial: "Vg" }, // "Vm" is Vlad Maties
+  { id: "90324081", name: "Vlad", region: "IT", color: "#F4C4A0", initial: "Vm" },
 ];
 
 export const OWNER_MAP: Record<string, Owner> = Object.fromEntries(

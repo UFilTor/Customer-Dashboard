@@ -67,9 +67,12 @@ export async function GET(request: NextRequest) {
     // Per-person scopes — filtering to a single CS owner is its own cache key,
     // and person filters were the last commonly-used scope still hitting cold
     // 5s+ builds. One warm per owner per route.
+    // Territory owners (Janne, Adrián) skip the portfolio warm: the client
+    // never sends their id as a portfolio scope (effectiveOwnerIds -> null, so
+    // it reads the "all" key warmed above), so that build would go unread.
     ...OWNERS.flatMap((o) => [
       `/api/meeting-prep?refresh=true&ownerIds=${o.id}`,
-      `/api/portfolio?refresh=true&ownerIds=${o.id}`,
+      ...(o.countries ? [] : [`/api/portfolio?refresh=true&ownerIds=${o.id}`]),
     ]),
     // VIP company detail payloads — env-driven so we can rotate the list.
     ...companyWarmIds().map((id) => `/api/companies/${id}`),

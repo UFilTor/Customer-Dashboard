@@ -515,7 +515,10 @@ function FilterPill({ filter, setFilter, isDefault, setAsDefault, clearDefault }
             ))}
           </div>
 
-          <div style={{ padding: "0 6px 6px", maxHeight: 420, overflowY: "auto" }}>
+          {/* Full list, no fixed cap: scroll only kicks in when the window is
+              too short to fit every person. ~220px = panel offset, All-accounts row,
+              tabs and the "Set as default" footer, so the footer stays on screen. */}
+          <div style={{ padding: "0 6px 6px", maxHeight: "calc(100vh - 220px)", overflowY: "auto" }}>
             {optionsFor(tab).map((o, i) => (
               <FilterRow
                 key={o.key}

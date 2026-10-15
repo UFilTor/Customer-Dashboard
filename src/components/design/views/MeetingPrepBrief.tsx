@@ -810,7 +810,7 @@ function CommercialSection({
       </Row>
       <Row label="ACV">{com.acv || "—"}</Row>
       <Row label="Booking fee">{com.bookingFee || "—"}</Row>
-      <Row label="Monthly fee">{com.monthlyFee || "—"}</Row>
+      <Row label="Fee">{com.monthlyFee || "—"}</Row>
       {showFirstBilling && (
         <Row label="First billing">{com.firstBilling || "—"}</Row>
       )}

@@ -10,7 +10,7 @@ import { SinceLastTouchBlock } from "./SinceLastTouch";
 import { HealthRings } from "./HealthRings";
 import { VolumeChart } from "./VolumeChart";
 import { OWNER_MAP } from "@/lib/owners";
-import { fmtMrr, relDays, toWebUrl } from "@/lib/format-design";
+import { relDays, toWebUrl } from "@/lib/format-design";
 import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 import { isBookmarked, toggleBookmark } from "@/lib/bookmarks";
 import { computeWatchOutSignals } from "@/lib/signals";
@@ -19,7 +19,7 @@ import { classifyPortfolioStage } from "@/lib/portfolio";
 import { Tooltip } from "./Tooltip";
 import { ContactActions } from "./ContactActions";
 import { quickActionBtn } from "./views/portfolio/chrome";
-import { formatPackagePrice, packageItemName, type CompanyPackage } from "@/lib/packages";
+import { formatPackagePrice, lifecycleFee, packageItemName, type CompanyPackage } from "@/lib/packages";
 
 interface Props {
   companyId: string;
@@ -745,7 +745,10 @@ function LifecycleDealCard({ deal, stages }: { deal: Record<string, string> | nu
   }
   const rows: { label: string; value: string }[] = [];
   if (deal.dealstage) rows.push({ label: "Stage", value: stages[deal.dealstage] || deal.dealstage });
-  if (deal.confirmed__contract_mrr) rows.push({ label: "Monthly fee", value: fmtMrr(parseFloat(deal.confirmed__contract_mrr)) });
+  // Same rule as Meeting prep: the lifecycle deal's contracted price with its
+  // billing period, falling back to the Contract MRR (see lifecycleFee).
+  const fee = lifecycleFee(deal);
+  if (fee) rows.push({ label: "Fee", value: fee });
   if (deal.confirmed_booking_fee || deal.booking_fee) {
     const raw = parseFloat(deal.confirmed_booking_fee || deal.booking_fee || "0");
     if (!isNaN(raw)) rows.push({ label: "Booking fee", value: `${(raw < 1 ? raw * 100 : raw).toFixed(2)}%` });

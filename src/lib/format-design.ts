@@ -14,11 +14,6 @@ export function fmtEurFull(n: number | null | undefined): string {
   return "€" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
-export function fmtMrr(n: number | null | undefined): string {
-  if (!n) return "—";
-  return "€" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
-
 // `understory_health_score_upcoming_events` is a 0-1 score where each
 // 0.20 step represents one event up to 5+, which saturates at 1.00.
 // Returns the brief-display string ("3 scheduled" / "5+ scheduled" / "0")

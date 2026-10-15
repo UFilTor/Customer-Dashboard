@@ -9,6 +9,7 @@ import {
 import { computeWatchOutSignals } from "./signals";
 import { summarizeNoteEntries } from "./summarize";
 import { TO_EUR } from "./fx";
+import { formatFee } from "./packages";
 import {
   DEFAULT_EXPECTED_DAYS,
   EXPECTED_DAYS,
@@ -186,15 +187,23 @@ export function formatBookingFee(
   return `${pct.toFixed(2).replace(/\.?0+$/, "")}%`;
 }
 
-export function formatMonthlyFee(
-  amount: string | undefined,
-  currency: string | undefined
+/**
+ * Fee for a deal. The lifecycle deal carries the live package, so its price
+ * wins; the priced sales deal fills in only while the lifecycle deal has no
+ * usable price (blank, 0 or no currency, i.e. it would render "—"). Amount,
+ * currency and schedule always come from one deal, so "/yr" can't attach to a
+ * monthly price. Pass `null` as the fallback for deals that shouldn't borrow a
+ * sales price (retention deals).
+ */
+export function feeFromDeals(
+  deal: Record<string, string>,
+  salesFallback: { deal: { properties: Record<string, string> }; isPriced: boolean } | null | undefined
 ): string | null {
-  if (amount == null || amount === "") return null;
-  const n = parseFloat(amount);
-  if (isNaN(n) || n === 0) return null;
-  if (!currency || !currency.trim()) return null;
-  return `${Math.round(n).toLocaleString("en-US")} ${currency.trim().toUpperCase()}/mo`;
+  const feeOf = (p: Record<string, string>) =>
+    formatFee(p.core_net_price__local_currency, p.deal_currency_code || p.currency, p.billing_schedule);
+  const own = feeOf(deal);
+  if (own != null || !salesFallback?.isPriced) return own;
+  return feeOf(salesFallback.deal.properties);
 }
 
 export function formatAcv(amount: string | undefined): string | null {
@@ -241,6 +250,7 @@ const LIFECYCLE_DEAL_PROPS = [
   "booking_fee",
   "confirmed_booking_fee",
   "core_net_price__local_currency",
+  "billing_schedule",
   "amount_in_home_currency",
   "test_billing_start_date",
   // Watch-outs
@@ -264,6 +274,7 @@ const SALES_DEAL_PROPS = [
   "currency",
   "deal_currency_code",
   "core_net_price__local_currency",
+  "billing_schedule",
   "test_billing_start_date",
   "hubspot_owner_id",
 ];
@@ -1287,22 +1298,14 @@ export async function buildOnboardingPayload(
     }
     if (salesOwnerName == null) salesOwnerName = "missing";
 
-    // Monthly fee — prefer the priced sales deal as the source of truth, since
-    // lifecycle deals often inherit a default currency (EUR) regardless of the
-    // actual deal currency. Fall back to the lifecycle deal only when no priced
-    // sales deal exists.
-    let feeAmount: string | undefined = p.core_net_price__local_currency;
-    let feeCurrency: string | undefined = p.deal_currency_code || p.currency;
-    if (company) {
-      const priced = pickSalesFallback(salesDealsByCompany.get(company.companyId) ?? []);
-      if (priced?.isPriced) {
-        feeAmount = priced.deal.properties.core_net_price__local_currency;
-        feeCurrency = priced.deal.properties.deal_currency_code || priced.deal.properties.currency;
-      }
-    }
+    // Fee — the lifecycle deal's price first (it carries the live package);
+    // the priced sales deal only while the lifecycle deal has none.
+    const feeFallback = company
+      ? pickSalesFallback(salesDealsByCompany.get(company.companyId) ?? [])
+      : null;
 
     const commercial: OnboardingCommercial = {
-      monthlyFee: formatMonthlyFee(feeAmount, feeCurrency),
+      monthlyFee: feeFromDeals(p, feeFallback),
       acv: formatAcv(p.amount_in_home_currency),
       bookingFee: formatBookingFee(p.booking_fee, p.confirmed_booking_fee),
       firstBilling,
@@ -1692,7 +1695,7 @@ export async function buildOnboardingPayload(
             payStatus: dp ? nullable(dp.understory_pay_status__customer) : null,
           },
           commercial: {
-            monthlyFee: dp ? formatMonthlyFee(dp.core_net_price__local_currency, dp.currency) : null,
+            monthlyFee: dp ? feeFromDeals(dp, null) : null,
             acv: dp ? formatAcv(dp.amount_in_home_currency) : null,
             bookingFee: dp ? formatBookingFee(dp.booking_fee, dp.confirmed_booking_fee) : null,
             firstBilling: dp ? formatFirstBilling(dp.test_billing_start_date) : null,

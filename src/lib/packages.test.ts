@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildPackageFromDeal,
   formatPackagePrice,
+  lifecycleFee,
   packageExtraLines,
   packageItemName,
   packagePillText,
@@ -104,5 +105,21 @@ describe("packagePillText", () => {
     expect(packagePillText("Enterprise", 2)).toBe("Enterprise +2");
     expect(packagePillText(null, 1)).toBe("+1");
     expect(packagePillText(null, 0)).toBe("—");
+  });
+});
+
+describe("lifecycleFee (company page Fee row)", () => {
+  it("shows the contracted price with its billing period", () => {
+    expect(lifecycleFee({ core_net_price__local_currency: "3588", deal_currency_code: "SEK", billing_schedule: "Yearly" })).toBe("3,588 SEK/yr");
+  });
+
+  it("falls back to the Contract MRR per month when the net price is 0 or blank", () => {
+    expect(lifecycleFee({ core_net_price__local_currency: "0", deal_currency_code: "DKK", confirmed__contract_mrr: "19" })).toBe("19 EUR/mo");
+    expect(lifecycleFee({ confirmed__contract_mrr: "19" })).toBe("19 EUR/mo");
+  });
+
+  it("returns null when neither a price nor an MRR is set", () => {
+    expect(lifecycleFee({ core_net_price__local_currency: "0", confirmed__contract_mrr: "0" })).toBeNull();
+    expect(lifecycleFee({})).toBeNull();
   });
 });

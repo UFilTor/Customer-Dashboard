@@ -190,6 +190,43 @@ export function packageProductKeys(pkg: CompanyPackage | null | undefined): stri
   return pkg ? pkg.addOns.map((a) => a.key) : [];
 }
 
+/**
+ * Contracted Booking price with its billing period: "299 SEK/mo",
+ * "3,588 SEK/yr", or "3,588 SEK" when the schedule is blank (never guess).
+ * `core_net_price__local_currency` is the yearly total on Yearly deals, so the
+ * schedule has to come from the same deal as the amount. Lives here, not in
+ * onboarding.ts, so client components (the company page) can import it.
+ */
+export function formatFee(
+  amount: string | undefined,
+  currency: string | undefined,
+  billingSchedule: string | undefined
+): string | null {
+  if (amount == null || amount === "") return null;
+  const n = parseFloat(amount);
+  if (isNaN(n) || n === 0) return null;
+  if (!currency || !currency.trim()) return null;
+  const schedule = billingSchedule ?? "";
+  const period = /year/i.test(schedule) ? "/yr" : /month/i.test(schedule) ? "/mo" : "";
+  return `${Math.round(n).toLocaleString("en-US")} ${currency.trim().toUpperCase()}${period}`;
+}
+
+/**
+ * Fee row on the company page: the lifecycle deal's contracted price with its
+ * period. Product-led lifecycle deals often have no net price but a Contract
+ * MRR (e.g. Explorer at 19), so that is the fallback, shown per month.
+ * TODO(simplification): assumes confirmed__contract_mrr is in EUR. It has no
+ * currency of its own, it reads 19 on EUR and DKK deals alike, and the old
+ * row printed it with "€". Switch to a currency-tagged MRR property if one
+ * appears.
+ */
+export function lifecycleFee(deal: Record<string, string>): string | null {
+  return (
+    formatFee(deal.core_net_price__local_currency, deal.deal_currency_code || deal.currency, deal.billing_schedule) ??
+    formatFee(deal.confirmed__contract_mrr, "EUR", "Monthly")
+  );
+}
+
 /** "799 SEK/mo", "4,788 SEK/yr", "99 SEK one-off", or null when unpriced. */
 export function formatPackagePrice(item: PackageItem): string | null {
   if (item.amountMinor == null) return null;

@@ -1,5 +1,57 @@
 import { describe, it, expect } from "vitest";
-import { parseAttendeeOwnerIds, startOfNthPastWorkDay } from "./onboarding";
+import { feeFromDeals, parseAttendeeOwnerIds, startOfNthPastWorkDay } from "./onboarding";
+import { formatFee } from "./packages";
+
+describe("formatFee", () => {
+  it("labels a yearly price per year, not per month", () => {
+    expect(formatFee("3588", "SEK", "Yearly")).toBe("3,588 SEK/yr");
+  });
+
+  it("labels a monthly price per month", () => {
+    expect(formatFee("299", "sek", "Monthly")).toBe("299 SEK/mo");
+  });
+
+  it("shows no period when the billing schedule is blank", () => {
+    expect(formatFee("3588", "SEK", undefined)).toBe("3,588 SEK");
+    expect(formatFee("3588", "SEK", "")).toBe("3,588 SEK");
+  });
+
+  it("returns null for a missing, zero or unparseable amount, or a blank currency", () => {
+    expect(formatFee(undefined, "SEK", "Yearly")).toBeNull();
+    expect(formatFee("0", "SEK", "Yearly")).toBeNull();
+    expect(formatFee("abc", "SEK", "Yearly")).toBeNull();
+    expect(formatFee("3588", " ", "Yearly")).toBeNull();
+  });
+});
+
+describe("feeFromDeals", () => {
+  const lifecycle = { core_net_price__local_currency: "3588", deal_currency_code: "SEK", billing_schedule: "Yearly" };
+  const sales = {
+    isPriced: true,
+    deal: { properties: { core_net_price__local_currency: "2688", deal_currency_code: "SEK", billing_schedule: "Monthly" } },
+  };
+
+  it("prefers the lifecycle deal's price over the sales deal", () => {
+    expect(feeFromDeals(lifecycle, sales)).toBe("3,588 SEK/yr");
+  });
+
+  it("falls back to the priced sales deal, with that deal's schedule, when the lifecycle deal has no price", () => {
+    expect(feeFromDeals({ deal_currency_code: "SEK", billing_schedule: "Yearly" }, sales)).toBe("2,688 SEK/mo");
+  });
+
+  it("treats a zero lifecycle price as no price and falls back", () => {
+    expect(feeFromDeals({ core_net_price__local_currency: "0", deal_currency_code: "SEK" }, sales)).toBe("2,688 SEK/mo");
+  });
+
+  it("doesn't borrow an unpriced sales deal or a null fallback", () => {
+    expect(feeFromDeals({ deal_currency_code: "SEK" }, { ...sales, isPriced: false })).toBeNull();
+    expect(feeFromDeals({ deal_currency_code: "SEK" }, null)).toBeNull();
+  });
+
+  it("uses the legacy currency property when deal_currency_code is blank", () => {
+    expect(feeFromDeals({ core_net_price__local_currency: "199", currency: "NOK", billing_schedule: "Monthly" }, null)).toBe("199 NOK/mo");
+  });
+});
 
 describe("parseAttendeeOwnerIds", () => {
   it("splits HubSpot's semicolon-delimited multi-checkbox string", () => {

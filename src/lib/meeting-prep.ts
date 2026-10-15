@@ -20,8 +20,8 @@ import {
   fetchUpcomingMeetingsByOwners,
   formatAcv,
   formatBookingFee,
+  feeFromDeals,
   formatFirstBilling,
-  formatMonthlyFee,
   nullable,
   parseAttendeeOwnerIds,
   parseEnableUnderstoryPay,
@@ -761,18 +761,6 @@ function buildMeetingPrepDeal(
     ? ownerNameMap[salesOwnerId] ?? "missing"
     : "missing";
 
-  // Monthly fee — for lifecycle deals, prefer the priced sales deal (default
-  // currency on lifecycle is often EUR regardless of the actual deal currency).
-  // For retention deals we use the deal's own currency.
-  let feeAmount: string | undefined = dp.core_net_price__local_currency;
-  let feeCurrency: string | undefined = dp.deal_currency_code || dp.currency;
-  if (isLifecycle && salesFallback?.isPriced) {
-    feeAmount = salesFallback.deal.properties.core_net_price__local_currency;
-    feeCurrency =
-      salesFallback.deal.properties.deal_currency_code ||
-      salesFallback.deal.properties.currency;
-  }
-
   // First billing — lifecycle uses test_billing_start_date with sales fallback;
   // retention deals show whatever the deal carries (no fallback).
   let firstBilling = formatFirstBilling(dp.test_billing_start_date);
@@ -781,7 +769,9 @@ function buildMeetingPrepDeal(
   }
 
   const commercial: OnboardingCommercial = {
-    monthlyFee: formatMonthlyFee(feeAmount, feeCurrency),
+    // Fee — the lifecycle deal's price first, the priced sales deal only while
+    // the lifecycle deal has none. Retention deals use their own price.
+    monthlyFee: feeFromDeals(dp, isLifecycle ? salesFallback : null),
     acv: formatAcv(dp.amount_in_home_currency),
     bookingFee: formatBookingFee(dp.booking_fee, dp.confirmed_booking_fee),
     firstBilling,

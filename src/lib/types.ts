@@ -297,7 +297,10 @@ export interface OnboardingObNotesExtended extends OnboardingObNotes {
 
 export interface OnboardingCommercial {
   // All fields can be null if missing from HubSpot.
-  monthlyFee: string | null;       // "X CCY/mo"
+  // "X CCY/mo", "X CCY/yr", or "X CCY" when the billing schedule is blank.
+  // Shown as "Fee"; the field keeps its old name so edge-cached payloads from
+  // before a deploy still fill the row.
+  monthlyFee: string | null;
   acv: string | null;              // "X EUR"
   bookingFee: string | null;       // "X.XX%" — confirmed_booking_fee overrides booking_fee silently
   firstBilling: string | null;     // "YYYY-MM-DD"

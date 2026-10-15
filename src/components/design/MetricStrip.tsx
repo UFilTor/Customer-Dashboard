@@ -96,7 +96,7 @@ export function MetricStrip({ company, deal }: MetricStripProps) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 18 }}>
       <Tile label="Booking volume 12M" value={fmtEurFull(volume12m)} />
-      <Tile label="Revenue 12M" value={fmtEurFull(revenue)} tone="highlight" />
+      <Tile label="Revenue 12M" value={fmtEurFull(revenue)} />
       <Tile label="Understory Pay" value={pay.label} tone={pay.tone} />
       <Tile label="Invoice" value={invoice.label} tone={invoice.tone} />
       <Tile

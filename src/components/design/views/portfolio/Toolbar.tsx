@@ -8,12 +8,12 @@ import { useEffect, useRef, useState } from "react";
 import { type PortfolioRefineState, type PortfolioSignalKey, type PortfolioSortKey } from "@/lib/types";
 import { PORTFOLIO_SIGNALS, PORTFOLIO_SIGNAL_MAP } from "@/lib/signals";
 import { getSortOptions } from "@/lib/portfolio";
-import { type PortfolioShownStatuses, type PortfolioViewState } from "@/lib/portfolio-views";
-import { RefinePill } from "./RefinePill";
+import { type PortfolioShownStatuses, type PortfolioViewState, type SavedPortfolioView } from "@/lib/portfolio-views";
+import { RefinePill, refineActiveCount } from "./RefinePill";
 import { SearchPill } from "./SearchPill";
 import { StatusFilterPill } from "./StatusFilterPill";
 import { ViewsPill } from "./ViewsPill";
-import { Caret, eyebrowStyle, ghostBtnStyle, pillTriggerStyle, useOutsideClose } from "./chrome";
+import { Caret, eyebrowStyle, formatNum, ghostBtnStyle, pillTriggerStyle, useOutsideClose } from "./chrome";
 
 export interface ToolbarProps {
   // Free-text account filter. Owned by page-client (URL param `q`) so it
@@ -42,7 +42,13 @@ export interface ToolbarProps {
   onResetDefaults: () => void;
   snoozedCount: number;
   currentViewState: PortfolioViewState;
-  onApplyView: (state: PortfolioViewState) => void;
+  onApplyView: (view: SavedPortfolioView) => void;
+  activeViewId: string | null;
+  onDetachView: () => void;
+  // "Showing X of Y": X is the filtered row count, Y the rows before
+  // Signals, Refine and Search (Status + territory scope only).
+  totalRowCount: number;
+  scopeRowCount: number;
 }
 
 function FilterDropdown({
@@ -326,8 +332,38 @@ export function Toolbar({
   snoozedCount,
   currentViewState,
   onApplyView,
+  activeViewId,
+  onDetachView,
+  totalRowCount,
+  scopeRowCount,
 }: ToolbarProps) {
-  const isFiltered = selectedSignals.length > 0;
+  // "Clear all" covers the filters this toolbar owns: Signals, Refine, Status
+  // and Search. Sort, the table/board toggle, saved views and the global
+  // Person/Region filter stay as they are. The Any/All match mode doesn't
+  // count as a filter on its own (it's a no-op below two signals), but it is
+  // reset alongside the signals.
+  const isFiltered =
+    selectedSignals.length > 0 ||
+    refineActiveCount(refine) > 0 ||
+    Object.values(shownStatuses).some(Boolean) ||
+    search !== "";
+
+  function clearAll() {
+    clearSignals();
+    if (stackedSignals) toggleStackedSignals();
+    setRefine({});
+    // Back to the default "Active only": switch off every status that's on.
+    // SAFETY: shownStatuses is a PortfolioShownStatuses literal built by the
+    // container, so its keys are exactly that interface's keys.
+    for (const s of Object.keys(shownStatuses) as Array<keyof PortfolioShownStatuses>) {
+      if (shownStatuses[s]) toggleStatus(s);
+    }
+    if (search !== "") onSearchChange("");
+    // Cleared filters no longer describe any saved view, so the Views pill
+    // goes back to "N saved" instead of showing "<name> · edited".
+    onDetachView();
+  }
+
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
 
@@ -447,18 +483,17 @@ export function Toolbar({
 
       <span style={{ flex: 1 }} />
 
-      {isFiltered && (
-        <button onClick={clearSignals} style={ghostBtnStyle}>
-          Clear filters
-        </button>
-      )}
       {hasSavedDefault && !defaultsAreCurrent && (
         <button onClick={onResetDefaults} style={ghostBtnStyle}>
           Reset to default
         </button>
       )}
 
-      <ViewsPill currentViewState={currentViewState} onApplyView={onApplyView} />
+      <ViewsPill
+        currentViewState={currentViewState}
+        onApplyView={onApplyView}
+        activeViewId={activeViewId}
+      />
 
       <div ref={sortRef} style={{ position: "relative" }}>
         <button
@@ -483,6 +518,34 @@ export function Toolbar({
           />
         )}
       </div>
+
+      {/* Filter summary line. A full-width flex item, so it wraps onto its
+          own row inside the sticky strip, and only while something is
+          filtered. Clear all lives here, next to what it clears. */}
+      {isFiltered && (
+        <div
+          style={{
+            flexBasis: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12,
+            color: "var(--green-100)",
+          }}
+        >
+          <span role="status">
+            Showing{" "}
+            <strong style={{ color: "var(--moss)", fontWeight: 600 }}>{formatNum(totalRowCount)}</strong>
+            {" "}of{" "}
+            <strong style={{ color: "var(--moss)", fontWeight: 600 }}>{formatNum(scopeRowCount)}</strong>
+            {scopeRowCount === 1 ? " account" : " accounts"}
+          </span>
+          <span style={{ flex: 1 }} />
+          <button onClick={clearAll} style={ghostBtnStyle}>
+            Clear all
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,15 +5,41 @@
 // components receive everything through props exactly as before.
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { deleteView, getDefaultViewIdServerSnapshot, getDefaultViewIdSnapshot, getSavedViewsServerSnapshot, getSavedViewsSnapshot, saveView, setDefaultView, subscribeSavedViews, type PortfolioViewState } from "@/lib/portfolio-views";
+import { deleteView, getDefaultViewIdServerSnapshot, getDefaultViewIdSnapshot, getSavedViewsServerSnapshot, getSavedViewsSnapshot, saveView, setDefaultView, subscribeSavedViews, type PortfolioShownStatuses, type PortfolioViewState, type SavedPortfolioView } from "@/lib/portfolio-views";
+import { type PortfolioRefineState } from "@/lib/types";
 import { Caret, eyebrowStyle, pillTriggerStyle, useOutsideClose } from "./chrome";
+
+// Order-insensitive fingerprint of a filter object. "Off" values (unset,
+// false, empty string, empty list) are dropped so `{ stages: [] }` and `{}`
+// compare equal, and lists are sorted so selection order doesn't matter.
+function filterFingerprint(obj: PortfolioRefineState | PortfolioShownStatuses): string {
+  const entries = Object.entries(obj)
+    .filter(([, v]) => v != null && v !== false && v !== "" && !(Array.isArray(v) && v.length === 0))
+    .map(([k, v]) => [k, Array.isArray(v) ? [...v].sort() : v] as const)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return JSON.stringify(entries);
+}
+
+// "Edited" compares only the filters (Signals, Any/All, Refine, Status).
+// Sort and collapsed board columns are presentation, not filters, so
+// changing them never marks a view as edited.
+export function sameFilters(a: PortfolioViewState, b: PortfolioViewState): boolean {
+  return (
+    [...a.signals].sort().join(",") === [...b.signals].sort().join(",") &&
+    a.stackedSignals === b.stackedSignals &&
+    filterFingerprint(a.refine) === filterFingerprint(b.refine) &&
+    filterFingerprint(a.shownStatuses) === filterFingerprint(b.shownStatuses)
+  );
+}
 
 export function ViewsPill({
   currentViewState,
   onApplyView,
+  activeViewId,
 }: {
   currentViewState: PortfolioViewState;
-  onApplyView: (state: PortfolioViewState) => void;
+  onApplyView: (view: SavedPortfolioView) => void;
+  activeViewId: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState(false);
@@ -34,6 +60,10 @@ export function ViewsPill({
     getDefaultViewIdSnapshot,
     getDefaultViewIdServerSnapshot
   );
+
+  // A deleted view simply stops matching, so the pill falls back to "N saved".
+  const activeView = views.find((v) => v.id === activeViewId) ?? null;
+  const edited = activeView != null && !sameFilters(activeView.state, currentViewState);
 
   // Reset the name form whenever the popup closes (adjust-during-render).
   const [prevOpen, setPrevOpen] = useState(open);
@@ -76,6 +106,8 @@ export function ViewsPill({
   function handleSave() {
     const saved = saveView(name, currentViewState);
     if (saved) {
+      // The current filters now are this view, so it becomes the active one.
+      onApplyView(saved);
       setNaming(false);
       setName("");
     }
@@ -83,11 +115,38 @@ export function ViewsPill({
 
   return (
     <div ref={wrapRef} style={{ position: "relative" }}>
-      <button onClick={() => setOpen((v) => !v)} style={pillTriggerStyle(false)}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={pillTriggerStyle(false)}
+        aria-label={activeView ? `Views: ${activeView.name}${edited ? ", edited" : ""}` : undefined}
+      >
         <span style={eyebrowStyle}>Views</span>
-        <span style={{ whiteSpace: "nowrap", fontWeight: 600 }}>
-          {views.length > 0 ? `${views.length} saved` : "None"}
-        </span>
+        {activeView ? (
+          <span style={{ display: "inline-flex", alignItems: "baseline", gap: 5, minWidth: 0 }}>
+            <span
+              title={activeView.name}
+              style={{
+                whiteSpace: "nowrap",
+                fontWeight: 600,
+                maxWidth: 140,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {activeView.name}
+            </span>
+            {/* Text, not just a dot, so the state doesn't rely on color. */}
+            {edited && (
+              <span style={{ whiteSpace: "nowrap", color: "var(--green-100)", fontWeight: 400 }}>
+                · edited
+              </span>
+            )}
+          </span>
+        ) : (
+          <span style={{ whiteSpace: "nowrap", fontWeight: 600 }}>
+            {views.length > 0 ? `${views.length} saved` : "None"}
+          </span>
+        )}
         <span className="kbd">⇧V</span>
         <Caret open={open} />
       </button>
@@ -124,8 +183,9 @@ export function ViewsPill({
                   <button
                     className="pf-pop-row"
                     style={{ flex: 1, minWidth: 0 }}
+                    aria-current={v.id === activeView?.id ? "true" : undefined}
                     onClick={() => {
-                      onApplyView(v.state);
+                      onApplyView(v);
                       setOpen(false);
                     }}
                   >

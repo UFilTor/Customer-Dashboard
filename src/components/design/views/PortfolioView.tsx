@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { type PortfolioRefineState, type PortfolioRow, type PortfolioSignalKey, type PortfolioSortKey } from "@/lib/types";
 import { PORTFOLIO_SIGNAL_ORDER } from "@/lib/signals";
 import { getSortOptions, mapKindToKey } from "@/lib/portfolio";
-import { type PortfolioShownStatuses, type PortfolioViewState } from "@/lib/portfolio-views";
+import { type PortfolioShownStatuses, type PortfolioViewState, type SavedPortfolioView } from "@/lib/portfolio-views";
 import { EditorialEmpty } from "../EditorialEmpty";
 import { Banner } from "./portfolio/Banner";
 import { ColumnHeaders, SectionHeader } from "./portfolio/ColumnHeaders";
@@ -61,7 +61,11 @@ interface Props {
   // Saved views (ViewsPill). currentViewState is what "Save current view"
   // captures; onApplyView restores a saved snapshot in one go.
   currentViewState: PortfolioViewState;
-  onApplyView: (state: PortfolioViewState) => void;
+  onApplyView: (view: SavedPortfolioView) => void;
+  activeViewId: string | null;
+  onDetachView: () => void;
+  // Rows before Signals, Refine and Search: the "of Y" in "Showing X of Y".
+  scopeRowCount: number;
 
   // Accumulated ACV (EUR) of the current filtered set, for the banner.
   portfolioValueEur: number;
@@ -326,6 +330,10 @@ export function PortfolioView(props: Props) {
               onResetDefaults={props.onResetDefaults}
               currentViewState={props.currentViewState}
               onApplyView={props.onApplyView}
+              activeViewId={props.activeViewId}
+              onDetachView={props.onDetachView}
+              totalRowCount={props.totalRowCount}
+              scopeRowCount={props.scopeRowCount}
             />
             <ColumnHeaders
               sortKey={props.sortKey}

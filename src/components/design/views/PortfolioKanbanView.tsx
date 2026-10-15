@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type PortfolioRefineState, type PortfolioRow, type PortfolioSignalKey, type PortfolioSortKey } from "@/lib/types";
 import { getSortOptions } from "@/lib/portfolio";
-import { type PortfolioShownStatuses, type PortfolioViewState } from "@/lib/portfolio-views";
+import { type PortfolioShownStatuses, type PortfolioViewState, type SavedPortfolioView } from "@/lib/portfolio-views";
 import { groupByStage, flattenBoardOffsets, type KanbanColumnKey } from "@/lib/portfolio-kanban";
 import { Banner } from "./portfolio/Banner";
 import { KanbanBoard } from "./portfolio/KanbanBoard";
@@ -50,7 +50,11 @@ interface Props {
   onUnsnoozeCompany: (companyId: string) => void;
 
   currentViewState: PortfolioViewState;
-  onApplyView: (state: PortfolioViewState) => void;
+  onApplyView: (view: SavedPortfolioView) => void;
+  activeViewId: string | null;
+  onDetachView: () => void;
+  // Rows before Signals, Refine and Search: the "of Y" in "Showing X of Y".
+  scopeRowCount: number;
 
   portfolioValueEur: number;
 
@@ -169,6 +173,10 @@ export function PortfolioKanbanView(props: Props) {
               onResetDefaults={props.onResetDefaults}
               currentViewState={props.currentViewState}
               onApplyView={props.onApplyView}
+              activeViewId={props.activeViewId}
+              onDetachView={props.onDetachView}
+              totalRowCount={props.totalRowCount}
+              scopeRowCount={props.scopeRowCount}
             />
           </div>
 

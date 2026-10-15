@@ -19,6 +19,7 @@ import {
   getDefaultSavedView,
   type PortfolioShownStatuses,
   type PortfolioViewState,
+  type SavedPortfolioView,
 } from "@/lib/portfolio-views";
 import { reportFreshness } from "@/lib/freshness";
 import { announce } from "@/lib/live-announcer";
@@ -141,6 +142,12 @@ export function PortfolioContainer({
     hibernation: false,
     snoozed: false,
   });
+  // The saved view last applied (or loaded as the starred default). The
+  // Views pill shows its name and marks it "edited" once the filters drift.
+  // Clear all detaches it. Not persisted: a company-detail round-trip
+  // remounts this container, which re-applies the starred default anyway.
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const detachView = useCallback(() => setActiveViewId(null), []);
   const [sortKey, setSortKey] = useState<PortfolioSortKey>("urgency");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
@@ -257,7 +264,10 @@ export function PortfolioContainer({
     if (error) announce(`Couldn't refresh: ${error}`);
   }, [error]);
 
-  const filteredSortedRows = useMemo<PortfolioRow[]>(() => {
+  // The book before Signals, Refine and Search: Status visibility plus the
+  // territory scope. Its length is the "of Y" in the toolbar's
+  // "Showing X of Y" line, so X (filteredSortedRows) can never exceed it.
+  const scopedRows = useMemo<PortfolioRow[]>(() => {
     // Defensive default — adversarial QA caught a dashboard-wide crash when
     // an upstream payload returned `rows: null` or omitted the field. Coerce
     // here and downstream so a malformed response degrades to "empty list"
@@ -278,14 +288,16 @@ export function PortfolioContainer({
     // rather than ownership, so the fetch is unscoped and the narrowing happens
     // here. Rows with no country recorded fall outside every territory.
     const countries = effectiveCountries(filter);
-    const inScope = countries
+    return countries
       ? statusFiltered.filter((r) => (r.companyCountry ? countries.has(r.companyCountry) : false))
       : statusFiltered;
+  }, [data, filter, shownStatuses, snoozedIds]);
 
+  const filteredSortedRows = useMemo<PortfolioRow[]>(() => {
     // Free-text narrowing on name / domain. Runs before the signal filter so
     // everything downstream (signal counts in view, sections, pagination,
     // board columns) operates on the searched set.
-    const searched = inScope.filter((r) => matchesPortfolioSearch(r, search));
+    const searched = scopedRows.filter((r) => matchesPortfolioSearch(r, search));
 
     const filtered = selectedSignals.length === 0
       ? searched
@@ -351,7 +363,7 @@ export function PortfolioContainer({
       if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
       return ((av as number) - (bv as number)) * dir;
     });
-  }, [data, filter, search, selectedSignals, stackedSignals, shownStatuses, snoozedIds, sortKey, sortDirection, refine]);
+  }, [scopedRows, search, selectedSignals, stackedSignals, sortKey, sortDirection, refine]);
 
   // Board mode groups the full filtered+sorted set into stage columns and
   // bypasses pagination entirely (no PAGE_SIZE slice). boardFlatRows is the
@@ -579,6 +591,7 @@ export function PortfolioContainer({
     // Cmd+S signals+sort default — it restores the full toolbar state.
     const defView = getDefaultSavedView();
     if (defView) {
+      setActiveViewId(defView.id);
       setSelectedSignals(defView.state.signals);
       setStackedSignals(defView.state.stackedSignals);
       setRefine(defView.state.refine);
@@ -713,7 +726,9 @@ export function PortfolioContainer({
 
   // Saved views: apply restores the full toolbar state in one go; the
   // current snapshot is what "Save current view" persists.
-  const applyView = useCallback((state: PortfolioViewState) => {
+  const applyView = useCallback((view: SavedPortfolioView) => {
+    const { state } = view;
+    setActiveViewId(view.id);
     setSelectedSignals(state.signals);
     setStackedSignals(state.stackedSignals);
     setRefine(state.refine);
@@ -836,6 +851,9 @@ export function PortfolioContainer({
           onUnsnoozeCompany={onUnsnoozeCompany}
           currentViewState={currentViewState}
           onApplyView={applyView}
+          activeViewId={activeViewId}
+          onDetachView={detachView}
+          scopeRowCount={scopedRows.length}
           portfolioValueEur={portfolioValueEur}
           sortKey={sortKey}
           sortDirection={sortDirection}
@@ -876,6 +894,9 @@ export function PortfolioContainer({
           onUnsnoozeCompany={onUnsnoozeCompany}
           currentViewState={currentViewState}
           onApplyView={applyView}
+          activeViewId={activeViewId}
+          onDetachView={detachView}
+          scopeRowCount={scopedRows.length}
           portfolioValueEur={portfolioValueEur}
           sortKey={sortKey}
           sortDirection={sortDirection}

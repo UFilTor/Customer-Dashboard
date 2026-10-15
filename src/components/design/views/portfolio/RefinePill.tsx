@@ -11,7 +11,7 @@ import { DatePopover } from "../../DatePopover";
 import { PACKAGE_FILTER_PRODUCTS } from "@/lib/packages";
 import { Caret, eyebrowStyle, pillTriggerStyle, refineInputStyle, useOutsideClose } from "./chrome";
 
-function refineActiveCount(r: PortfolioRefineState): number {
+export function refineActiveCount(r: PortfolioRefineState): number {
   let n = 0;
   if (r.acvMin != null) n++;
   if (r.acvMax != null) n++;

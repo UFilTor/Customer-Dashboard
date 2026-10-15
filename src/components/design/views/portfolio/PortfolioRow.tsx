@@ -8,7 +8,7 @@ import { memo } from "react";
 import { type PortfolioRow } from "@/lib/types";
 import { OWNER_MAP } from "@/lib/owners";
 import { Avatar } from "../../Avatar";
-import { CalmGlyph, DealStatusTag, QuickActions, SignalPill } from "./cells";
+import { CalmGlyph, DealStatusTag, QuickActions, SignalOverflow, SignalPill } from "./cells";
 import { COLS_GRID_NO_OWNER, COLS_GRID_WITH_OWNER, STAGE_BADGE, formatNum } from "./chrome";
 import { SnoozedTag } from "./snooze";
 import { companyOpenProps, stopRowActivation } from "../company-row-props";
@@ -225,20 +225,7 @@ export const Row = memo(function Row({
               />
             ))}
             {safeSignals.length > 3 && (
-              <span
-                title={safeSignals.slice(3).map((s) => s.title).join(" · ")}
-                aria-label={`${safeSignals.length - 3} more signal${
-                  safeSignals.length - 3 === 1 ? "" : "s"
-                }: ${safeSignals.slice(3).map((s) => s.title).join(", ")}`}
-                style={{
-                  fontSize: 10,
-                  color: "var(--green-100)",
-                  fontWeight: 600,
-                  paddingLeft: 2,
-                }}
-              >
-                +{safeSignals.length - 3}
-              </span>
+              <SignalOverflow signals={safeSignals.slice(3)} companyName={row.name} />
             )}
           </>
         )}

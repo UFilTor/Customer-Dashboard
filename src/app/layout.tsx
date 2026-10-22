@@ -1,32 +1,42 @@
 import type { Metadata } from "next";
-import { Inter, Oswald, Fraunces, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import RetuneIfDev from "@/components/RetuneIfDev";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { APP_TITLE } from "@/lib/document-title";
 import "./globals.css";
 
-const inter = Inter({
+// Self-hosted so the build never fetches Google Fonts: next/font/google's
+// build-time download failed intermittently ("next/font/google queries have
+// exactly one entry") and took production deploys down with it. The files are
+// the Latin subsets next/font/google served before, so Latin text renders
+// unchanged.
+// TODO(simplification): Latin only. next/font/google also lazy-loaded the
+// latin-ext subset; letters from it (ž, ė: 2 of 1,055 Portfolio rows on
+// 2026-10-22) now render in the fallback font (Arial, or Times New Roman for
+// Fraunces). Upgrade path: add each family's latin-ext file as a second
+// localFont with a unicode-range, listed before the Latin one in globals.css.
+const inter = localFont({
   variable: "--font-inter",
-  subsets: ["latin"],
+  src: [{ path: "./fonts/inter-latin.woff2", weight: "100 900", style: "normal" }],
 });
 
-const oswald = Oswald({
+const oswald = localFont({
   variable: "--font-oswald",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  src: [{ path: "./fonts/oswald-latin.woff2", weight: "500 700", style: "normal" }],
 });
 
-const fraunces = Fraunces({
+const fraunces = localFont({
   variable: "--font-fraunces",
-  subsets: ["latin"],
-  weight: ["300", "400"],
-  style: ["normal", "italic"],
+  src: [
+    { path: "./fonts/fraunces-latin.woff2", weight: "300 400", style: "normal" },
+    { path: "./fonts/fraunces-italic-latin.woff2", weight: "300 400", style: "italic" },
+  ],
+  adjustFontFallback: "Times New Roman",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
   variable: "--font-jetbrains",
-  subsets: ["latin"],
-  weight: ["400", "500"],
+  src: [{ path: "./fonts/jetbrains-mono-latin.woff2", weight: "400 500", style: "normal" }],
 });
 
 export const metadata: Metadata = {

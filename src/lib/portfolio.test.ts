@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyPortfolioStage, isSignalApplicable, extractSortKey, getSortOptions, buildRow, matchesPortfolioSearch, __test } from "./portfolio";
+import { classifyPortfolioStage, isSignalApplicable, extractSortKey, getSortOptions, buildRow, matchesPortfolioSearch, tallySignals, __test } from "./portfolio";
 import type { PortfolioRow } from "./types";
 import { OWNERS, REGIONS, effectiveCountries, effectiveOwnerIds, scopeHasMixedOwners } from "./owners";
 
@@ -457,20 +457,47 @@ describe("territory owners (country-scoped books)", () => {
   });
 });
 
+describe("tallySignals (Signals menu and header chips)", () => {
+  // SAFETY: the tally reads only `signals`; the rest of the row is irrelevant.
+  const row = (signals: { kind: string; title: string }[] | undefined) => ({ signals }) as PortfolioRow;
+
+  it("counts each signal once per account and splits open from overdue invoices", () => {
+    const counts = tallySignals([
+      row([{ kind: "overdue_invoice", title: "Overdue invoice" }, { kind: "not_on_pay", title: "Not on Pay" }]),
+      row([{ kind: "overdue_invoice", title: "Open invoice" }]),
+      row([{ kind: "overdue_invoice", title: "Overdue invoice" }]),
+    ]);
+    expect(counts.overdue_invoices).toBe(2);
+    expect(counts.open_invoices).toBe(1);
+    expect(counts.not_on_pay).toBe(1);
+    expect(counts.stuck_in_step).toBe(0);
+  });
+
+  it("counts only the rows it is given, so hidden-status accounts stay out", () => {
+    // The container passes the Status-filtered rows; a paused account that is
+    // not in the list must not reach the counts.
+    expect(tallySignals([]).overdue_invoices).toBe(0);
+  });
+
+  it("tolerates rows from an older cached payload with no signals field", () => {
+    expect(tallySignals([row(undefined)]).overdue_invoices).toBe(0);
+  });
+});
+
 describe("owner and region lists", () => {
   it("lists people alphabetically - the picker, the Shift+F cycle and the LLM directory all read this order", () => {
     const names = OWNERS.map((o) => o.name);
     expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
   });
 
-  it("scopes Spain by country, since it has no CS reps to scope by", () => {
-    // An owner-based Spain would resolve to an empty id set, which serialises
-    // to "" and reads server-side as "no filter" - i.e. the entire book.
+  it("scopes Spain by country, not by its CS reps", () => {
+    // Spain means accounts in Spain (48 on 2026-10-21), not the accounts its
+    // reps own (16): most Spanish accounts are owned outside the Spain team.
     expect(effectiveOwnerIds({ kind: "region", region: "ES" })).toBeNull();
     expect([...effectiveCountries({ kind: "region", region: "ES" })!]).toEqual(["ES"]);
   });
 
-  it("leaves the staffed regions owner-scoped", () => {
+  it("leaves the owner-scoped regions (DK, SE, IT) owner-scoped", () => {
     for (const region of ["DK", "SE", "IT"] as const) {
       expect(effectiveCountries({ kind: "region", region })).toBeNull();
       expect(effectiveOwnerIds({ kind: "region", region })!.size).toBeGreaterThan(0);

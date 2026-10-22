@@ -15,6 +15,18 @@ import { _buildPromptForTest as buildPrompt } from "./search-llm";
 describe("buildPrompt (Lookup)", () => {
   const filter = { kind: "all" } as const;
 
+  it("scopes Spain by company country, with the reps only for deal-only queries", () => {
+    const p = buildPrompt("anything", { kind: "region", region: "ES" }, null);
+    expect(p).toContain(`{"propertyName":"understory_company_country","operator":"EQ","value":"ES"}`);
+    expect(p).toMatch(/for a deal-only query, scope by the region's owners/);
+  });
+
+  it("keeps the owner-scoped regions on owner wording", () => {
+    const p = buildPrompt("anything", { kind: "region", region: "DK" }, null);
+    expect(p).toMatch(/Active filter: region = DK \(ownerIds \[/);
+    expect(p).not.toMatch(/scoped by company country/);
+  });
+
   it("includes the country ISO-code rule and table", () => {
     const p = buildPrompt("anything", filter, null);
     expect(p).toMatch(/two-letter ISO code/);

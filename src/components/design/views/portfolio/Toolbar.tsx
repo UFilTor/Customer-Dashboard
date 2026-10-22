@@ -29,9 +29,11 @@ export interface ToolbarProps {
   setRefine: (next: PortfolioRefineState | ((prev: PortfolioRefineState) => PortfolioRefineState)) => void;
   shownStatuses: PortfolioShownStatuses;
   toggleStatus: (s: keyof PortfolioShownStatuses) => void;
-  // Toolbar feeds the FilterDropdown with book-wide totals so signal
-  // counts stay stable as the user toggles filters. The current-scope
-  // totals (used by the banner) live one level up in PortfolioView.
+  // Toolbar feeds the FilterDropdown with the totals of the rows the
+  // Person/Region filter and Status setting show (before Search, Refine and
+  // the signal selection) so signal counts stay
+  // stable as the user toggles signals. The visible-list totals (used by the
+  // banner) live one level up in PortfolioView.
   globalTotalsBySignal: Record<PortfolioSignalKey, number>;
   sortKey: PortfolioSortKey;
   sortDirection: "asc" | "desc";

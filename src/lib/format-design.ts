@@ -36,15 +36,22 @@ export function fmtHealth(score: string | number | null | undefined): HealthInfo
   const n = typeof score === "number" ? score : parseFloat(score);
   if (isNaN(n)) return { label: "—", num: null, tone: "muted" };
   // Health scores are stored 0-100 in the live HubSpot data, but legacy 0-1 ratios
-  // also show up. Normalise so anything >= 1 is treated as 0-100.
-  const num = Math.round(n > 1 ? n : n * 100);
-  let label: string;
-  let tone: HealthInfo["tone"];
-  if (num < 40) { label = "Weak"; tone = "bad"; }
-  else if (num < 60) { label = "At risk"; tone = "warn"; }
-  else if (num < 80) { label = "Good"; tone = "good"; }
-  else { label = "Strong"; tone = "good"; }
-  return { label, num, tone };
+  // also show up. Only a fraction strictly between 0 and 1 is a ratio: whole
+  // scores of 0 and 1 are real 0-100 scores (live data has both), and reading
+  // 1 as a ratio showed those accounts as "Strong (100)".
+  // TODO(simplification): the scale is still guessed from the value, so a
+  // legacy ratio stored as exactly 1.0 (100%) now reads as 1. Upgrade path:
+  // drop ratio support once no legacy 0-1 scores remain in HubSpot.
+  const num = Math.round(n > 0 && n < 1 ? n * 100 : n);
+  return { ...healthBand(num), num };
+}
+
+/** Band for a 0-100 score. */
+function healthBand(num: number): { label: string; tone: HealthInfo["tone"] } {
+  if (num < 40) return { label: "Weak", tone: "bad" };
+  if (num < 60) return { label: "At risk", tone: "warn" };
+  if (num < 80) return { label: "Good", tone: "good" };
+  return { label: "Strong", tone: "good" };
 }
 
 export function relDays(iso: string | null | undefined): string {

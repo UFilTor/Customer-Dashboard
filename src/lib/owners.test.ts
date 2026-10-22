@@ -166,7 +166,7 @@ describe("meetingMatchesFilter — territory owner", () => {
 });
 
 describe("meetingMatchesFilter — country-scoped region", () => {
-  it("keeps Spain by account country, since no CS owner attends anything yet", () => {
+  it("keeps Spain by account country, whoever is in the meeting", () => {
     expect(
       meetingMatchesFilter(
         { kind: "region", region: "ES" },

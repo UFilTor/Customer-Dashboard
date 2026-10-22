@@ -11,7 +11,7 @@ import type {
 } from "@/lib/types";
 import { effectiveCountries, effectiveOwnerIds, type GlobalFilter, parseFilter, serializeFilter } from "@/lib/owners";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
-import { extractSortKey, getSortOptions, mapKindToKey, matchesPortfolioSearch } from "@/lib/portfolio";
+import { extractSortKey, getSortOptions, mapKindToKey, matchesPortfolioSearch, tallySignals } from "@/lib/portfolio";
 import { PORTFOLIO_SIGNAL_ORDER, PORTFOLIO_SIGNAL_MAP } from "@/lib/signals";
 import { getSnoozed, snoozeCompany, unsnoozeCompany, type SnoozedCompany } from "@/lib/snoozed";
 import {
@@ -211,12 +211,23 @@ export function PortfolioContainer({
 
   const dataRef = useRef<PortfolioResponse | null>(null);
   useEffect(() => { dataRef.current = data; });
-  const inFlightRef = useRef(false);
+  // The in-flight guard dedupes repeat calls for the SAME filter (refresh
+  // events while a fetch runs). A filter change must still fetch, and only the
+  // latest request may write state: the old guard returned early on a filter
+  // switch mid-fetch, so the previous filter's rows stayed on screen under the
+  // new filter's label.
+  const inFlightKeyRef = useRef<string | null>(null);
+  const requestSeqRef = useRef(0);
+  // The filter key the rows in `data` were fetched for. A failed filter switch
+  // must not leave the previous filter's rows under the new filter's label.
+  const dataKeyRef = useRef<string | null>(null);
 
   const fetchData = useCallback(
     async (refresh = false) => {
-      if (inFlightRef.current) return;
-      inFlightRef.current = true;
+      if (inFlightKeyRef.current === key) return;
+      inFlightKeyRef.current = key;
+      const seq = ++requestSeqRef.current;
+      const isLatest = () => seq === requestSeqRef.current;
       if (dataRef.current === null) setIsFirstLoading(true);
       else setIsRevalidating(true);
       setError(null);
@@ -226,18 +237,27 @@ export function PortfolioContainer({
         if (key !== "all") params.set("ownerIds", key);
         const url = `/api/portfolio${params.toString() ? `?${params.toString()}` : ""}`;
         const res = await apiFetch(url);
+        if (!isLatest()) return;
         if (!res.ok) {
+          if (dataKeyRef.current !== key) setData(null);
           setError(friendlyErrorMessage(null, res.status));
           return;
         }
         const json: PortfolioResponse = await res.json();
+        if (!isLatest()) return;
+        dataKeyRef.current = key;
         setData(json);
       } catch (err) {
-        setError(friendlyErrorMessage(err));
+        if (isLatest()) {
+          if (dataKeyRef.current !== key) setData(null);
+          setError(friendlyErrorMessage(err));
+        }
       } finally {
-        setIsFirstLoading(false);
-        setIsRevalidating(false);
-        inFlightRef.current = false;
+        if (isLatest()) {
+          setIsFirstLoading(false);
+          setIsRevalidating(false);
+          inFlightKeyRef.current = null;
+        }
       }
     },
     [key]
@@ -398,16 +418,18 @@ export function PortfolioContainer({
   // no announcement. This also doubles as the "load finished" signal — the
   // count itself is the confirmation, so a separate "loaded" announce isn't
   // needed. Skipped during the first load so a stale "0 accounts" doesn't
-  // fire before data arrives.
+  // fire before data arrives, and when a load failed with nothing to show
+  // (the error announce covers that).
+  const hasData = data != null;
   useEffect(() => {
-    if (isFirstLoading) return;
+    if (isFirstLoading || !hasData) return;
     const count = filteredSortedRows.length;
     const signalNote = selectedSignals.length > 0
       ? `, filtered to ${selectedSignals.map((k) => PORTFOLIO_SIGNAL_MAP[k]?.label ?? k).join(", ")}`
       : "";
     const searchNote = search.trim() ? ` matching "${search.trim()}"` : "";
     announce(`${count} account${count === 1 ? "" : "s"}${searchNote}${signalNote}`);
-  }, [filteredSortedRows.length, search, selectedSignals, isFirstLoading]);
+  }, [filteredSortedRows.length, search, selectedSignals, isFirstLoading, hasData]);
 
   // Reset to page 1 whenever filter/signal/sort context changes. Following
   // the prev-X "adjust state during render" pattern the strict react-hooks
@@ -677,36 +699,23 @@ export function PortfolioContainer({
     return () => window.removeEventListener("keydown", onKey);
   }, [page, onPageChange, filteredSortedRows.length, view, active]);
 
-  // When a filter is active, the global totalsBySignal payload (which
-  // counts the entire book) misrepresents the current scope. Recompute
-  // counts over the filtered rows so the banner breakdown stays honest.
-  const totalsBySignal = useMemo<Record<PortfolioSignalKey, number>>(() => {
-    const empty: Record<PortfolioSignalKey, number> = {
-      overdue_invoices: 0, open_invoices: 0, no_future_events: 0, health_dropped: 0,
-      stuck_in_step: 0, volume_declining: 0, wish_to_churn: 0, gone_quiet: 0,
-      not_on_pay: 0,
-    };
-    // Unfiltered: the API-provided totals are the right answer. Anything that
-    // narrows the set client-side has to disqualify this shortcut, or the
-    // headline reads "8 customers" while the breakdown underneath still
-    // reports the whole book's 147/130/42. That is true of a search term, and
-    // of a country-scoped filter (a territory owner or Spain), whose payload
-    // is deliberately the unscoped one.
-    const narrowsClientSide = search.trim() !== "" || effectiveCountries(filter) !== null;
-    if (selectedSignals.length === 0 && !narrowsClientSide) {
-      return data?.totalsBySignal ?? empty;
-    }
-    // Narrowed: tally distinct signals across filteredSortedRows.
-    const counts = { ...empty };
-    for (const row of filteredSortedRows) {
-      const sigs = Array.isArray(row.signals) ? row.signals : [];
-      for (const s of sigs) {
-        const k = mapKindToKey(s.kind, s.title);
-        counts[k] += 1;
-      }
-    }
-    return counts;
-  }, [data, filter, search, selectedSignals, filteredSortedRows]);
+  // Every count matches the list on screen. The API's totalsBySignal counts
+  // the whole payload, including the paused / product hold / hibernation rows
+  // the Status setting hides by default (Stuck in step read 69 under All while
+  // the list held 49), and a country-scoped payload is the unscoped book. So
+  // both counts are tallied client-side from the rows the list actually uses.
+  // Header chips: the visible list (Search, Refine and ticked signals apply).
+  const totalsBySignal = useMemo<Record<PortfolioSignalKey, number>>(
+    () => tallySignals(filteredSortedRows),
+    [filteredSortedRows]
+  );
+
+  // Signals menu: the filter and Status scope only, so its counts stay put
+  // while you tick signals, search or refine.
+  const menuTotalsBySignal = useMemo<Record<PortfolioSignalKey, number>>(
+    () => tallySignals(scopedRows),
+    [scopedRows]
+  );
 
   // Stable callback so the memoized Row stays cheap. A fresh closure each
   // render would defeat React.memo on the row component.
@@ -776,7 +785,33 @@ export function PortfolioContainer({
     setSortDirection(opt?.direction ?? "desc");
   }, []);
 
-  if (error && !data) return <div style={{ padding: 24 }}>{error}</div>;
+  // Same error state as Pay Migration and Meeting prep.
+  if (error && !data) {
+    return (
+      <div
+        style={{
+          background: "var(--beige-new)",
+          minHeight: "calc(100vh - 120px)",
+          padding: "60px 28px",
+          textAlign: "center",
+        }}
+      >
+        <p style={{ color: "var(--rust)", marginBottom: 12 }}>{error}</p>
+        <button
+          onClick={() => fetchData(true)}
+          style={{
+            padding: "8px 14px",
+            borderRadius: 10,
+            background: "var(--moss)",
+            color: "var(--text-on-moss)",
+            cursor: "pointer",
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
   if (isFirstLoading) return <PortfolioSkeleton />;
   if (!data) return null;
 
@@ -829,7 +864,7 @@ export function PortfolioContainer({
           nowIso={data?.generatedAt ?? new Date().toISOString()}
           totalRowCount={filteredSortedRows.length}
           totalsBySignal={totalsBySignal}
-          globalTotalsBySignal={data?.totalsBySignal ?? totalsBySignal}
+          globalTotalsBySignal={menuTotalsBySignal}
           filterLabel={filterLabel}
           showAvatar={showAvatar}
           search={search}
@@ -872,7 +907,7 @@ export function PortfolioContainer({
           rows={paginatedRows}
           totalRowCount={filteredSortedRows.length}
           totalsBySignal={totalsBySignal}
-          globalTotalsBySignal={data?.totalsBySignal ?? totalsBySignal}
+          globalTotalsBySignal={menuTotalsBySignal}
           filterLabel={filterLabel}
           showAvatar={showAvatar}
           search={search}

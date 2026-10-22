@@ -14,6 +14,7 @@ import { SnoozedTag } from "./snooze";
 import { companyOpenProps, stopRowActivation } from "../company-row-props";
 import { Tooltip } from "../../Tooltip";
 import { packagePillText } from "@/lib/packages";
+import { fmtHealth } from "@/lib/format-design";
 
 // Wrapped in React.memo because Portfolio renders this hundreds of times.
 // `onSelect` is taken as a stable callback (parent useCallbacks it) so the
@@ -61,13 +62,15 @@ export const Row = memo(function Row({
       : prioritized.detail
     : null;
   const firstDetail = safeSignals[0]?.detail;
+  // Same number and band as the company page.
+  const health = fmtHealth(row.healthScore);
   // Health number is exact, so the column doesn't need to encode severity in
   // color too. Keeping rust on the row's signal pill as the single severity
   // moment per row; weak scores read in the muted green-100 to drop back.
   const healthColor =
-    row.healthScore == null
+    health.num == null
       ? "var(--green-100)"
-      : row.healthScore >= 65
+      : health.num >= 65
         ? "var(--moss)"
         : "var(--green-100)";
 
@@ -81,7 +84,7 @@ export const Row = memo(function Row({
     safeSignals.length > 0
       ? safeSignals.map((s) => s.title).join(". ")
       : "No signals flagged",
-    row.healthScore != null ? `Health ${Math.round(row.healthScore)}` : null,
+    health.num != null ? `Health ${health.num}, ${health.label}` : null,
     row.revenue ? `${formatNum(row.revenue)} EUR ACV` : null,
     row.daysSinceContact != null ? `Last contact ${row.daysSinceContact} days ago` : null,
   ]
@@ -241,9 +244,19 @@ export const Row = memo(function Row({
           fontWeight: 600,
           textAlign: "right",
           justifySelf: "end",
+          whiteSpace: "nowrap",
         }}
       >
-        {row.healthScore == null ? "·" : Math.round(row.healthScore)}
+        {health.num == null ? "·" : (
+          <>
+            {/* The band gives the bare number a scale ("Weak 15"); muted so
+                the number stays the figure the eye lands on. */}
+            <span style={{ fontSize: 11, fontWeight: 400, color: "var(--green-100)", marginRight: 4 }}>
+              {health.label}
+            </span>
+            {health.num}
+          </>
+        )}
       </span>
 
       <span

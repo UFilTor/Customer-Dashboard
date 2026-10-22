@@ -22,6 +22,18 @@ describe("formatFee", () => {
     expect(formatFee("abc", "SEK", "Yearly")).toBeNull();
     expect(formatFee("3588", " ", "Yearly")).toBeNull();
   });
+
+  it("shows the HubSpot amount as stored, without rounding", () => {
+    expect(formatFee("99.9", "SEK", "Monthly")).toBe("99.90 SEK/mo");
+    expect(formatFee("0.4", "EUR", "Monthly")).toBe("0.40 EUR/mo");
+    expect(formatFee("-299", "SEK", "Monthly")).toBe("-299 SEK/mo");
+  });
+
+  it("returns null instead of guessing from text that is not a number", () => {
+    expect(formatFee("1,5", "SEK", "Monthly")).toBeNull();
+    expect(formatFee("1 000", "SEK", "Monthly")).toBeNull();
+    expect(formatFee("Infinity", "SEK", "Monthly")).toBeNull();
+  });
 });
 
 describe("feeFromDeals", () => {

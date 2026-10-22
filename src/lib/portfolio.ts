@@ -198,6 +198,22 @@ export function mapKindToKey(kind: string, title: string): PortfolioSignalKey {
   }
 }
 
+/** Accounts per signal across `rows` (each row counts once per signal). The
+ *  Portfolio container passes only the rows its Status setting shows, so the
+ *  Signals menu and header chips match the list. */
+export function tallySignals(rows: PortfolioRow[]): Record<PortfolioSignalKey, number> {
+  const counts: Record<PortfolioSignalKey, number> = {
+    overdue_invoices: 0, open_invoices: 0, no_future_events: 0, health_dropped: 0,
+    stuck_in_step: 0, volume_declining: 0, wish_to_churn: 0, gone_quiet: 0,
+    not_on_pay: 0,
+  };
+  for (const row of rows) {
+    const sigs = Array.isArray(row.signals) ? row.signals : [];
+    for (const s of sigs) counts[mapKindToKey(s.kind, s.title)] += 1;
+  }
+  return counts;
+}
+
 export function extractSortKey(row: PortfolioRow, key: PortfolioSortKey): number | string | null {
   switch (key) {
     // Universal

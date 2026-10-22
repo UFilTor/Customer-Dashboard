@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { HAIKU_MODEL } from "./llm";
-import { OWNERS } from "./owners";
+import { OWNERS, REGIONS } from "./owners";
 import type {
   GlobalFilter,
 } from "./owners";
@@ -182,6 +182,19 @@ function filterContextBlock(filter: GlobalFilter): string {
   }
   if (filter.kind === "region") {
     const ownerIds = OWNERS.filter((o) => o.region === filter.region).map((o) => `"${o.id}"`);
+    // Same rule as Portfolio and Meeting prep: a country-scoped region (Spain)
+    // means accounts in that country, whoever owns them. Country lives on
+    // companies only, so deal-only queries fall back to the region's reps.
+    // TODO(simplification): that fallback sees the reps' accounts (16 for
+    // Spain on 2026-10-21), not every account in the country (48). Upgrade
+    // path: resolve companies by country first, then fetch their deals.
+    const countries = REGIONS.find((r) => r.key === filter.region)?.countries;
+    if (countries) {
+      const countryFilter = countries.length === 1
+        ? `{"propertyName":"understory_company_country","operator":"EQ","value":"${countries[0]}"}`
+        : `{"propertyName":"understory_company_country","operator":"IN","value":"${countries.join(",")}"}`;
+      return `Active filter: region = ${filter.region}, scoped by company country, not by owner. Treat "in my region" / "the team" as a company target with ${countryFilter}. Country is company-only: for a deal-only query, scope by the region's owners instead (ownerIds [${ownerIds.join(", ")}]).`;
+    }
     return `Active filter: region = ${filter.region} (ownerIds [${ownerIds.join(", ")}]). Treat "in my region" / "the team" as these owners.`;
   }
   return `Active filter: all (no scope). If the query says "mine" the user has not picked a person — return an error spec.`;

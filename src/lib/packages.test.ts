@@ -108,6 +108,19 @@ describe("packagePillText", () => {
   });
 });
 
+describe("plan price period", () => {
+  it("shows no period when the plan's billing schedule is blank, like the Fee row", () => {
+    const pkg = buildPackageFromDeal({ subscription_plan: "Growth", core_net_price__local_currency: "3588", deal_currency_code: "SEK", billing_schedule: "" });
+    expect(formatPackagePrice(pkg.plan!)).toBe("3,588 SEK");
+    expect(lifecycleFee({ core_net_price__local_currency: "3588", deal_currency_code: "SEK", billing_schedule: "" })).toBe("3,588 SEK");
+  });
+
+  it("keeps per month for add-ons that have no billing schedule property", () => {
+    const pkg = buildPackageFromDeal({ deal_currency_code: "SEK", bloom_arr__eur: "1200", bloom_full_price__local_currency: "99.9" });
+    expect(formatPackagePrice(pkg.addOns[0])).toBe("99.90 SEK/mo");
+  });
+});
+
 describe("lifecycleFee (company page Fee row)", () => {
   it("shows the contracted price with its billing period", () => {
     expect(lifecycleFee({ core_net_price__local_currency: "3588", deal_currency_code: "SEK", billing_schedule: "Yearly" })).toBe("3,588 SEK/yr");

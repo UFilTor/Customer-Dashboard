@@ -11,7 +11,9 @@
 
 export type PackageProductKey = "website" | "meta_ads" | "google_ads" | "reviews" | "accounting";
 export type PackageItemKind = "plan" | "addon" | "one_off";
-export type PackageBilling = "monthly" | "annual" | "one_off";
+/** "unspecified" = the schedule property exists but is blank or unrecognised:
+ *  shown with no period rather than a guessed one. */
+export type PackageBilling = "monthly" | "annual" | "one_off" | "unspecified";
 
 export interface PackageItem {
   /** "plan", a PackageProductKey, or "launch_package" / "website_launch". */
@@ -47,7 +49,8 @@ interface AddOnSpec {
   /** Contracted price, local currency, per billing period. Tried in order. */
   price: string[];
   tier?: string;
-  /** Billing-schedule property (Monthly / Yearly); absent = monthly. */
+  /** Billing-schedule property (Monthly / Yearly). No property = always
+   *  monthly; a property left blank on the deal shows no period. */
   schedule?: string;
 }
 
@@ -94,7 +97,8 @@ export function toMinor(v: string | undefined | null): number | null {
 }
 
 function billingOf(schedule: string | undefined): PackageBilling {
-  return /year/i.test(schedule || "") ? "annual" : "monthly";
+  const s = schedule || "";
+  return /year/i.test(s) ? "annual" : /month/i.test(s) ? "monthly" : "unspecified";
 }
 
 function blankToNull(v: string | undefined): string | null {
@@ -142,7 +146,7 @@ export function buildPackageFromDeal(p: Record<string, string | null | undefined
       label: a.label,
       // google_ads_tier is multi-checkbox ("Branded;Smart").
       tier: tierRaw ? tierRaw.split(";").map((s) => s.trim()).filter(Boolean).join(" + ") : null,
-      billing: billingOf(a.schedule ? get(a.schedule) : undefined),
+      billing: a.schedule ? billingOf(get(a.schedule)) : "monthly",
       amountMinor: toMinor(priceRaw),
       currency,
     });
@@ -202,13 +206,29 @@ export function formatFee(
   currency: string | undefined,
   billingSchedule: string | undefined
 ): string | null {
-  if (amount == null || amount === "") return null;
-  const n = parseFloat(amount);
-  if (isNaN(n) || n === 0) return null;
+  const minor = toMinor(amount);
+  if (minor == null || minor === 0) return null;
   if (!currency || !currency.trim()) return null;
-  const schedule = billingSchedule ?? "";
-  const period = /year/i.test(schedule) ? "/yr" : /month/i.test(schedule) ? "/mo" : "";
-  return `${Math.round(n).toLocaleString("en-US")} ${currency.trim().toUpperCase()}${period}`;
+  return formatPrice(minor, currency.trim().toUpperCase(), billingOf(billingSchedule));
+}
+
+const PERIOD_SUFFIX: Record<PackageBilling, string> = {
+  monthly: "/mo",
+  annual: "/yr",
+  one_off: " one-off",
+  unspecified: "",
+};
+
+/** The one money formatter for fees and package prices: the HubSpot amount as
+ *  stored, decimals only when it has them ("3,588 SEK/yr", "99.90 SEK/mo"). */
+function formatPrice(amountMinor: number, currency: string | null, billing: PackageBilling): string {
+  const major = amountMinor / 100;
+  const num = major.toLocaleString("en-GB", {
+    minimumFractionDigits: Number.isInteger(major) ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+  const cur = currency ? ` ${currency}` : "";
+  return `${num}${cur}${PERIOD_SUFFIX[billing]}`;
 }
 
 /**
@@ -230,14 +250,7 @@ export function lifecycleFee(deal: Record<string, string>): string | null {
 /** "799 SEK/mo", "4,788 SEK/yr", "99 SEK one-off", or null when unpriced. */
 export function formatPackagePrice(item: PackageItem): string | null {
   if (item.amountMinor == null) return null;
-  const major = item.amountMinor / 100;
-  const num = major.toLocaleString("en-GB", {
-    minimumFractionDigits: Number.isInteger(major) ? 0 : 2,
-    maximumFractionDigits: 2,
-  });
-  const cur = item.currency ? ` ${item.currency}` : "";
-  const suffix = item.billing === "monthly" ? "/mo" : item.billing === "annual" ? "/yr" : " one-off";
-  return `${num}${cur}${suffix}`;
+  return formatPrice(item.amountMinor, item.currency, item.billing);
 }
 
 /** Display name incl. tier: "Website Starter", "Google Ads Branded + Smart". */

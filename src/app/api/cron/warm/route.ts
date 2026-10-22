@@ -22,9 +22,10 @@ export const maxDuration = 300;
 // `/api/pay-migration` caches a single global scope and filters client-side,
 // so it doesn't need region warms.
 // Only the owner-scoped regions are warmed. A country-scoped region (Spain)
-// and a territory owner (Janne) both read the unscoped payload warmed above,
-// so they need no entry here - and must not get one: they have no owners, so
-// the CSV would come out empty, which the route reads as "no filter".
+// and a territory owner (Janne, Adrián) both read the unscoped payload warmed
+// above, so they need no entry here. A territory owner must not get one: it
+// owns no deals, so the CSV would come out empty, which the route reads as
+// "no filter".
 function ownerIdsForRegion(region: "DK" | "SE" | "IT"): string {
   return [...OWNERS.filter((o) => o.region === region).map((o) => o.id)]
     .sort()

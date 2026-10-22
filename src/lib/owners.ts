@@ -70,24 +70,22 @@ export const OWNER_MAP: Record<string, Owner> = Object.fromEntries(
 );
 
 /**
- * A region normally resolves to the CS owners who sit in it. Spain has no CS
- * owner yet, so it declares `countries` and resolves by company country
- * instead - the only definition that returns anything. Note this makes Spain
- * mean "accounts in Spain" while DK/SE/IT still mean "accounts owned by that
- * region's reps"; the two differ by ~60 accounts each (reps hold accounts
- * outside their own country). Worth unifying, but that would move a couple of
- * hundred accounts between filters, so it is a deliberate decision, not a
- * detail to change in passing.
+ * A region normally resolves to the CS owners who sit in it. Spain declares
+ * `countries` and resolves by company country instead, in every view
+ * (Portfolio, Meeting prep, Lookup). Decided 2026-10-21 after the Spanish reps
+ * joined: they owned 16 accounts while 48 sat in Spain, 22 of them Nicolò's,
+ * so an owner-based Spain would have hidden most Spanish customers. This makes
+ * Spain mean "accounts in Spain" while DK/SE/IT still mean "accounts owned by
+ * that region's reps"; the two differ by ~60 accounts each (reps hold accounts
+ * outside their own country).
  */
 export const REGIONS: { key: RegionKey; label: string; countries?: readonly string[] }[] = [
   { key: "DK", label: "Denmark" },
   { key: "SE", label: "Sweden" },
   { key: "IT", label: "Italy" },
-  // Spanish CS reps are being hired later this year. When they land, give them
-  // region: "ES" and delete `countries` here to put Spain on the same
-  // owner-based footing as its siblings - it is deliberately explicit rather
-  // than "owners if any, else countries", so the switch is a visible decision
-  // and not a silent change the first time someone is added.
+  // Country-scoped on purpose (see above). The Spanish reps carry region: "ES"
+  // for labels and Lookup's deal-only fallback; deleting `countries` here
+  // would switch Spain to owner scope everywhere.
   { key: "ES", label: "Spain", countries: ["ES"] },
 ];
 
@@ -101,10 +99,9 @@ export function effectiveOwnerIds(filter: GlobalFilter): Set<string> | null {
     if (OWNER_MAP[filter.ownerId]?.countries) return null;
     return new Set([filter.ownerId]);
   }
-  // A country-scoped region has no owners to scope by; fetch the whole book
-  // and let effectiveCountries narrow it, exactly as for a territory owner.
-  // Without this the empty owner set would serialise to "", which the API
-  // reads as "no filter" and answers with the entire book.
+  // A country-scoped region (Spain) is scoped by company country, not by its
+  // reps (decided 2026-10-21, see REGIONS); fetch the whole book and let
+  // effectiveCountries narrow it, exactly as for a territory owner.
   if (REGIONS.find((r) => r.key === filter.region)?.countries) return null;
   const ids = OWNERS.filter((o) => o.region === filter.region).map((o) => o.id);
   return new Set(ids);
@@ -131,7 +128,7 @@ export interface FilterableMeetingEntry {
     /** Optional: pre-deploy cached payloads predate this field. */
     attendeeOwnerIds?: string[] | null;
   };
-  /** Account location, for the country-scoped regions that have no owner yet. */
+  /** Account location, for country-scoped regions (Spain), which are scoped by company country, not by owner. */
   deal: { country: string | null };
 }
 
@@ -167,9 +164,8 @@ function someoneIsInMeeting(ids: Set<string>, entry: FilterableMeetingEntry): bo
  * So don't reuse the Portfolio scoping helpers here; the two answer different
  * questions on purpose.
  *
- * A region defined by countries rather than owners (Spain, until its CS reps
- * are hired) has nobody to attend anything, so location is the only test that
- * returns results there.
+ * A region defined by countries rather than owners (Spain) is tested by
+ * location, so it shows the same accounts as Portfolio's Spain.
  */
 export function meetingMatchesFilter(
   filter: GlobalFilter,

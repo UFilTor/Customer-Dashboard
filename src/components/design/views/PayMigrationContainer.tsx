@@ -5,6 +5,7 @@ import type { PayMigrationData, PayDeal, CompanySearchResult } from "@/lib/types
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { reportFreshness } from "@/lib/freshness";
 import { useDashboardSlot, useRefetchOnReturn } from "../dashboard-slot";
+import { RefreshFailedBanner } from "../RefreshFailedBanner";
 import { PayMigrationView } from "./PayMigrationView";
 
 interface Props {
@@ -107,7 +108,10 @@ export function PayMigrationContainer({ payFilter, onSelectCompany }: Props) {
     );
   }
 
-  if (error || !data) {
+  // Full-screen error only when there is nothing to show. A failed refetch
+  // (R, or the quiet refetch on return) keeps the last payload on screen with
+  // a banner, so expanded "Show all" lists and scroll survive it.
+  if (!data) {
     return (
       <div
         style={{
@@ -135,11 +139,14 @@ export function PayMigrationContainer({ payFilter, onSelectCompany }: Props) {
   }
 
   return (
-    <PayMigrationView
-      data={data}
-      payFilter={payFilter}
-      isRefreshing={isRefreshing}
-      onDealClick={handleDealClick}
-    />
+    <>
+      {error && <RefreshFailedBanner error={error} />}
+      <PayMigrationView
+        data={data}
+        payFilter={payFilter}
+        isRefreshing={isRefreshing}
+        onDealClick={handleDealClick}
+      />
+    </>
   );
 }

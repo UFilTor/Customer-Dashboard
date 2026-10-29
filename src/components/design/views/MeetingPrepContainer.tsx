@@ -17,6 +17,7 @@ import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { reportFreshness } from "@/lib/freshness";
 import { carryOverLazyDays } from "@/lib/meeting-prep-days";
 import { useDashboardSlot, useRefetchOnReturn } from "../dashboard-slot";
+import { RefreshFailedBanner } from "../RefreshFailedBanner";
 import { MeetingPrepView } from "./MeetingPrepView";
 
 interface Props {
@@ -336,20 +337,23 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
   }
 
   return (
-    <div className={isRevalidating ? "is-revalidating" : undefined}>
-      <MeetingPrepView
-        // Null for a territory filter: see the prop's note in MeetingPrepView.
-        dealsTotal={effectiveCountries(filter) ? null : (data?.dealsTotal ?? 0)}
-        lifecycleDealsTotal={data?.lifecycleDealsTotal ?? 0}
-        retentionDealsTotal={data?.retentionDealsTotal ?? 0}
-        meetings={filtered.meetings}
-        filterLabel={filterLabel}
-        fetchedDays={fetchedDays}
-        fetchingDays={fetchingDays}
-        onFetchDay={fetchDay}
-        historyLoading={historyLoading}
-        onSelectCompany={onSelectCompany}
-      />
-    </div>
+    <>
+      {error && data && <RefreshFailedBanner error={error} />}
+      <div className={isRevalidating ? "is-revalidating" : undefined}>
+        <MeetingPrepView
+          // Null for a territory filter: see the prop's note in MeetingPrepView.
+          dealsTotal={effectiveCountries(filter) ? null : (data?.dealsTotal ?? 0)}
+          lifecycleDealsTotal={data?.lifecycleDealsTotal ?? 0}
+          retentionDealsTotal={data?.retentionDealsTotal ?? 0}
+          meetings={filtered.meetings}
+          filterLabel={filterLabel}
+          fetchedDays={fetchedDays}
+          fetchingDays={fetchingDays}
+          onFetchDay={fetchDay}
+          historyLoading={historyLoading}
+          onSelectCompany={onSelectCompany}
+        />
+      </div>
+    </>
   );
 }

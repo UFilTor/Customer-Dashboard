@@ -28,6 +28,7 @@ import { PortfolioKanbanView } from "./PortfolioKanbanView";
 import { PortfolioView } from "./PortfolioView";
 import { COLS_GRID_WITH_OWNER } from "./portfolio/chrome";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { RefreshFailedBanner } from "../RefreshFailedBanner";
 import { useDashboardSlot, useRefetchOnReturn } from "../dashboard-slot";
 
 // Pagination size. Default 50 rows per page — large enough that scrolling
@@ -849,22 +850,7 @@ export function PortfolioContainer({
         </div>
       )}
     >
-      {error && data && (
-        <div
-          role="status"
-          style={{
-            background: "color-mix(in oklch, var(--rust) 14%, transparent)",
-            color: "var(--rust)",
-            padding: "8px 28px",
-            textAlign: "center",
-            fontSize: 12,
-            fontWeight: 500,
-            borderBottom: "1px solid var(--hairline)",
-          }}
-        >
-          Refresh failed: {error}. Showing cached data.
-        </div>
-      )}
+      {error && data && <RefreshFailedBanner error={error} />}
       <div key={view} className="view-fade">
       {view === "board" ? (
         <PortfolioKanbanView

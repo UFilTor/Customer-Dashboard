@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { type PortfolioShownStatuses } from "@/lib/portfolio-views";
+import { useDashboardSlot } from "@/components/design/dashboard-slot";
 import { Caret, eyebrowStyle, pillTriggerStyle, useOutsideClose } from "./chrome";
 
 export function StatusFilterPill({
@@ -23,8 +24,16 @@ export function StatusFilterPill({
 
   // ⇧T mirrors ⇧F (Signals) and ⇧S (Sort). Bails on meta/ctrl so we don't
   // collide with browser shortcuts; altKey is allowed for Nordic layouts.
+  // A hidden Portfolio stays mounted behind other dashboards; ignore keys
+  // unless it is the one on screen.
+  const { active: slotActive } = useDashboardSlot();
+  // Close the popup when Portfolio leaves the screen (a `g m` chord or a
+  // company detail). The slot stays mounted, so an open popup would keep
+  // listening for arrows/Enter meant for the dashboard in front.
+  if (!slotActive && open) setOpen(false);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (!slotActive) return;
       const target = e.target as HTMLElement | null;
       const inInput =
         target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
@@ -38,7 +47,7 @@ export function StatusFilterPill({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [slotActive]);
 
   // Mirror open-state to page-client so list-nav yields while open.
   useEffect(() => {

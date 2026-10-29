@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PayMigrationData, PayDeal, CompanySearchResult } from "@/lib/types";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { reportFreshness } from "@/lib/freshness";
+import { useDashboardSlot, useRefetchOnReturn } from "../dashboard-slot";
 import { PayMigrationView } from "./PayMigrationView";
 
 interface Props {
@@ -54,15 +55,19 @@ export function PayMigrationContainer({ payFilter, onSelectCompany }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Global "R" refresh — page.tsx dispatches when the user presses R while
-  // this dashboard is mounted.
+  // Global "R" refresh — page.tsx dispatches when the user presses R. Only
+  // the selected dashboard answers; hidden ones stay mounted and would
+  // otherwise force a HubSpot rebuild each.
+  const { visible } = useDashboardSlot();
   useEffect(() => {
     function onRefresh() {
+      if (!visible) return;
       fetchData(true);
     }
     window.addEventListener("ud-refresh-dashboard", onRefresh);
     return () => window.removeEventListener("ud-refresh-dashboard", onRefresh);
-  }, [fetchData]);
+  }, [fetchData, visible]);
+  useRefetchOnReturn(fetchData);
 
   async function handleDealClick(deal: PayDeal) {
     // PayDeal carries the HubSpot companyId when available; fall back to a name search.

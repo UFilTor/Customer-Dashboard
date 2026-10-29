@@ -28,6 +28,7 @@ import { PortfolioKanbanView } from "./PortfolioKanbanView";
 import { PortfolioView } from "./PortfolioView";
 import { COLS_GRID_WITH_OWNER } from "./portfolio/chrome";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useDashboardSlot, useRefetchOnReturn } from "../dashboard-slot";
 
 // Pagination size. Default 50 rows per page — large enough that scrolling
 // stays useful within a page (Urgency-sorted top 50 covers a typical
@@ -268,11 +269,18 @@ export function PortfolioContainer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  // Only the selected dashboard answers R; hidden ones stay mounted and would
+  // otherwise force a HubSpot rebuild each.
+  const { visible } = useDashboardSlot();
   useEffect(() => {
-    function onRefresh() { fetchData(true); }
+    function onRefresh() {
+      if (!visible) return;
+      fetchData(true);
+    }
     window.addEventListener("ud-refresh-dashboard", onRefresh);
     return () => window.removeEventListener("ud-refresh-dashboard", onRefresh);
-  }, [fetchData]);
+  }, [fetchData, visible]);
+  useRefetchOnReturn(fetchData);
 
   // Loading and error states were silent to screen readers. The result-count
   // announce below covers "load finished successfully" implicitly (the new

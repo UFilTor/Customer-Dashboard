@@ -15,7 +15,7 @@ import {
   type DashboardKey,
 } from "@/components/design/VariantPicker";
 import { CommandPalette, type PaletteAction } from "@/components/design/CommandPalette";
-import { ViewTransition } from "@/components/design/ViewTransition";
+import { DashboardSlotContext } from "@/components/design/dashboard-slot";
 import { CompanyDetail } from "@/components/design/CompanyDetail";
 // Heavy dashboard containers — code-split so the default dashboard's first paint
 // doesn't pay the cost of PortfolioView + PayMigrationView (1.3k lines).
@@ -61,13 +61,13 @@ import { documentTitle } from "@/lib/document-title";
 
 type DetailData = CompanyDetailData & { owners: OwnerMap; stages: StageMap };
 
-// Dashboards whose container stays mounted (hidden) behind an open company
-// detail so its in-memory state survives the round-trip. See the body-render
-// comment further down for why these two and not the others.
-const KEEP_MOUNTED_DASHBOARDS: ReadonlySet<DashboardKey> = new Set<DashboardKey>([
-  "meeting_prep",
-  "portfolio",
-]);
+// The container a dashboard key renders. Portfolio is the fallback for any key
+// that is not wired up yet (e.g. Meta ads), so those share Portfolio's slot
+// instead of mounting a second Portfolio.
+type BodyKey = "portfolio" | "meeting_prep" | "pay_migration" | "search";
+function bodyKeyFor(d: DashboardKey): BodyKey {
+  return d === "meeting_prep" || d === "pay_migration" || d === "search" ? d : "portfolio";
+}
 
 // URL ↔ state helpers. Keeping the URL canonical for view state means back /
 // forward / refresh / share-link all work. localStorage stays as a fallback
@@ -204,8 +204,7 @@ export default function DashboardClient() {
   const [payFilter, setPayFilter] = useState<"default" | "all">("default");
   const [portfolioView, setPortfolioView] = useState<"table" | "board">("table");
   // Portfolio's free-text row filter. Lives up here (not in
-  // PortfolioContainer) because opening a company detail unmounts the
-  // container - see AGENTS.md "Dashboard container lifecycle". Deliberately
+  // PortfolioContainer) because it is part of the URL state. Deliberately
   // NOT mirrored to localStorage the way portfolioView is: a term restored on
   // a fresh visit would silently hide rows with no visible cause.
   const [portfolioSearch, setPortfolioSearch] = useState("");
@@ -364,6 +363,16 @@ export default function DashboardClient() {
     // wants a different dashboard than the current default".
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Dashboards visited this page load, in first-visit order. Each keeps its
+  // container mounted (hidden when another is in front) so its state survives
+  // switching away and back. Only counted after the URL seed: before it,
+  // `dashboard` is the Portfolio default, and a deep link to another dashboard
+  // must not leave a hidden Portfolio mounted behind it. "Adjust state during
+  // render" pattern; convergent because it only fires for an unseen key.
+  const bodyKey = bodyKeyFor(dashboard);
+  const [visited, setVisited] = useState<BodyKey[]>([]);
+  if (hydrated && !visited.includes(bodyKey)) setVisited([...visited, bodyKey]);
 
   // Mirror state into the URL (canonical) and localStorage (for first-load
   // restoration). Runs after the mount-init effect above, so the first sync
@@ -524,38 +533,35 @@ export default function DashboardClient() {
     });
   }, [selectedCompanyId, companyData, isLoadingDetail, dashboard, portfolioView]);
 
-  // Hiding the dashboard body (the keep-mounted branch further down) collapses
-  // the page height, so the browser drops the list's scroll offset and closing
-  // the detail would land at the top of a long board. Put it back on the way
-  // out. Only for the dashboards that stay mounted — the others rebuild from
-  // scratch and have no offset worth restoring.
-  // The offset is stamped with the dashboard it was taken on: `g m` and the
-  // other chords still fire while a detail is open, and the dashboard-change
-  // guard above wipes the selection, so this effect also runs on
-  // Portfolio+detail -> Meeting Prep. Restoring there would scroll a
-  // freshly-entered dashboard to the previous one's offset.
-  const listScrollRef = useRef<{ dashboard: DashboardKey; y: number } | null>(null);
-  const prevDetailIdRef = useRef<string | null>(null);
+  // The window scroll is shared by every dashboard and the detail, so each
+  // dashboard's offset is remembered separately and put back when it returns
+  // to the front: on closing a detail, and on switching back to a dashboard
+  // visited earlier. Hiding a dashboard collapses the page height and the
+  // browser clamps scrollY, so the offset can't be read at hide time. Instead
+  // a scroll listener records it continuously for whichever dashboard owns
+  // the window. The owner flips to the new one (or to null while a detail
+  // covers it) in a layout effect, which runs before the clamp's scroll event
+  // is dispatched, so the clamped value is never recorded against the list.
+  // A dashboard with no recorded offset (first visit) starts at the top.
+  const scrollByDashboardRef = useRef(new Map<BodyKey, number>());
+  const scrollOwnerRef = useRef<BodyKey | null>(bodyKey);
+  useEffect(() => {
+    function onScroll() {
+      const owner = scrollOwnerRef.current;
+      if (owner) scrollByDashboardRef.current.set(owner, window.scrollY);
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   useLayoutEffect(() => {
-    const prev = prevDetailIdRef.current;
-    prevDetailIdRef.current = selectedCompanyId;
-    if (!prev || selectedCompanyId) return;
-    const saved = listScrollRef.current;
-    if (saved?.dashboard !== dashboard) return;
-    if (!KEEP_MOUNTED_DASHBOARDS.has(dashboard)) return;
-    window.scrollTo({ top: saved.y });
-  }, [selectedCompanyId, dashboard]);
+    const owner = selectedCompanyId ? null : bodyKey;
+    if (owner === scrollOwnerRef.current) return;
+    scrollOwnerRef.current = owner;
+    if (owner) window.scrollTo({ top: scrollByDashboardRef.current.get(owner) ?? 0 });
+  }, [selectedCompanyId, bodyKey]);
 
   function selectCompany(id: string) {
     if (selectedCompanyId === id) return;
-    // Remember where the list was before the detail takes over. Captured here
-    // rather than in the layout effect below because by the time that runs the
-    // dashboard body is already hidden, the page has shrunk, and the browser
-    // has clamped scrollY. Only the first hop in counts — opening a second
-    // company from inside a detail would otherwise record the detail's scroll.
-    if (!selectedCompanyId && typeof window !== "undefined") {
-      listScrollRef.current = { dashboard, y: window.scrollY };
-    }
     // No pushState here: the URL-sync effect pushes on every
     // selectedCompanyId change, so doing it here too would double up.
     setSelectedCompanyId(id);
@@ -1014,55 +1020,53 @@ export default function DashboardClient() {
 
   const showBack = !!selectedCompanyId;
 
-  // Render the active view body. The dashboard body is built once, whether or
-  // not a detail is open, so the keep-mounted branch below can reuse it
-  // verbatim instead of duplicating each container's props.
-  let dashboardBody: React.ReactNode;
-
-  if (dashboard === "pay_migration") {
-    // Pay Migration ignores the global filter — the dashboard's own Default/All
-    // toggle is the only filter that applies here.
-    dashboardBody = (
-      <PayMigrationContainer
-        payFilter={payFilter}
-        onSelectCompany={(c) => selectCompany(c.id)}
-      />
-    );
-  } else if (dashboard === "meeting_prep") {
-    dashboardBody = (
-      <MeetingPrepContainer
-        filter={globalFilter}
-        filterLabel={filterLabel}
-        onSelectCompany={(id) => selectCompany(id)}
-      />
-    );
-  } else if (dashboard === "search") {
-    dashboardBody = (
-      <SearchContainer
-        filter={globalFilter}
-        onSelectCompany={(id) => selectCompany(id)}
-      />
-    );
-  } else {
-    // Portfolio is the default dashboard and the fallback for any key that
-    // somehow reaches here (e.g. Bloom, which is not yet wired up).
-    dashboardBody = (
-      <PortfolioContainer
-        filter={globalFilter}
-        filterLabel={filterLabel}
-        showAvatar={scopeHasMixedOwners(globalFilter)}
-        onSelectCompany={(id) => selectCompany(id)}
-        search={portfolioSearch}
-        onSearchChange={setPortfolioSearch}
-        view={portfolioView}
-        active={!selectedCompanyId}
-      />
-    );
+  // One container per dashboard. Hidden ones get the same live props as the
+  // one in front, so a global filter change reaches them too and they show
+  // the new scope when the user comes back.
+  function renderDashboardBody(key: BodyKey, active: boolean): React.ReactNode {
+    switch (key) {
+      case "pay_migration":
+        // Pay Migration ignores the global filter — the dashboard's own
+        // Default/All toggle is the only filter that applies here.
+        return (
+          <PayMigrationContainer
+            payFilter={payFilter}
+            onSelectCompany={(c) => selectCompany(c.id)}
+          />
+        );
+      case "meeting_prep":
+        return (
+          <MeetingPrepContainer
+            filter={globalFilter}
+            filterLabel={filterLabel}
+            onSelectCompany={(id) => selectCompany(id)}
+          />
+        );
+      case "search":
+        return (
+          <SearchContainer
+            filter={globalFilter}
+            onSelectCompany={(id) => selectCompany(id)}
+          />
+        );
+      case "portfolio":
+        return (
+          <PortfolioContainer
+            filter={globalFilter}
+            filterLabel={filterLabel}
+            showAvatar={scopeHasMixedOwners(globalFilter)}
+            onSelectCompany={(id) => selectCompany(id)}
+            search={portfolioSearch}
+            onSearchChange={setPortfolioSearch}
+            view={portfolioView}
+            active={active}
+          />
+        );
+    }
   }
 
   // Detail flow: shared across every dashboard.
   let detailNode: React.ReactNode = null;
-  let keepMounted = false;
 
   if (selectedCompanyId) {
     detailNode =
@@ -1077,30 +1081,41 @@ export default function DashboardClient() {
       ) : (
         <DetailLoading />
       );
-
-    // Meeting Prep and Portfolio keep the underlying view mounted so their
-    // in-memory state survives the round-trip into a company detail: Meeting
-    // Prep's day strip + focused meeting, Portfolio's signals, refine, sort,
-    // page, focused row and collapsed board columns. Esc returns the user to
-    // exactly what they left. See AGENTS.md "Dashboard container lifecycle",
-    // which prescribes this over persisting individual state slots. Pay
-    // Migration and Lookup still unmount; nothing there is worth the cost of
-    // a hidden render.
-    keepMounted = KEEP_MOUNTED_DASHBOARDS.has(dashboard);
   }
 
-  // CRITICAL: the wrapper div is rendered unconditionally, and only its
-  // `display` toggles. React reconciles by position AND element type, so
-  // adding the div only while a detail is open changes the tree shape at this
-  // slot — which unmounts and remounts the container, wiping exactly the state
-  // the wrapper exists to protect (and refetching the payload). Verified live:
+  // Every visited dashboard stays mounted in its own keyed slot, and only the
+  // slot's `display` toggles: hidden while another dashboard is in front or a
+  // company detail covers it. Esc or a switch back returns the user to exactly
+  // what they left: Meeting Prep's day strip + focused meeting, Pay
+  // Migration's expanded "Show all" lists, Lookup's results, Portfolio's
+  // signals, refine, sort, page, focused row and collapsed board columns. See
+  // AGENTS.md "Dashboard container lifecycle", which prescribes this over
+  // persisting individual state slots.
+  // CRITICAL: the slot divs are rendered unconditionally and keyed by
+  // dashboard. React reconciles by position AND element type, so adding or
+  // dropping a wrapper while a detail is open, or keying one on anything that
+  // changes, unmounts and remounts the container, wiping exactly the state
+  // the slot exists to protect (and refetching the payload). Verified live:
   // with a conditional wrapper, opening a company reset the board's collapsed
   // columns and signal filters and fired a second /api/portfolio.
+  const slotKeys = !hydrated
+    ? [bodyKey]
+    : visited.includes(bodyKey)
+      ? visited
+      : [...visited, bodyKey];
   const body = (
     <>
-      <div style={selectedCompanyId ? { display: "none" } : undefined}>
-        {selectedCompanyId && !keepMounted ? null : dashboardBody}
-      </div>
+      {slotKeys.map((key) => {
+        const visible = key === bodyKey;
+        const active = visible && !selectedCompanyId;
+        return (
+          <div key={key} style={active ? undefined : { display: "none" }}>
+            <DashboardSlotContext value={{ visible, active }}>
+              {renderDashboardBody(key, active)}
+            </DashboardSlotContext>
+          </div>
+        );
+      })}
       {detailNode}
     </>
   );
@@ -1127,11 +1142,7 @@ export default function DashboardClient() {
           portfolioView={portfolioView}
           setPortfolioView={setPortfolioView}
         />
-        <main>
-          <ViewTransition dashboard={dashboard}>
-            {body}
-          </ViewTransition>
-        </main>
+        <main>{body}</main>
       </div>
 
       <CommandPalette

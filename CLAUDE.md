@@ -76,7 +76,7 @@ Tailwind 4 is configured but only powers layout primitives in `globals.css`. The
 `eslint-config-next` enforces `react-hooks/refs` (no ref mutation during render) and `react-hooks/set-state-in-effect`. Use:
 
 - `useEffect(() => { ref.current = value; });` to mirror props into refs (see `useListKeyboardNav.ts`).
-- "Adjust state during render" with a `prevX` state slot for prop-driven resets (see `ViewTransition.tsx`, `useListKeyboardNav.ts`).
+- "Adjust state during render" with a `prevX` state slot for prop-driven resets (see the `prevDashboard` block in `page-client.tsx`, `useListKeyboardNav.ts`).
 
 ### React 19 inline-style shorthand/longhand mixing
 

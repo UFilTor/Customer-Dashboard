@@ -5,6 +5,7 @@
 // components receive everything through props exactly as before.
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useDashboardSlot } from "@/components/design/dashboard-slot";
 import { deleteView, getDefaultViewIdServerSnapshot, getDefaultViewIdSnapshot, getSavedViewsServerSnapshot, getSavedViewsSnapshot, saveView, setDefaultView, subscribeSavedViews, type PortfolioShownStatuses, type PortfolioViewState, type SavedPortfolioView } from "@/lib/portfolio-views";
 import { type PortfolioRefineState } from "@/lib/types";
 import { Caret, eyebrowStyle, pillTriggerStyle, useOutsideClose } from "./chrome";
@@ -75,8 +76,16 @@ export function ViewsPill({
 
   // ⇧V mirrors ⇧F / ⇧S / ⇧T; Escape dismisses. Bails on meta/ctrl only —
   // altKey stays allowed for Nordic layouts.
+  // A hidden Portfolio stays mounted behind other dashboards; ignore keys
+  // unless it is the one on screen.
+  const { active: slotActive } = useDashboardSlot();
+  // Close the popup when Portfolio leaves the screen (a `g m` chord or a
+  // company detail). The slot stays mounted, so an open popup would keep
+  // listening for arrows/Enter meant for the dashboard in front.
+  if (!slotActive && open) setOpen(false);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (!slotActive) return;
       if (e.key === "Escape") {
         setOpen(false);
         return;
@@ -94,7 +103,7 @@ export function ViewsPill({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [slotActive]);
 
   // Mirror open-state to page-client so list-nav yields while open.
   useEffect(() => {

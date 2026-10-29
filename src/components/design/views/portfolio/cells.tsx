@@ -7,6 +7,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type PortfolioRow } from "@/lib/types";
+import { useDashboardSlot } from "@/components/design/dashboard-slot";
 import { signalStyle, pillText, calmCopy } from "@/lib/signal-display";
 import { hubspotCompanyUrl } from "@/lib/hubspot-links";
 import { ContactActions } from "../../ContactActions";
@@ -189,6 +190,11 @@ export function SignalOverflow({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const popId = useId();
+  // This popover portals to document.body, so hiding the Portfolio slot does
+  // not hide it. Close it when Portfolio leaves the screen (a `g m` chord or
+  // a company detail) so it never floats over the dashboard in front.
+  const { active: slotActive } = useDashboardSlot();
+  if (!slotActive && open) setOpen(false);
   const n = signals.length;
 
   function toggle() {

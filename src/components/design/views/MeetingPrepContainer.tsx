@@ -15,6 +15,8 @@ import {
 import { MEETING_PREP_PAST_WEEKDAYS } from "@/config/thresholds";
 import { apiFetch, friendlyErrorMessage } from "@/lib/api-fetch";
 import { reportFreshness } from "@/lib/freshness";
+import { carryOverLazyDays } from "@/lib/meeting-prep-days";
+import { useDashboardSlot, useRefetchOnReturn } from "../dashboard-slot";
 import { MeetingPrepView } from "./MeetingPrepView";
 
 interface Props {
@@ -112,6 +114,10 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
   useEffect(() => {
     dataRef.current = data;
   });
+  const fetchedDaysRef = useRef(fetchedDays);
+  useEffect(() => {
+    fetchedDaysRef.current = fetchedDays;
+  });
 
   const inFlightRef = useRef(false);
   const fetchData = useCallback(
@@ -132,7 +138,18 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
           return;
         }
         const json: MeetingPrepResponse = await res.json();
-        setData(json);
+        const seeded = new Set(seededDayKeys(new Date()));
+        const lazyDays = new Set([...fetchedDaysRef.current].filter((d) => !seeded.has(d)));
+        setData((prev) =>
+          prev
+            ? {
+                ...json,
+                meetings: carryOverLazyDays(json.meetings, prev.meetings, lazyDays, (m) =>
+                  dayKey(new Date(m.meeting.startsAt))
+                ),
+              }
+            : json
+        );
         setDataVersion((v) => v + 1);
         if (refresh) setRefreshNonce((v) => v + 1);
       } catch (err) {
@@ -150,13 +167,18 @@ export function MeetingPrepContainer({ filter, filterLabel, onSelectCompany }: P
     fetchData();
   }, [fetchData]);
 
+  // Only the selected dashboard answers R; hidden ones stay mounted and would
+  // otherwise force a HubSpot rebuild each.
+  const { visible } = useDashboardSlot();
   useEffect(() => {
     function onRefresh() {
+      if (!visible) return;
       fetchData(true);
     }
     window.addEventListener("ud-refresh-dashboard", onRefresh);
     return () => window.removeEventListener("ud-refresh-dashboard", onRefresh);
-  }, [fetchData]);
+  }, [fetchData, visible]);
+  useRefetchOnReturn(fetchData);
 
   const fetchDay = useCallback(
     async (dateKey: string) => {

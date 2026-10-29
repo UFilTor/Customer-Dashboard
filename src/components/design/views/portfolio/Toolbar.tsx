@@ -13,6 +13,7 @@ import { RefinePill, refineActiveCount } from "./RefinePill";
 import { SearchPill } from "./SearchPill";
 import { StatusFilterPill } from "./StatusFilterPill";
 import { ViewsPill } from "./ViewsPill";
+import { useDashboardSlot } from "@/components/design/dashboard-slot";
 import { Caret, eyebrowStyle, formatNum, ghostBtnStyle, pillTriggerStyle, useOutsideClose } from "./chrome";
 
 export interface ToolbarProps {
@@ -388,8 +389,19 @@ export function Toolbar({
   // Cmd+S (save defaults) because we gate on shiftKey + !meta + !ctrl.
   // Escape dismisses whichever dropdown is open so keyboard users can back
   // out without round-tripping through the toggle.
+  // A hidden Portfolio stays mounted behind other dashboards; ignore keys
+  // unless it is the one on screen.
+  const { active: slotActive } = useDashboardSlot();
+  // Close the popup when Portfolio leaves the screen (a `g m` chord or a
+  // company detail). The slot stays mounted, so an open popup would keep
+  // listening for arrows/Enter meant for the dashboard in front.
+  if (!slotActive && (filterOpen || sortOpen)) {
+    setFilterOpen(false);
+    setSortOpen(false);
+  }
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (!slotActive) return;
       const target = e.target as HTMLElement | null;
       const inInput =
         target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
@@ -415,7 +427,7 @@ export function Toolbar({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [filterOpen, sortOpen]);
+  }, [filterOpen, sortOpen, slotActive]);
 
   const filterLabel =
     selectedSignals.length === 0

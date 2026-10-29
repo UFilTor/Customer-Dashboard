@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type PortfolioRow } from "@/lib/types";
+import { useDashboardSlot } from "@/components/design/dashboard-slot";
 import { DatePopover } from "../../DatePopover";
 import { Icon } from "../../Icon";
 import { Tooltip } from "../../Tooltip";
@@ -60,6 +61,12 @@ export function SnoozeControl({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  // This popup portals to document.body, so hiding the Portfolio slot does
+  // not hide it. Close it when Portfolio leaves the screen (a `g m` chord or
+  // a company detail) so it never floats over the dashboard in front.
+  const { active: slotActive } = useDashboardSlot();
+  if (!slotActive && open) setOpen(false);
 
   // Place the portal'd menu under the trigger; track scroll/resize while open.
   useEffect(() => {

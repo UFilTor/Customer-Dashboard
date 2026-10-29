@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type PortfolioRefineState, type PortfolioRow, type PortfolioSignalKey } from "@/lib/types";
 import { DatePopover } from "../../DatePopover";
+import { useDashboardSlot } from "@/components/design/dashboard-slot";
 import { PACKAGE_FILTER_PRODUCTS } from "@/lib/packages";
 import { Caret, eyebrowStyle, pillTriggerStyle, refineInputStyle, useOutsideClose } from "./chrome";
 
@@ -293,8 +294,16 @@ export function RefinePill({
   const wrapRef = useRef<HTMLDivElement>(null);
   useOutsideClose(wrapRef, open, () => setOpen(false));
 
+  // A hidden Portfolio stays mounted behind other dashboards; ignore keys
+  // unless it is the one on screen.
+  const { active: slotActive } = useDashboardSlot();
+  // Close the popup when Portfolio leaves the screen (a `g m` chord or a
+  // company detail). The slot stays mounted, so an open popup would keep
+  // listening for arrows/Enter meant for the dashboard in front.
+  if (!slotActive && open) setOpen(false);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (!slotActive) return;
       const target = e.target as HTMLElement | null;
       const inInput =
         target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
@@ -313,7 +322,7 @@ export function RefinePill({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, slotActive]);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("ud-portfolio-popup-state", { detail: open }));

@@ -72,3 +72,28 @@ export function relDays(iso: string | null | undefined): string {
 export function toWebUrl(domain: string): string {
   return /^https?:\/\//i.test(domain) ? domain : `https://${domain}`;
 }
+
+export type TextSegment =
+  | { kind: "text"; text: string }
+  | { kind: "link"; text: string; href: string };
+
+// A URL runs to the next whitespace but never ends on sentence punctuation, so
+// "see https://x.com/:" links "https://x.com/" and leaves the colon as text.
+// TODO(simplification): a URL that really ends in ")" (Wikipedia-style) loses
+// it; balance parentheses if such links show up in notes.
+const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"]*[^\s<>".,;:!?'")\]]/gi;
+
+// Free-text HubSpot notes mix several URLs with prose. Split them so each URL
+// becomes its own link and the prose stays plain text.
+export function splitLinks(text: string): TextSegment[] {
+  const segments: TextSegment[] = [];
+  let last = 0;
+  for (const match of text.matchAll(URL_RE)) {
+    const url = match[0];
+    if (match.index > last) segments.push({ kind: "text", text: text.slice(last, match.index) });
+    segments.push({ kind: "link", text: url, href: toWebUrl(url) });
+    last = match.index + url.length;
+  }
+  if (last < text.length) segments.push({ kind: "text", text: text.slice(last) });
+  return segments;
+}

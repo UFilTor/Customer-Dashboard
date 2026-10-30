@@ -12,7 +12,7 @@ import { hubspotCompanyUrl, hubspotDealUrl } from "@/lib/hubspot-links";
 import { isNewTabClick, openCompanyInNewTab } from "@/lib/company-link";
 import { countryName } from "@/lib/hubspot-enums";
 import { signalStyle } from "@/lib/signal-display";
-import { fmtFutureEvents, toWebUrl } from "@/lib/format-design";
+import { fmtFutureEvents, splitLinks, toWebUrl } from "@/lib/format-design";
 import { OWNER_MAP } from "@/lib/owners";
 import { VolumeChart } from "../VolumeChart";
 import { HealthRings } from "../HealthRings";
@@ -730,10 +730,6 @@ function CustomerSection({ deal }: { deal: MeetingPrepDeal }) {
 function ObNotesSection({ deal }: { deal: MeetingPrepDeal }) {
   const obNotes = deal.obNotes;
   if (!obNotes) return null;
-  const expLink =
-    obNotes.experiencesLink && /^https?:\/\//i.test(obNotes.experiencesLink)
-      ? obNotes.experiencesLink
-      : null;
   return (
     <div>
       <SectionHeader>OB Notes</SectionHeader>
@@ -746,27 +742,59 @@ function ObNotesSection({ deal }: { deal: MeetingPrepDeal }) {
       )}
       <Row label="Experiences">
         {obNotes.experiencesLink ? (
-          expLink ? (
-            <a href={expLink} target="_blank" rel="noopener noreferrer">
-              {obNotes.experiencesLink}
-            </a>
-          ) : (
-            <span>{obNotes.experiencesLink}</span>
-          )
+          <NoteText text={obNotes.experiencesLink} />
         ) : (
           <span style={{ opacity: 0.5 }}>—</span>
         )}
       </Row>
       <Row label="Customer needs">
-        {obNotes.customerNeeds ?? <span style={{ opacity: 0.5 }}>—</span>}
+        {obNotes.customerNeeds != null ? (
+          <NoteText text={obNotes.customerNeeds} />
+        ) : (
+          <span style={{ opacity: 0.5 }}>—</span>
+        )}
       </Row>
       <Row label="Promises made">
-        {obNotes.promisesMade ?? <span style={{ opacity: 0.5 }}>—</span>}
+        {obNotes.promisesMade != null ? (
+          <NoteText text={obNotes.promisesMade} />
+        ) : (
+          <span style={{ opacity: 0.5 }}>—</span>
+        )}
       </Row>
       <Row label="Grow notes">
-        {obNotes.growNotes ?? <span style={{ opacity: 0.5 }}>—</span>}
+        {obNotes.growNotes != null ? (
+          <NoteText text={obNotes.growNotes} />
+        ) : (
+          <span style={{ opacity: 0.5 }}>—</span>
+        )}
       </Row>
     </div>
+  );
+}
+
+// Free-text OB note: each URL is its own underlined link, the prose around it
+// stays plain text. pre-wrap keeps the note's own line breaks, so a list of
+// URLs stays one per line. overflowWrap breaks long query-string URLs that
+// would otherwise widen the grid column and scroll the whole page sideways.
+function NoteText({ text }: { text: string }) {
+  return (
+    <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+      {splitLinks(text).map((seg, i) =>
+        seg.kind === "link" ? (
+          <a
+            key={i}
+            href={seg.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--moss)", textDecoration: "underline" }}
+          >
+            {seg.text}
+          </a>
+        ) : (
+          seg.text
+        ),
+      )}
+    </span>
   );
 }
 

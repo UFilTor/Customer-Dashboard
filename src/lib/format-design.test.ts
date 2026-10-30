@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fmtHealth } from "./format-design";
+import { fmtHealth, splitLinks } from "./format-design";
 
 describe("fmtHealth", () => {
   it("reads a whole-number score of 1 as 1, not as a 100% ratio", () => {
@@ -22,5 +22,48 @@ describe("fmtHealth", () => {
     expect(fmtHealth(null).num).toBeNull();
     expect(fmtHealth("").num).toBeNull();
     expect(fmtHealth("abc").num).toBeNull();
+  });
+});
+
+describe("splitLinks", () => {
+  it("makes each URL its own link and keeps prose as plain text", () => {
+    expect(splitLinks("https://a.com/x\n\nTwo sites: see https://b.com/#y (open booking)")).toEqual([
+      { kind: "link", text: "https://a.com/x", href: "https://a.com/x" },
+      { kind: "text", text: "\n\nTwo sites: see " },
+      { kind: "link", text: "https://b.com/#y", href: "https://b.com/#y" },
+      { kind: "text", text: " (open booking)" },
+    ]);
+  });
+
+  it("splits URLs joined by '+' or a list dash", () => {
+    const links = splitLinks("https://a.se/one/ + https://a.se/two/\n-https://a.se/three/")
+      .filter((s) => s.kind === "link")
+      .map((s) => s.text);
+    expect(links).toEqual(["https://a.se/one/", "https://a.se/two/", "https://a.se/three/"]);
+  });
+
+  it("leaves trailing sentence punctuation out of the link", () => {
+    expect(splitLinks("Book at https://x.se/:")).toEqual([
+      { kind: "text", text: "Book at " },
+      { kind: "link", text: "https://x.se/", href: "https://x.se/" },
+      { kind: "text", text: ":" },
+    ]);
+    expect(splitLinks("(https://x.se/tours).")[1]).toEqual({
+      kind: "link",
+      text: "https://x.se/tours",
+      href: "https://x.se/tours",
+    });
+  });
+
+  it("links a bare www. address with an https scheme", () => {
+    expect(splitLinks("www.nosito.com")).toEqual([
+      { kind: "link", text: "www.nosito.com", href: "https://www.nosito.com" },
+    ]);
+  });
+
+  it("returns plain text when there is no URL", () => {
+    expect(splitLinks("They will send over a document")).toEqual([
+      { kind: "text", text: "They will send over a document" },
+    ]);
   });
 });
